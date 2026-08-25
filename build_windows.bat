@@ -24,15 +24,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if /I "%FRAMEFORGE_SKIP_VENV%"=="1" (
-  echo Using Python environment from PATH (CI mode)...
-) else (
-  if not exist .venv (
-    echo Creating virtual environment...
-    python -m venv .venv
-  )
-  call .venv\Scripts\activate.bat
+if /I "%FRAMEFORGE_SKIP_VENV%"=="1" goto venv_ready
+if not exist .venv (
+  echo Creating virtual environment...
+  python -m venv .venv
 )
+call .venv\Scripts\activate.bat
+:venv_ready
 python -m pip install --upgrade pip
 if /I "%BUILD_PROFILE%"=="minimal" (
   python -m pip install -r requirements.txt pyinstaller
