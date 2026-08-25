@@ -219,8 +219,12 @@ def maybe_update_app(force: bool = False, timeout: float = 10.0, download: bool 
 
 
 def initialize_app_update() -> AppUpdateStatus:
-    # Startup chỉ kiểm tra manifest; không tự tải/chạy EXE từ Internet.
-    return maybe_update_app(download=False)
+    # Mỗi lần mở app đều kiểm tra manifest; không tự tải/chạy EXE từ Internet.
+    if os.environ.get("FRAMEFORGE_APP_UPDATE_STARTUP", "1").lower() in {"0", "false", "no", "off"}:
+        return AppUpdateStatus(
+            current_app_version(), None, False, False, False, None, "Kiểm tra cập nhật lúc khởi động đang tắt."
+        )
+    return maybe_update_app(force=True, timeout=5.0, download=False)
 
 
 def update_app_now(timeout: float = 10.0) -> AppUpdateStatus:

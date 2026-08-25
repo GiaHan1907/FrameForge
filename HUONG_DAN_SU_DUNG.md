@@ -364,7 +364,7 @@ Workflow hiện cấp quyền `contents: write` cho `GITHUB_TOKEN` để tạo R
 
 ## 23. Auto-update ứng dụng Windows
 
-Updater hiện có hai phần độc lập. Phần cũ cập nhật package yt-dlp; phần mới trong `app_update.py` kiểm tra manifest HTTPS, so sánh phiên bản, tải `FrameForge-Setup-*.exe` vào thư mục dữ liệu user, xác minh SHA-256 và mở Setup khi người dùng bấm **Cập nhật ngay**. Ứng dụng không tự ghi đè file EXE đang chạy.
+Updater hiện có hai phần độc lập. Phần cũ cập nhật package yt-dlp; phần mới trong `app_update.py` kiểm tra manifest HTTPS và so sánh phiên bản ở mỗi lần khởi động, sau đó chỉ tải `FrameForge-Setup-*.exe`, xác minh SHA-256 và mở Setup khi người dùng bấm **Cập nhật ngay**. Ứng dụng không tự ghi đè file EXE đang chạy. Có thể tắt riêng kiểm tra startup bằng `FRAMEFORGE_APP_UPDATE_STARTUP=0`.
 
 Workflow GitHub Actions tạo `latest.json` trong mỗi GitHub Release. Để bật kiểm tra cập nhật EXE trên máy người dùng, đặt:
 
@@ -372,7 +372,7 @@ Workflow GitHub Actions tạo `latest.json` trong mỗi GitHub Release. Để b�
 set FRAMEFORGE_UPDATE_MANIFEST_URL=https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest.json
 ```
 
-Repository FrameForge hiện là public, nên app có thể đọc manifest và tải asset từ GitHub Release mà không cần Personal Access Token. App đã có URL manifest public mặc định; có thể ghi đè bằng `FRAMEFORGE_UPDATE_MANIFEST_URL` nếu dùng feed khác.
+Repository FrameForge hiện là public, nên app có thể đọc manifest và tải asset từ GitHub Release mà không cần Personal Access Token. App đã có URL manifest public mặc định; có thể ghi đè bằng `FRAMEFORGE_UPDATE_MANIFEST_URL` nếu dùng feed khác. Khi có version mới, giao diện hiển thị một nút **Cập nhật ngay** duy nhất.
 
 Có thể tắt updater EXE bằng:
 
