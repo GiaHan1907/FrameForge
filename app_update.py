@@ -13,7 +13,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_MANIFEST_URL = ""
+DEFAULT_MANIFEST_URL = "https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest.json"
 CHECK_INTERVAL_SECONDS = 24 * 60 * 60
 APP_UPDATE_DIR_NAME = "app_updates"
 STATE_FILE_NAME = "app_update_check.json"
@@ -126,11 +126,17 @@ def _read_pending() -> dict[str, object] | None:
 def read_app_update_status() -> AppUpdateStatus:
     pending = _read_pending()
     current = current_app_version()
+    pending_path = _update_root() / PENDING_FILE_NAME
     if pending:
         path = Path(str(pending.get("installer_path") or ""))
         version = str(pending.get("version") or "")
         sha256 = str(pending.get("sha256") or "")
-        if version and path.is_file() and re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
+        if version and _version_key(version) <= _version_key(current):
+            # Bản cập nhật đã được cài đặt; không nhắc lại Setup cũ.
+            pending_path.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
+            pending = None
+        elif version and path.is_file() and re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
             return AppUpdateStatus(current, version, True, True, True, str(path), "Đã tải Setup mới và chờ người dùng cài đặt.")
     try:
         state = json.loads(_state_path().read_text(encoding="utf-8"))
@@ -147,7 +153,7 @@ def read_app_update_status() -> AppUpdateStatus:
         return AppUpdateStatus(current, None, False, False, False, None, "Chưa kiểm tra cập nhật.")
 
 
-def maybe_update_app(force: bool = False, timeout: float = 10.0) -> AppUpdateStatus:
+def maybe_update_app(force: bool = False, timeout: float = 10.0, download: bool = True) -> AppUpdateStatus:
     current = current_app_version()
     if os.environ.get("FRAMEFORGE_APP_UPDATE", "1").lower() in {"0", "false", "no", "off"}:
         return AppUpdateStatus(current, None, False, False, False, None, "Auto-update ứng dụng đang tắt.")
@@ -189,6 +195,8 @@ def maybe_update_app(force: bool = False, timeout: float = 10.0) -> AppUpdateSta
         state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         if not available:
             return AppUpdateStatus(current, latest, True, False, False, None, str(state["message"]))
+        if not download:
+            return AppUpdateStatus(current, latest, True, True, False, None, "Có bản cập nhật mới. Nhấn Cập nhật ngay để tải và cài đặt.")
 
         update_root = _update_root()
         target = update_root / installer_name
@@ -211,7 +219,34 @@ def maybe_update_app(force: bool = False, timeout: float = 10.0) -> AppUpdateSta
 
 
 def initialize_app_update() -> AppUpdateStatus:
-    return maybe_update_app()
+    # Startup chỉ kiểm tra manifest; không tự tải/chạy EXE từ Internet.
+    return maybe_update_app(download=False)
+
+
+def update_app_now(timeout: float = 10.0) -> AppUpdateStatus:
+    """Tải, xác minh và mở Setup mới trong một thao tác người dùng."""
+    status = maybe_update_app(force=True, timeout=timeout, download=True)
+    if status.downloaded and status.installer_path and launch_pending_installer():
+        return AppUpdateStatus(
+            status.current_version,
+            status.latest_version,
+            status.checked,
+            status.available,
+            True,
+            status.installer_path,
+            "Đã xác minh và mở Setup mới. Hãy hoàn tất trình cài đặt rồi khởi động lại FrameForge.",
+        )
+    if status.downloaded:
+        return AppUpdateStatus(
+            status.current_version,
+            status.latest_version,
+            status.checked,
+            status.available,
+            True,
+            status.installer_path,
+            "Đã tải và xác minh Setup mới nhưng chưa thể mở trình cài đặt.",
+        )
+    return status
 
 
 def launch_pending_installer() -> bool:

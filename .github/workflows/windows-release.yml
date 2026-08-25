@@ -43,7 +43,7 @@ jobs:
       - name: Compile Python sources
         shell: bash
         run: |
-          python -m py_compile streamlit_app.py video_screenshot_advanced.py video_downloader.py updater.py windows_launcher.py measure_package_size.py
+          python -m py_compile streamlit_app.py video_screenshot_advanced.py video_downloader.py updater.py app_update.py windows_launcher.py measure_package_size.py validate_release_manifest.py
 
   windows-build:
     if: github.event_name != 'pull_request'
@@ -178,6 +178,7 @@ jobs:
             installer_url = "https://github.com/GiaHan1907/FrameForge/releases/download/$env:FRAMEFORGE_TAG/$($setup.Name)"
           }
           $manifest | ConvertTo-Json | Set-Content latest.json -Encoding utf8
+          python validate_release_manifest.py latest.json $setup.FullName $env:FRAMEFORGE_TAG
 
           "SETUP_NAME=$($setup.Name)" >> $env:GITHUB_ENV
           Write-Host "Created $($setup.FullName)"
@@ -220,6 +221,8 @@ jobs:
           test -n "$setup"
           test -f release_payload/SHA256SUMS.txt
           test -f release_payload/build_size_report.json
+          test -f release_payload/latest.json
+          python3 validate_release_manifest.py release_payload/latest.json "$setup" "$tag"
 
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" \

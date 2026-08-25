@@ -8,13 +8,13 @@ Workflow `.github/workflows/windows-release.yml` tạo `latest.json` khi build. 
 
 ## 2. Điều kiện để auto-update từ GitHub Release hoạt động
 
-Repository private không thể làm nguồn tải công khai cho EXE nếu ứng dụng không có cơ chế xác thực. Không nhúng Personal Access Token vào EXE. Có ba lựa chọn:
+Repository FrameForge hiện đã được chuyển sang public, vì vậy GitHub Release có thể làm nguồn tải công khai cho EXE mà không cần token. Không nhúng Personal Access Token vào EXE. Nếu sau này cần giữ source private, có thể tách release feed sang repository public riêng.
 
 | Approach | Tradeoffs | Cost | Setup Complexity |
 |---|---|---|---|
-| Public release feed trong repository hiện tại | Đơn giản nhất; source cũng có thể bị công khai nếu dùng cùng repo | GitHub repository public không mất phí cơ bản | Thấp |
-| Giữ source private, tạo repository public riêng cho release assets | Giữ source private; cần đổi workflow để publish Setup/manifest sang repo public | GitHub public repository không mất phí cơ bản | Trung bình |
-| Dùng update server/private distribution có token hoặc signed URL | Kiểm soát truy cập tốt; cần backend, auth, rotation và monitoring | Có chi phí vận hành tùy dịch vụ | Cao |
+| Public release feed trong repository hiện tại | Đang được dùng cho FrameForge; source và Release đều public | Thấp | Thấp |
+| Giữ source private, tạo repository public riêng cho release assets | Dùng khi cần bảo vệ source; workflow phải publish sang repo release riêng | Trung bình | Trung bình |
+| Dùng update server/private distribution có token hoặc signed URL | Kiểm soát truy cập tốt; cần backend, auth, rotation và monitoring | Cao | Cao |
 
 Với bản phát hành cho một hoặc nhiều máy Windows không yêu cầu bảo mật source, lựa chọn đầu tiên đơn giản nhất. Nếu cần giữ source private, lựa chọn thứ hai phù hợp hơn.
 
@@ -27,7 +27,7 @@ setx FRAMEFORGE_APP_UPDATE "1"
 
 Đóng và mở lại FrameForge sau khi chạy `setx`. Không cần đặt `FRAMEFORGE_AUTO_UPDATE=1`; biến đó chỉ điều khiển updater yt-dlp.
 
-Khi có bản mới, ứng dụng kiểm tra tối đa một lần mỗi 24 giờ. Nếu version trong `latest.json` lớn hơn version đang chạy, giao diện hiển thị nút **Tải và xác minh Setup mới**. Sau khi SHA-256 khớp, nút **Mở Setup để cài bản cập nhật** xuất hiện. Nên đóng FrameForge trước khi hoàn tất trình cài đặt để tránh file đang chạy bị khóa.
+Khi có bản mới, ứng dụng kiểm tra tối đa một lần mỗi 24 giờ. Nếu version trong `latest.json` lớn hơn version đang chạy, giao diện hiển thị nút **Cập nhật ngay**. Một lần bấm sẽ tải Setup qua HTTPS, xác minh SHA-256 rồi mở installer. Nên đóng FrameForge trước khi hoàn tất trình cài đặt để tránh file đang chạy bị khóa.
 
 ## 3. Phát hành version mới
 
