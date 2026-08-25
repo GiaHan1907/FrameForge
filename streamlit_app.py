@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import streamlit as st
 
 from updater import initialize_yt_dlp
+from app_config import load_output_dirs, save_output_dirs
 from app_update import initialize_app_update, update_app_now
 
 # Kiểm tra tối đa một lần mỗi 24 giờ; bản mới chỉ được kích hoạt từ lần chạy kế tiếp.
@@ -600,12 +601,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# User-selected output directories
-output_root = Path.home() / "Videos" / "FrameForge"
+# User-selected output directories, persisted in the per-user config file.
+output_dirs = load_output_dirs()
 if "download_dir" not in st.session_state:
-    st.session_state["download_dir"] = str(output_root / "videos")
+    st.session_state["download_dir"] = output_dirs["download_dir"]
 if "screenshot_dir" not in st.session_state:
-    st.session_state["screenshot_dir"] = str(output_root / "screenshots")
+    st.session_state["screenshot_dir"] = output_dirs["screenshot_dir"]
 if "downloaded_paths" not in st.session_state:
     st.session_state["downloaded_paths"] = []
 
@@ -616,33 +617,48 @@ st.markdown(
 )
 video_path_col, screenshot_path_col = st.columns(2, gap="large")
 with video_path_col:
-    video_dir_text = st.text_input(
-        "Thư mục lưu video",
-        value=st.session_state["download_dir"],
-        key="video_dir_text",
-        help="Đường dẫn local trên máy đang chạy FrameForge.",
-    )
-    if st.button("Chọn thư mục video", key="choose_video_dir", use_container_width=True):
-        selected = choose_local_directory("Chọn thư mục lưu video")
-        if selected:
-            st.session_state["download_dir"] = selected
-            st.session_state["video_dir_text"] = selected
-            st.rerun()
+    video_input_col, video_pick_col = st.columns([4.4, 1.1], vertical_alignment="bottom")
+    with video_input_col:
+        video_dir_text = st.text_input(
+            "Thư mục lưu video",
+            value=st.session_state["download_dir"],
+            key="video_dir_text",
+            help="Đường dẫn local trên máy đang chạy FrameForge.",
+        )
+    with video_pick_col:
+        if st.button("Chọn…", key="choose_video_dir", use_container_width=True, help="Mở folder picker để chọn nơi lưu video tải xuống."):
+            selected = choose_local_directory("Chọn thư mục lưu video")
+            if selected:
+                st.session_state["download_dir"] = selected
+                st.session_state["video_dir_text"] = selected
+                st.rerun()
     st.session_state["download_dir"] = video_dir_text
 with screenshot_path_col:
-    screenshot_dir_text = st.text_input(
-        "Thư mục gốc lưu screenshot",
-        value=st.session_state["screenshot_dir"],
-        key="screenshot_dir_text",
-        help="Mỗi lần xử lý sẽ tạo một thư mục FrameForge_YYYYMMDD_HHMMSS bên trong.",
-    )
-    if st.button("Chọn thư mục screenshot", key="choose_screenshot_dir", use_container_width=True):
-        selected = choose_local_directory("Chọn thư mục gốc lưu screenshot")
-        if selected:
-            st.session_state["screenshot_dir"] = selected
-            st.session_state["screenshot_dir_text"] = selected
-            st.rerun()
+    screenshot_input_col, screenshot_pick_col = st.columns([4.4, 1.1], vertical_alignment="bottom")
+    with screenshot_input_col:
+        screenshot_dir_text = st.text_input(
+            "Thư mục gốc lưu screenshot",
+            value=st.session_state["screenshot_dir"],
+            key="screenshot_dir_text",
+            help="Mỗi lần xử lý sẽ tạo một thư mục FrameForge_YYYYMMDD_HHMMSS bên trong.",
+        )
+    with screenshot_pick_col:
+        if st.button("Chọn…", key="choose_screenshot_dir", use_container_width=True, help="Mở folder picker để chọn nơi lưu screenshot."):
+            selected = choose_local_directory("Chọn thư mục gốc lưu screenshot")
+            if selected:
+                st.session_state["screenshot_dir"] = selected
+                st.session_state["screenshot_dir_text"] = selected
+                st.rerun()
     st.session_state["screenshot_dir"] = screenshot_dir_text
+
+# Persist the most recent valid paths for the next app start.
+try:
+    save_output_dirs(
+        normalize_output_dir(st.session_state["download_dir"], Path.home() / "Videos" / "FrameForge" / "videos"),
+        normalize_output_dir(st.session_state["screenshot_dir"], Path.home() / "Videos" / "FrameForge" / "screenshots"),
+    )
+except OSError as exc:
+    st.caption(f"Không thể ghi config thư mục: {exc}")
 
 # Download public video queue
 downloaded_paths = [
