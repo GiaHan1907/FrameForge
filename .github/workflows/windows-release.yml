@@ -205,6 +205,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout source for release validation
+        uses: actions/checkout@v5
+
       - name: Download build artifact
         uses: actions/download-artifact@v6
         with:
