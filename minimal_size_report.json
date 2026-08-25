@@ -1,0 +1,132 @@
+{
+  "root": "/home/ubuntu/video_screenshot_app",
+  "symlink_count_in_runtime_dist": 36,
+  "records": [
+    {
+      "name": "vendor_ffmpeg",
+      "path": "/home/ubuntu/video_screenshot_app/vendor/ffmpeg",
+      "bytes": 1101,
+      "human": "1.08 KiB",
+      "exists": true
+    },
+    {
+      "name": "python_sources",
+      "path": "/home/ubuntu/video_screenshot_app",
+      "bytes": 323375,
+      "human": "315.80 KiB",
+      "exists": true
+    },
+    {
+      "name": "pyinstaller_dist",
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter",
+      "bytes": 339840270,
+      "human": "324.10 MiB",
+      "exists": true
+    },
+    {
+      "name": "pyinstaller_build",
+      "path": "/home/ubuntu/video_screenshot_app/build",
+      "bytes": 0,
+      "human": "0.00 B",
+      "exists": false
+    },
+    {
+      "name": "release_zip",
+      "path": "/home/ubuntu/video_screenshot_app.zip",
+      "bytes": 21781,
+      "human": "21.27 KiB",
+      "exists": true
+    }
+  ],
+  "runtime_dist_total_bytes": 339840270,
+  "runtime_dist_total_human": "324.10 MiB",
+  "largest_direct_entries": [
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal",
+      "bytes": 322327038,
+      "human": "307.40 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/VideoScreenshotFilter",
+      "bytes": 17513232,
+      "human": "16.70 MiB"
+    }
+  ],
+  "largest_files": [
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/cv2/cv2.abi3.so",
+      "bytes": 73874137,
+      "human": "70.45 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/opencv_python_headless.libs/libopenblasp-r0-59ffcd50.3.15.so",
+      "bytes": 38982937,
+      "human": "37.18 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/numpy.libs/libscipy_openblas64_-017048f4.so",
+      "bytes": 25128625,
+      "human": "23.96 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/opencv_python_headless.libs/libavcodec-c4204469.so.62.28.101",
+      "bytes": 18439145,
+      "human": "17.58 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/VideoScreenshotFilter",
+      "bytes": 17513232,
+      "human": "16.70 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/cryptography/hazmat/bindings/_rust.abi3.so",
+      "bytes": 14357504,
+      "human": "13.69 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/numpy/_core/_multiarray_umath.cpython-312-x86_64-linux-gnu.so",
+      "bytes": 10682329,
+      "human": "10.19 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/libpython3.12.so.1.0",
+      "bytes": 9061000,
+      "human": "8.64 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/opencv_python_headless.libs/libaom-a0d22147.so.3.14.1",
+      "bytes": 8141337,
+      "human": "7.76 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/libcrypto.so.3",
+      "bytes": 5309400,
+      "human": "5.06 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/pillow.libs/libavif-8a7f9d56.so.16.4.2",
+      "bytes": 5203513,
+      "human": "4.96 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/_brotli.cpython-312-x86_64-linux-gnu.so",
+      "bytes": 5148968,
+      "human": "4.91 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/streamlit/static/static/js/PlotlyChart.__5KNiOO.js",
+      "bytes": 4664727,
+      "human": "4.45 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/opencv_python_headless.libs/libvpx-4fb239ff.so.11.0.1",
+      "bytes": 3692569,
+      "human": "3.52 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter/_internal/PIL/_imaging.cpython-312-x86_64-linux-gnu.so",
+      "bytes": 3402345,
+      "human": "3.24 MiB"
+    }
+  ]
+}

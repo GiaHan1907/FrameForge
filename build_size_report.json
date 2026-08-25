@@ -1,0 +1,49 @@
+{
+  "root": "/home/ubuntu/video_screenshot_app",
+  "records": [
+    {
+      "name": "vendor_ffmpeg",
+      "path": "/home/ubuntu/video_screenshot_app/vendor/ffmpeg",
+      "bytes": 1101,
+      "human": "1.08 KiB",
+      "exists": true
+    },
+    {
+      "name": "python_sources",
+      "path": "/home/ubuntu/video_screenshot_app",
+      "bytes": 275263,
+      "human": "268.81 KiB",
+      "exists": true
+    },
+    {
+      "name": "pyinstaller_dist",
+      "path": "/home/ubuntu/video_screenshot_app/dist",
+      "bytes": 0,
+      "human": "0.00 B",
+      "exists": false
+    },
+    {
+      "name": "pyinstaller_build",
+      "path": "/home/ubuntu/video_screenshot_app/build",
+      "bytes": 0,
+      "human": "0.00 B",
+      "exists": false
+    },
+    {
+      "name": "release_zip",
+      "path": "/home/ubuntu/video_screenshot_app.zip",
+      "bytes": 21781,
+      "human": "21.27 KiB",
+      "exists": true
+    }
+  ],
+  "measured_runtime_total_bytes": 1101,
+  "embedded_ffmpeg_measurement": {
+    "ffmpeg_archive_bytes": 147007180,
+    "ffmpeg_exe_bytes": 114400768,
+    "ffprobe_exe_bytes": 114197504,
+    "ffmpeg_binaries_bytes": 228598272,
+    "ffmpeg_archive_sha256": "26d459bf4e8214d4ec177f0aab5c4a003f51ac6e61c1584eccc6b8a4c76d8df8",
+    "note": "FFmpeg Windows x86_64 LGPL static archive measured separately; final Windows one-file size must be measured on Windows after build."
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "root": "/home/ubuntu/video_screenshot_app",
+  "symlink_count_in_runtime_dist": 46,
+  "records": [
+    {
+      "name": "vendor_ffmpeg",
+      "path": "/home/ubuntu/video_screenshot_app/vendor/ffmpeg",
+      "bytes": 1101,
+      "human": "1.08 KiB",
+      "exists": true
+    },
+    {
+      "name": "python_sources",
+      "path": "/home/ubuntu/video_screenshot_app",
+      "bytes": 323687,
+      "human": "316.10 KiB",
+      "exists": true
+    },
+    {
+      "name": "pyinstaller_dist",
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter",
+      "bytes": 652276222,
+      "human": "622.06 MiB",
+      "exists": true
+    },
+    {
+      "name": "pyinstaller_build",
+      "path": "/home/ubuntu/video_screenshot_app/build",
+      "bytes": 0,
+      "human": "0.00 B",
+      "exists": false
+    },
+    {
+      "name": "release_zip",
+      "path": "/home/ubuntu/video_screenshot_app.zip",
+      "bytes": 21781,
+      "human": "21.27 KiB",
+      "exists": true
+    }
+  ],
+  "runtime_dist_total_bytes": 652276222,
+  "runtime_dist_total_human": "622.06 MiB",
+  "largest_direct_entries": [
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal",
+      "bytes": 612625174,
+      "human": "584.24 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/VideoScreenshotFilter",
+      "bytes": 39651048,
+      "human": "37.81 MiB"
+    }
+  ],
+  "largest_files": [
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/cv2/cv2.abi3.so",
+      "bytes": 73874137,
+      "human": "70.45 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/pyarrow/libarrow.so.2500",
+      "bytes": 55368864,
+      "human": "52.80 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/VideoScreenshotFilter",
+      "bytes": 39651048,
+      "human": "37.81 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/opencv_python_headless.libs/libopenblasp-r0-59ffcd50.3.15.so",
+      "bytes": 38982937,
+      "human": "37.18 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/pyarrow/libarrow_flight.so.2500",
+      "bytes": 30025232,
+      "human": "28.63 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/numpy.libs/libscipy_openblas64_-017048f4.so",
+      "bytes": 25128625,
+      "human": "23.96 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/pydeck/nbextension/static/index.js.map",
+      "bytes": 19408921,
+      "human": "18.51 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/pyarrow/libarrow_compute.so.2500",
+      "bytes": 18557840,
+      "human": "17.70 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/opencv_python_headless.libs/libavcodec-c4204469.so.62.28.101",
+      "bytes": 18439145,
+      "human": "17.58 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/cryptography/hazmat/bindings/_rust.abi3.so",
+      "bytes": 14357504,
+      "human": "13.69 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/pyarrow/libparquet.so.2500",
+      "bytes": 12803744,
+      "human": "12.21 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/numpy/_core/_multiarray_umath.cpython-312-x86_64-linux-gnu.so",
+      "bytes": 10682329,
+      "human": "10.19 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/libpython3.12.so.1.0",
+      "bytes": 9061000,
+      "human": "8.64 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/opencv_python_headless.libs/libaom-a0d22147.so.3.14.1",
+      "bytes": 8141337,
+      "human": "7.76 MiB"
+    },
+    {
+      "path": "/tmp/frameforge_full_dist/VideoScreenshotFilter/_internal/pyarrow/libarrow_substrait.so.2500",
+      "bytes": 5874392,
+      "human": "5.60 MiB"
+    }
+  ]
+}

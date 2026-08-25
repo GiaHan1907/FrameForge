@@ -1,0 +1,282 @@
+{
+  "/tmp/frameforge_minimal_dist/VideoScreenshotFilter": {
+    "root": "/tmp/frameforge_minimal_dist/VideoScreenshotFilter",
+    "total_bytes": 339840270,
+    "categories": {
+      "pyinstaller_bootloader_executable": 17513232,
+      "native_binary_or_shared_library": 183616091,
+      "python_bytecode_or_archive": 25506211,
+      "other": 89116946,
+      "metadata_or_text": 1013282,
+      "data_or_archive": 124030,
+      "frontend_static_asset": 22950478
+    },
+    "largest_files": [
+      {
+        "path": "_internal/cv2/cv2.abi3.so",
+        "bytes": 73874137,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/opencv_python_headless.libs/libopenblasp-r0-59ffcd50.3.15.so",
+        "bytes": 38982937,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/numpy.libs/libscipy_openblas64_-017048f4.so",
+        "bytes": 25128625,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/opencv_python_headless.libs/libavcodec-c4204469.so.62.28.101",
+        "bytes": 18439145,
+        "category": "other"
+      },
+      {
+        "path": "VideoScreenshotFilter",
+        "bytes": 17513232,
+        "category": "pyinstaller_bootloader_executable"
+      },
+      {
+        "path": "_internal/cryptography/hazmat/bindings/_rust.abi3.so",
+        "bytes": 14357504,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/numpy/_core/_multiarray_umath.cpython-312-x86_64-linux-gnu.so",
+        "bytes": 10682329,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/libpython3.12.so.1.0",
+        "bytes": 9061000,
+        "category": "other"
+      },
+      {
+        "path": "_internal/opencv_python_headless.libs/libaom-a0d22147.so.3.14.1",
+        "bytes": 8141337,
+        "category": "other"
+      },
+      {
+        "path": "_internal/libcrypto.so.3",
+        "bytes": 5309400,
+        "category": "other"
+      },
+      {
+        "path": "_internal/pillow.libs/libavif-8a7f9d56.so.16.4.2",
+        "bytes": 5203513,
+        "category": "other"
+      },
+      {
+        "path": "_internal/_brotli.cpython-312-x86_64-linux-gnu.so",
+        "bytes": 5148968,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/streamlit/static/static/js/PlotlyChart.__5KNiOO.js",
+        "bytes": 4664727,
+        "category": "frontend_static_asset"
+      },
+      {
+        "path": "_internal/opencv_python_headless.libs/libvpx-4fb239ff.so.11.0.1",
+        "bytes": 3692569,
+        "category": "other"
+      },
+      {
+        "path": "_internal/PIL/_imaging.cpython-312-x86_64-linux-gnu.so",
+        "bytes": 3402345,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/opencv_python_headless.libs/libcrypto-5409cd36.so.1.1.1k",
+        "bytes": 3215921,
+        "category": "other"
+      },
+      {
+        "path": "_internal/opencv_python_headless.libs/libavformat-4762a711.so.62.12.101",
+        "bytes": 2991673,
+        "category": "other"
+      },
+      {
+        "path": "_internal/numpy.libs/libgfortran-83c28eba-b4027c22.so.5.0.0",
+        "bytes": 2862249,
+        "category": "other"
+      },
+      {
+        "path": "_internal/opencv_python_headless.libs/libgfortran-83c28eba.so.5.0.0",
+        "bytes": 2751569,
+        "category": "other"
+      },
+      {
+        "path": "_internal/libstdc++.so.6",
+        "bytes": 2592224,
+        "category": "other"
+      },
+      {
+        "path": "_internal/streamlit/static/static/js/DeckGlJsonChart.DuMqBjEZ.js",
+        "bytes": 2520504,
+        "category": "frontend_static_asset"
+      },
+      {
+        "path": "_internal/opencv_python_headless.libs/libswscale-fe215b0b.so.9.5.101",
+        "bytes": 2017409,
+        "category": "other"
+      },
+      {
+        "path": "_internal/pillow.libs/libzstd-44be1190.so.1.5.7",
+        "bytes": 1800497,
+        "category": "other"
+      },
+      {
+        "path": "_internal/streamlit/static/static/js/StreamlitSyntaxHighlighter.mfnc8E-9.js",
+        "bytes": 1566902,
+        "category": "frontend_static_asset"
+      },
+      {
+        "path": "_internal/numpy/_core/_simd.cpython-312-x86_64-linux-gnu.so",
+        "bytes": 1506088,
+        "category": "native_binary_or_shared_library"
+      }
+    ]
+  },
+  "/tmp/frameforge_full_dist/VideoScreenshotFilter": {
+    "root": "/tmp/frameforge_full_dist/VideoScreenshotFilter",
+    "total_bytes": 652276222,
+    "categories": {
+      "pyinstaller_bootloader_executable": 39651048,
+      "native_binary_or_shared_library": 240453011,
+      "python_bytecode_or_archive": 51624772,
+      "other": 245126593,
+      "metadata_or_text": 11117752,
+      "frontend_static_asset": 64105416,
+      "data_or_archive": 197630
+    },
+    "largest_files": [
+      {
+        "path": "_internal/cv2/cv2.abi3.so",
+        "bytes": 73874137,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/pyarrow/libarrow.so.2500",
+        "bytes": 55368864,
+        "category": "other"
+      },
+      {
+        "path": "VideoScreenshotFilter",
+        "bytes": 39651048,
+        "category": "pyinstaller_bootloader_executable"
+      },
+      {
+        "path": "_internal/opencv_python_headless.libs/libopenblasp-r0-59ffcd50.3.15.so",
+        "bytes": 38982937,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/pyarrow/libarrow_flight.so.2500",
+        "bytes": 30025232,
+        "category": "other"
+      },
+      {
+        "path": "_internal/numpy.libs/libscipy_openblas64_-017048f4.so",
+        "bytes": 25128625,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/pydeck/nbextension/static/index.js.map",
+        "bytes": 19408921,
+        "category": "frontend_static_asset"
+      },
+      {
+        "path": "_internal/pyarrow/libarrow_compute.so.2500",
+        "bytes": 18557840,
+        "category": "other"
+      },
+      {
+        "path": "_internal/opencv_python_headless.libs/libavcodec-c4204469.so.62.28.101",
+        "bytes": 18439145,
+        "category": "other"
+      },
+      {
+        "path": "_internal/cryptography/hazmat/bindings/_rust.abi3.so",
+        "bytes": 14357504,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/pyarrow/libparquet.so.2500",
+        "bytes": 12803744,
+        "category": "other"
+      },
+      {
+        "path": "_internal/numpy/_core/_multiarray_umath.cpython-312-x86_64-linux-gnu.so",
+        "bytes": 10682329,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/libpython3.12.so.1.0",
+        "bytes": 9061000,
+        "category": "other"
+      },
+      {
+        "path": "_internal/opencv_python_headless.libs/libaom-a0d22147.so.3.14.1",
+        "bytes": 8141337,
+        "category": "other"
+      },
+      {
+        "path": "_internal/pyarrow/libarrow_substrait.so.2500",
+        "bytes": 5874392,
+        "category": "other"
+      },
+      {
+        "path": "_internal/kiwisolver/_cext.cpython-312-x86_64-linux-gnu.so",
+        "bytes": 5739552,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/libcrypto.so.3",
+        "bytes": 5309400,
+        "category": "other"
+      },
+      {
+        "path": "_internal/lxml/etree.cpython-312-x86_64-linux-gnu.so",
+        "bytes": 5276528,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/pillow.libs/libavif-8a7f9d56.so.16.4.2",
+        "bytes": 5203513,
+        "category": "other"
+      },
+      {
+        "path": "_internal/_brotli.cpython-312-x86_64-linux-gnu.so",
+        "bytes": 5148968,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/plotly/package_data/widgetbundle.js",
+        "bytes": 5007998,
+        "category": "frontend_static_asset"
+      },
+      {
+        "path": "_internal/plotly/package_data/plotly.min.js",
+        "bytes": 4851164,
+        "category": "frontend_static_asset"
+      },
+      {
+        "path": "_internal/streamlit/static/static/js/PlotlyChart.__5KNiOO.js",
+        "bytes": 4664727,
+        "category": "frontend_static_asset"
+      },
+      {
+        "path": "_internal/pyarrow/lib.cpython-312-x86_64-linux-gnu.so",
+        "bytes": 4483984,
+        "category": "native_binary_or_shared_library"
+      },
+      {
+        "path": "_internal/pydeck/nbextension/static/index.js",
+        "bytes": 4269385,
+        "category": "frontend_static_asset"
+      }
+    ]
+  }
+}

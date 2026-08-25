@@ -1,0 +1,39 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# PyInstaller and packaging outputs
+build/
+dist/
+installer/
+*.spec.bak
+
+# Runtime outputs and downloaded media
+outputs/
+downloads/
+cache/
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.ts
+
+# Local reports/logs that should not be committed
+*.log
+*.tmp
+launcher_error.log
+
+# FFmpeg binaries are downloaded during the Windows build; keep documentation/metadata templates
+vendor/ffmpeg/*.exe
+vendor/ffmpeg/*.zip
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
