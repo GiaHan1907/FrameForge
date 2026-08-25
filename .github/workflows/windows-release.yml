@@ -178,7 +178,11 @@ jobs:
             installer_url = "https://github.com/GiaHan1907/FrameForge/releases/download/$env:FRAMEFORGE_TAG/$($setup.Name)"
           }
           $manifest | ConvertTo-Json | Set-Content latest.json -Encoding utf8
-          python validate_release_manifest.py latest.json $setup.FullName $env:FRAMEFORGE_TAG
+          if ($env:FRAMEFORGE_TAG -match '^v\d+\.\d+\.\d+$') {
+            python validate_release_manifest.py latest.json $setup.FullName $env:FRAMEFORGE_TAG
+          } else {
+            Write-Host "Non-release ref $env:FRAMEFORGE_TAG; skipping release manifest validation."
+          }
 
           "SETUP_NAME=$($setup.Name)" >> $env:GITHUB_ENV
           Write-Host "Created $($setup.FullName)"
