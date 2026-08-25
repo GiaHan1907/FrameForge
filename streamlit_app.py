@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import contextlib
 import io
+from datetime import datetime
 import html
 import json
 import mimetypes
 import os
+import sys
 import shutil
 import tempfile
 import zipfile
@@ -467,11 +469,38 @@ st.markdown(
 )
 
 
+def choose_local_directory(title: str) -> str | None:
+    """Mở native folder picker khi app chạy local trên Windows/macOS/Linux desktop."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            root.attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        selected = filedialog.askdirectory(title=title, mustexist=False)
+        root.destroy()
+        return selected or None
+    except Exception:
+        return None
+
+
+def normalize_output_dir(value: str, fallback: Path) -> Path:
+    raw = (value or "").strip()
+    path = Path(os.path.expandvars(os.path.expanduser(raw))) if raw else fallback
+    path = path.resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def make_zip(directory: Path, report_path: Path) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(directory.rglob("*")):
-            if path.is_file():
+            if path.is_file() and path != report_path:
                 archive.write(path, path.relative_to(directory))
         archive.write(report_path, report_path.name)
     return buffer.getvalue()
@@ -578,11 +607,51 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Download public video queue
+# User-selected output directories
+output_root = Path.home() / "Videos" / "FrameForge"
 if "download_dir" not in st.session_state:
-    st.session_state["download_dir"] = tempfile.mkdtemp(prefix="frameforge_downloads_")
+    st.session_state["download_dir"] = str(output_root / "videos")
+if "screenshot_dir" not in st.session_state:
+    st.session_state["screenshot_dir"] = str(output_root / "screenshots")
 if "downloaded_paths" not in st.session_state:
     st.session_state["downloaded_paths"] = []
+
+st.markdown('<div class="section-heading"><span>⌂</span> Nơi lưu file</div>', unsafe_allow_html=True)
+st.markdown(
+    '<p class="muted-note">Chọn thư mục ngay từ đầu. Video tải xuống sẽ lưu trực tiếp vào thư mục video; mỗi lần xử lý screenshot sẽ tạo một thư mục con riêng để không trộn với kết quả cũ.</p>',
+    unsafe_allow_html=True,
+)
+video_path_col, screenshot_path_col = st.columns(2, gap="large")
+with video_path_col:
+    video_dir_text = st.text_input(
+        "Thư mục lưu video",
+        value=st.session_state["download_dir"],
+        key="video_dir_text",
+        help="Đường dẫn local trên máy đang chạy FrameForge.",
+    )
+    if st.button("Chọn thư mục video", key="choose_video_dir", use_container_width=True):
+        selected = choose_local_directory("Chọn thư mục lưu video")
+        if selected:
+            st.session_state["download_dir"] = selected
+            st.session_state["video_dir_text"] = selected
+            st.rerun()
+    st.session_state["download_dir"] = video_dir_text
+with screenshot_path_col:
+    screenshot_dir_text = st.text_input(
+        "Thư mục gốc lưu screenshot",
+        value=st.session_state["screenshot_dir"],
+        key="screenshot_dir_text",
+        help="Mỗi lần xử lý sẽ tạo một thư mục FrameForge_YYYYMMDD_HHMMSS bên trong.",
+    )
+    if st.button("Chọn thư mục screenshot", key="choose_screenshot_dir", use_container_width=True):
+        selected = choose_local_directory("Chọn thư mục gốc lưu screenshot")
+        if selected:
+            st.session_state["screenshot_dir"] = selected
+            st.session_state["screenshot_dir_text"] = selected
+            st.rerun()
+    st.session_state["screenshot_dir"] = screenshot_dir_text
+
+# Download public video queue
 downloaded_paths = [
     Path(item) for item in st.session_state["downloaded_paths"] if Path(item).exists()
 ]
@@ -956,7 +1025,11 @@ if run_clicked:
     args = build_args()
     work_dir = Path(tempfile.mkdtemp(prefix="video_screenshot_web_"))
     input_dir = work_dir / "input"
-    output_dir = work_dir / "screenshots_filtered"
+    screenshot_root = normalize_output_dir(
+        st.session_state.get("screenshot_dir", ""),
+        Path.home() / "Videos" / "FrameForge" / "screenshots",
+    )
+    output_dir = screenshot_root / f"FrameForge_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     input_dir.mkdir(parents=True)
     output_dir.mkdir(parents=True)
     reports = []
@@ -1002,6 +1075,7 @@ if run_clicked:
             encoding="utf-8",
         )
         zip_bytes = make_zip(output_dir, report_path)
+        st.success(f"Đã lưu screenshot và report trực tiếp tại: {output_dir}")
 
         total_saved = sum(int(item.get("saved", 0)) for item in reports)
         total_blurry = sum(int(item.get("rejected_blurry", 0)) for item in reports)

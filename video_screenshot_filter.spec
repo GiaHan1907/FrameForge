@@ -18,6 +18,7 @@ hiddenimports += collect_submodules("streamlit")
 hiddenimports += collect_submodules("streamlit.web")
 hiddenimports += collect_submodules("streamlit.runtime")
 hiddenimports += collect_submodules("yt_dlp")
+hiddenimports += ["tkinter", "tkinter.filedialog"]
 
 # Nhúng FFmpeg static nếu đã được chuẩn bị bởi prepare_ffmpeg_windows.ps1.
 # PyInstaller sẽ giải nén chúng vào _MEIPASS/vendor/ffmpeg khi chạy one-file.
@@ -49,7 +50,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["tkinter"],
+    excludes=[],
     noarchive=False,
 )
 

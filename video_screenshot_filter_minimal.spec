@@ -18,6 +18,7 @@ hiddenimports += collect_submodules("streamlit")
 hiddenimports += collect_submodules("streamlit.web")
 hiddenimports += collect_submodules("streamlit.runtime")
 hiddenimports += collect_submodules("yt_dlp")
+hiddenimports += ["tkinter", "tkinter.filedialog"]
 
 # Nhúng mã nguồn ứng dụng.
 datas += [
@@ -49,7 +50,6 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        "tkinter",
         "pandas",
         "pyarrow",
         "pydeck",

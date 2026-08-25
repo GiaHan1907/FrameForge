@@ -12,3 +12,6 @@ Preview change implemented in streamlit_app.py:
 
 
 A 960x540 sample MP4 was uploaded successfully. The rendered preview section showed the video in a compact left column and a Preview gọn note card in the right column. The preview no longer spans the full main content width; the player is centered and constrained by the new CSS. Streamlit rendered the updated section without a runtime error.
+
+
+The output-folder UI rendered successfully after reload. It showed two path text inputs and two folder-picker buttons before the public download section. The sample processing completed without runtime errors and displayed the selected screenshot output path. The sample was intentionally a solid-color video and produced 0 saved frames because the blur/sharpness filter rejected it; this is expected test behavior, not a UI failure.

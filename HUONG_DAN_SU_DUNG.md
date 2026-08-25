@@ -381,3 +381,12 @@ set FRAMEFORGE_APP_UPDATE=0
 ```
 
 Biến `FRAMEFORGE_AUTO_UPDATE=0` chỉ tắt updater yt-dlp, không phải updater EXE.
+
+
+## 24. Chọn nơi lưu video và screenshot
+
+Ngay khi mở ứng dụng, mở phần **Nơi lưu file** ở khu vực chính. Nhập đường dẫn local hoặc bấm **Chọn thư mục video** để chọn nơi lưu video tải xuống, và bấm **Chọn thư mục screenshot** để chọn thư mục gốc cho ảnh đầu ra.
+
+Video tải từ URL công khai sẽ được lưu trực tiếp vào thư mục video. Mỗi lần bấm **Bắt đầu xử lý**, FrameForge tạo thư mục con dạng `FrameForge_YYYYMMDD_HHMMSS` trong thư mục screenshot, lưu ảnh và `report.json` tại đó. Vì vậy không cần tải file ZIP mới xem được kết quả; nút tải ZIP chỉ còn là lựa chọn phụ để chia sẻ kết quả.
+
+Bản Windows đã nhúng native folder picker qua `tkinter`. Nếu đang chạy trên máy chủ không có giao diện đồ họa, nhập đường dẫn thủ công vào ô text. Không nên chọn thư mục bên trong thư mục cài đặt ứng dụng; nên dùng thư mục Documents/Videos riêng của người dùng.

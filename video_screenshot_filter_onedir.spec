@@ -18,6 +18,7 @@ hiddenimports += collect_submodules("streamlit")
 hiddenimports += collect_submodules("streamlit.web")
 hiddenimports += collect_submodules("streamlit.runtime")
 hiddenimports += collect_submodules("yt_dlp")
+hiddenimports += ["tkinter", "tkinter.filedialog"]
 
 ffmpeg_dir = Path("vendor") / "ffmpeg"
 for binary_name in ("ffmpeg.exe", "ffprobe.exe"):
@@ -46,7 +47,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["tkinter"],
+    excludes=[],
     noarchive=False,
 )
 

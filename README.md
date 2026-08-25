@@ -489,3 +489,10 @@ set FRAMEFORGE_UPDATE_MANIFEST_URL=https://github.com/GiaHan1907/FrameForge/rele
 Repository private không phù hợp làm feed cập nhật công khai cho một EXE phát hành đại trà, vì ứng dụng không nên nhúng Personal Access Token. Với repository private, nên dùng public release repository riêng, một endpoint manifest public có chữ ký, hoặc hệ thống phân phối có xác thực. Nếu không cấu hình `FRAMEFORGE_UPDATE_MANIFEST_URL`, app không thực hiện network check cho auto-update EXE.
 
 Quy trình phát hành khuyến nghị là tạo tag SemVer, chờ GitHub Actions build và tạo Release, sau đó kiểm tra `latest.json`, `SHA256SUMS.txt` và Setup asset. Người dùng có thể tắt updater EXE bằng `FRAMEFORGE_APP_UPDATE=0`; updater yt-dlp vẫn được điều khiển riêng bằng `FRAMEFORGE_AUTO_UPDATE=0`.
+
+
+## Chọn thư mục lưu file
+
+Ngay sau khi mở app, phần **Nơi lưu file** cho phép nhập đường dẫn hoặc bấm **Chọn thư mục video** và **Chọn thư mục screenshot**. Video tải từ Facebook/TikTok/Pinterest sẽ được lưu trực tiếp vào thư mục video đã chọn. Mỗi lần chạy xử lý screenshot tạo một thư mục con dạng `FrameForge_YYYYMMDD_HHMMSS` trong thư mục screenshot, kèm các ảnh và `report.json`, nên không trộn với kết quả cũ.
+
+Folder picker dùng native dialog của hệ điều hành và được nhúng vào bản PyInstaller qua `tkinter`. Nếu chạy ở môi trường server/headless không có dialog đồ họa, có thể nhập đường dẫn local trực tiếp vào ô text. Các nút tải ZIP trong giao diện vẫn giữ lại như một lựa chọn phụ, nhưng không còn bắt buộc để lấy video hoặc screenshot.
