@@ -39,7 +39,7 @@ if /I "%BUILD_PROFILE%"=="minimal" (
 
 if not exist vendor\ffmpeg\ffmpeg.exe (
   echo Preparing embedded FFmpeg binaries...
-  powershell -NoProfile -ExecutionPolicy Bypass -File .\prepare_ffmpeg_windows.ps1
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0prepare_ffmpeg_windows.ps1" -OutputDir "%~dp0vendor\ffmpeg"
 )
 if not exist vendor\ffmpeg\ffprobe.exe (
   echo Missing vendor\ffmpeg\ffprobe.exe
