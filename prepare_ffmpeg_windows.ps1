@@ -5,6 +5,19 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-Sha256Hex([string]$Path) {
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        return ([BitConverter]::ToString($sha256.ComputeHash($stream))).Replace("-", "")
+    }
+    finally {
+        $stream.Dispose()
+        $sha256.Dispose()
+    }
+}
+
 $TempRoot = Join-Path $env:TEMP ("frameforge_ffmpeg_" + [Guid]::NewGuid().ToString("N"))
 $ArchivePath = Join-Path $TempRoot "ffmpeg.zip"
 $ExtractDir = Join-Path $TempRoot "extract"
@@ -31,9 +44,9 @@ try {
 
     $hashes = @(
         "Archive URL: $ArchiveUrl",
-        "Archive SHA256: $((Get-FileHash $ArchivePath -Algorithm SHA256).Hash)",
-        "ffmpeg.exe SHA256: $((Get-FileHash (Join-Path $OutputDir 'ffmpeg.exe') -Algorithm SHA256).Hash)",
-        "ffprobe.exe SHA256: $((Get-FileHash (Join-Path $OutputDir 'ffprobe.exe') -Algorithm SHA256).Hash)",
+        "Archive SHA256: $(Get-Sha256Hex $ArchivePath)",
+        "ffmpeg.exe SHA256: $(Get-Sha256Hex (Join-Path $OutputDir 'ffmpeg.exe'))",
+        "ffprobe.exe SHA256: $(Get-Sha256Hex (Join-Path $OutputDir 'ffprobe.exe'))",
         "Prepared UTC: $([DateTime]::UtcNow.ToString('o'))"
     )
     $hashes | Set-Content (Join-Path $OutputDir "BUILD_METADATA.txt") -Encoding UTF8
