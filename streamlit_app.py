@@ -15,11 +15,13 @@ from types import SimpleNamespace
 import streamlit as st
 
 from updater import initialize_yt_dlp
+from app_update import initialize_app_update, launch_pending_installer, maybe_update_app
 
 # Kiểm tra tối đa một lần mỗi 24 giờ; bản mới chỉ được kích hoạt từ lần chạy kế tiếp.
 update_status = initialize_yt_dlp(
     auto_update=os.environ.get("FRAMEFORGE_AUTO_UPDATE", "1").lower() not in {"0", "false", "no", "off"}
 )
+app_update_status = initialize_app_update()
 
 from video_screenshot_advanced import process_videos, recommend_workers
 from video_downloader import (
@@ -519,6 +521,23 @@ if update_status.updated:
     st.info(f"Đã tải bản yt-dlp {update_status.latest_version}; bản cập nhật sẽ được kích hoạt ở lần mở ứng dụng kế tiếp.")
 elif update_status.message and "mới nhất" not in update_status.message and "tắt" not in update_status.message and update_status.checked:
     st.caption(f"yt-dlp updater: {update_status.message}")
+
+if app_update_status.available:
+    st.info(f"Có bản cập nhật FrameForge {app_update_status.latest_version}. {app_update_status.message}")
+    if app_update_status.downloaded and app_update_status.installer_path:
+        if st.button("Mở Setup để cài bản cập nhật", type="primary"):
+            if launch_pending_installer():
+                st.success("Đã mở Setup. Hãy hoàn tất trình cài đặt rồi khởi động lại FrameForge.")
+            else:
+                st.error("Không tìm thấy file Setup đã tải.")
+    else:
+        if st.button("Tải và xác minh Setup mới"):
+            with st.spinner("Đang tải và kiểm tra SHA-256 của Setup..."):
+                app_update_status = maybe_update_app(force=True)
+            if app_update_status.downloaded:
+                st.success(app_update_status.message)
+            else:
+                st.error(app_update_status.message)
 
 st.markdown(
     """
