@@ -433,6 +433,34 @@ st.markdown(
     .scene-table tr:last-child td { border-bottom: 0; }
     .scene-table td:nth-child(2),
     .scene-table td:nth-child(3) { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    /* Compact, centered video preview. Streamlit's player is fluid by default. */
+    div[data-testid="stVideo"] {
+        max-width: 720px;
+        margin: .35rem auto 0;
+        padding: .55rem;
+        border: 1px solid #dfe5f0;
+        border-radius: 16px;
+        background: #111827;
+        box-shadow: 0 8px 24px rgba(23, 32, 51, .10);
+    }
+    div[data-testid="stVideo"] video {
+        display: block;
+        width: 100% !important;
+        max-height: 420px !important;
+        border-radius: 10px;
+        background: #0b1220;
+        object-fit: contain;
+    }
+    .preview-note {
+        padding: .9rem 1rem;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        color: var(--muted);
+        background: #ffffff;
+        font-size: .82rem;
+        line-height: 1.55;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -871,11 +899,19 @@ if uploaded_files or downloaded_paths:
     )
     preview_entry = next(entry for entry in preview_entries if entry[0] == preview_name)
     preview_mime = mimetypes.guess_type(preview_name)[0] or "video/mp4"
-    if preview_entry[1] == "upload":
-        st.video(preview_entry[2].getvalue(), format=preview_mime, subtitles=None)
-    else:
-        st.video(str(preview_entry[2]), format=preview_mime, subtitles=None)
-    st.caption("Preview chạy từ file tải lên hoặc file vừa tải về. Một số codec như MKV/TS có thể không được trình duyệt hỗ trợ.")
+    preview_col, preview_note_col = st.columns([1.55, 0.85], gap="large")
+    with preview_col:
+        if preview_entry[1] == "upload":
+            st.video(preview_entry[2].getvalue(), format=preview_mime, subtitles=None, width=720)
+        else:
+            st.video(str(preview_entry[2]), format=preview_mime, subtitles=None, width=720)
+    with preview_note_col:
+        st.markdown(
+            "<div class='preview-note'><strong>Preview gọn</strong><br>"
+            "Khung xem trước được giới hạn chiều rộng và chiều cao để không lấn át phần điều khiển. "
+            "Một số codec như MKV/TS có thể không được trình duyệt hỗ trợ.</div>",
+            unsafe_allow_html=True,
+        )
 
 st.markdown('<div class="section-heading"><span>→</span> Quy trình hoạt động</div>', unsafe_allow_html=True)
 step_a, step_b, step_c = st.columns(3)
