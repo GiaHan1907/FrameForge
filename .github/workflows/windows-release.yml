@@ -23,18 +23,41 @@ on:
         default: false
         type: boolean
 
-permissions:
-  contents: write
+concurrency:
+  group: frameforge-windows-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  quick-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile Python sources
+        shell: bash
+        run: |
+          python -m py_compile streamlit_app.py video_screenshot_advanced.py video_downloader.py updater.py windows_launcher.py measure_package_size.py
+
   windows-build:
+    if: github.event_name != 'pull_request'
     runs-on: windows-2022
+    timeout-minutes: 45
+    permissions:
+      contents: read
     defaults:
       run:
         shell: pwsh
     env:
       PYTHONIOENCODING: utf-8
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      FRAMEFORGE_SKIP_VENV: "1"
 
     steps:
       - name: Checkout source
@@ -84,7 +107,7 @@ jobs:
         run: |
           $env:FRAMEFORGE_AUTO_UPDATE = "0"
           $env:FRAMEFORGE_NO_BROWSER = "1"
-          $process = Start-Process -FilePath "dist\\VideoScreenshotFilter\\VideoScreenshotFilter.exe" -PassThru -WindowStyle Hidden
+          $process = Start-Process -FilePath "dist\VideoScreenshotFilter\VideoScreenshotFilter.exe" -PassThru -WindowStyle Hidden
           $ready = $false
           try {
             for ($i = 0; $i -lt 60; $i++) {
@@ -130,9 +153,10 @@ jobs:
             throw "Installer executable was not found"
           }
 
+          $setupHash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash
           $hashLines = @()
           $hashLines += "Setup: $($setup.Name)"
-          $hashLines += "Setup SHA256: $((Get-FileHash $setup.FullName -Algorithm SHA256).Hash)"
+          $hashLines += "Setup SHA256: $setupHash"
           foreach ($name in @("ffmpeg.exe", "ffprobe.exe")) {
             $path = Join-Path "vendor\ffmpeg" $name
             if (Test-Path $path) {
@@ -142,6 +166,18 @@ jobs:
           $hashLines += "Profile: $env:BUILD_PROFILE"
           $hashLines += "Version: $env:FRAMEFORGE_VERSION"
           $hashLines | Set-Content SHA256SUMS.txt -Encoding UTF8
+          python -m pip freeze | Out-File build_environment.txt -Encoding utf8
+          $manifest = [ordered]@{
+            schema = 1
+            app = "FrameForge"
+            version = $env:FRAMEFORGE_VERSION
+            release_tag = $env:FRAMEFORGE_TAG
+            profile = $env:BUILD_PROFILE
+            installer = $setup.Name
+            sha256 = $setupHash.ToLowerInvariant()
+            installer_url = "https://github.com/GiaHan1907/FrameForge/releases/download/$env:FRAMEFORGE_TAG/$($setup.Name)"
+          }
+          $manifest | ConvertTo-Json | Set-Content latest.json -Encoding utf8
 
           "SETUP_NAME=$($setup.Name)" >> $env:GITHUB_ENV
           Write-Host "Created $($setup.FullName)"
@@ -149,27 +185,57 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v6
         with:
-          name: FrameForge-Windows-${{ env.BUILD_PROFILE }}-${{ env.FRAMEFORGE_VERSION }}
+          name: frameforge-release-payload
           if-no-files-found: error
           retention-days: 30
           path: |
             installer/FrameForge-Setup-*.exe
             build_size_report.json
             SHA256SUMS.txt
+            latest.json
+            build_environment.txt
             vendor/ffmpeg/BUILD_METADATA.txt
 
-      - name: Publish GitHub Release for version tag
-        if: startsWith(github.ref, 'refs/tags/v') && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish_release == 'true')
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/v') && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish_release == 'true')
+    needs: windows-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: frameforge-release-payload
+          path: release_payload
+
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $setup = Get-ChildItem installer -Filter "FrameForge-Setup-*.exe" -File | Select-Object -First 1
-          if (-not $setup) {
-            throw "Installer executable was not found for release"
-          }
-          gh release create "${{ github.ref_name }}" `
-            $setup.FullName `
-            "SHA256SUMS.txt" `
-            "build_size_report.json" `
-            --title "FrameForge $env:FRAMEFORGE_VERSION" `
-            --generate-notes
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          setup="$(find release_payload/installer -type f -name 'FrameForge-Setup-*.exe' -print -quit)"
+          test -n "$setup"
+          test -f release_payload/SHA256SUMS.txt
+          test -f release_payload/build_size_report.json
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" \
+              "$setup" \
+              release_payload/SHA256SUMS.txt \
+              release_payload/latest.json \
+              release_payload/build_size_report.json \
+              release_payload/vendor/ffmpeg/BUILD_METADATA.txt \
+              --clobber
+          else
+            gh release create "$tag" \
+              "$setup" \
+              release_payload/SHA256SUMS.txt \
+              release_payload/latest.json \
+              release_payload/build_size_report.json \
+              release_payload/vendor/ffmpeg/BUILD_METADATA.txt \
+              --title "FrameForge ${tag#v}" \
+              --generate-notes
+          fi

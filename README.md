@@ -474,3 +474,18 @@ Khi push tag dạng `v1.2.3`, workflow mặc định build profile `minimal` và
 Workflow dùng `GITHUB_TOKEN` với quyền `contents: write` để upload release. Repository cần bật Actions và quyền workflow được phép tạo Release. Không đưa token cá nhân hoặc secret FFmpeg vào file YAML. Nếu muốn dùng URL FFmpeg đã ghim riêng, nên đưa URL vào Repository Variable/Secret và truyền vào `prepare_ffmpeg_windows.ps1`; không nên dựa mãi vào alias `latest` cho bản phát hành reproducible.
 
 Artifacts của workflow có thời hạn lưu mặc định 30 ngày. Release assets là bản phát hành lâu dài hơn theo chính sách repository. Sau khi workflow hoàn tất, vào **Actions → workflow run → Artifacts** để tải bản kiểm thử, hoặc vào **Releases** để tải Setup của tag.
+
+
+## Auto-update ứng dụng Windows
+
+`updater.py` hiện tiếp tục cập nhật riêng yt-dlp. Module `app_update.py` bổ sung luồng cập nhật ứng dụng an toàn hơn: đọc manifest HTTPS, so sánh SemVer, tải installer vào thư mục dữ liệu user, xác minh SHA-256, rồi chỉ mở Setup khi người dùng bấm nút trong giao diện. Ứng dụng không tự ghi đè executable đang chạy và không tự chạy installer mới trong nền.
+
+Workflow GitHub Actions tạo asset `latest.json` trong mỗi release tag. Manifest chứa version, tag, tên Setup, URL tải và SHA-256. Để bật kiểm tra cập nhật EXE, cấu hình biến môi trường trên máy người dùng:
+
+```bat
+set FRAMEFORGE_UPDATE_MANIFEST_URL=https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest.json
+```
+
+Repository private không phù hợp làm feed cập nhật công khai cho một EXE phát hành đại trà, vì ứng dụng không nên nhúng Personal Access Token. Với repository private, nên dùng public release repository riêng, một endpoint manifest public có chữ ký, hoặc hệ thống phân phối có xác thực. Nếu không cấu hình `FRAMEFORGE_UPDATE_MANIFEST_URL`, app không thực hiện network check cho auto-update EXE.
+
+Quy trình phát hành khuyến nghị là tạo tag SemVer, chờ GitHub Actions build và tạo Release, sau đó kiểm tra `latest.json`, `SHA256SUMS.txt` và Setup asset. Người dùng có thể tắt updater EXE bằng `FRAMEFORGE_APP_UPDATE=0`; updater yt-dlp vẫn được điều khiển riêng bằng `FRAMEFORGE_AUTO_UPDATE=0`.

@@ -35,6 +35,8 @@ datas += [
     ("video_screenshot_advanced.py", "."),
     ("video_downloader.py", "."),
     ("updater.py", "."),
+    ("app_update.py", "."),
+    ("frameforge_version.txt", "."),
 ]
 
 

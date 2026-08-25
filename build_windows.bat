@@ -24,12 +24,15 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist .venv (
-  echo Creating virtual environment...
-  python -m venv .venv
+if /I "%FRAMEFORGE_SKIP_VENV%"=="1" (
+  echo Using Python environment from PATH (CI mode)...
+) else (
+  if not exist .venv (
+    echo Creating virtual environment...
+    python -m venv .venv
+  )
+  call .venv\Scripts\activate.bat
 )
-
-call .venv\Scripts\activate.bat
 python -m pip install --upgrade pip
 if /I "%BUILD_PROFILE%"=="minimal" (
   python -m pip install -r requirements.txt pyinstaller
@@ -48,6 +51,10 @@ if not exist vendor\ffmpeg\ffprobe.exe (
 
 where ffmpeg >nul 2>nul
 if errorlevel 1 echo Note: system FFmpeg is not required; embedded binaries will be used.
+
+if defined FRAMEFORGE_VERSION (
+  >frameforge_version.txt echo %FRAMEFORGE_VERSION%
+)
 
 if /I "%BUILD_PROFILE%"=="minimal" (
   set "SPEC=video_screenshot_filter_minimal.spec"

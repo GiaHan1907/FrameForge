@@ -360,3 +360,24 @@ Khi push tag theo dạng `v1.2.3`, workflow mặc định build profile `minimal
 Sau khi workflow hoàn tất, file có thể lấy ở **Actions → workflow run → Artifacts**, hoặc ở **Releases** nếu workflow đã tạo release theo tag. Artifact Actions mặc định chỉ lưu trong thời hạn giới hạn; file trong Release phù hợp hơn để phân phối lâu dài.
 
 Workflow hiện cấp quyền `contents: write` cho `GITHUB_TOKEN` để tạo Release. Repository cần bật GitHub Actions và cho phép workflow tạo/cập nhật Release. Không đặt Personal Access Token trực tiếp trong YAML. Script FFmpeg hiện vẫn dùng URL mặc định trong `prepare_ffmpeg_windows.ps1`; trước khi phát hành chính thức nên thay alias `latest` bằng asset/version đã ghim hoặc truyền URL qua Repository Variable/Secret để build có thể tái lập.
+
+
+## 23. Auto-update ứng dụng Windows
+
+Updater hiện có hai phần độc lập. Phần cũ cập nhật package yt-dlp; phần mới trong `app_update.py` kiểm tra manifest HTTPS, so sánh phiên bản, tải `FrameForge-Setup-*.exe` vào thư mục dữ liệu user, xác minh SHA-256 và chờ người dùng bấm **Mở Setup để cài bản cập nhật**. Ứng dụng không tự ghi đè file EXE đang chạy.
+
+Workflow GitHub Actions tạo `latest.json` trong mỗi GitHub Release. Để bật kiểm tra cập nhật EXE trên máy người dùng, đặt:
+
+```bat
+set FRAMEFORGE_UPDATE_MANIFEST_URL=https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest.json
+```
+
+Repository FrameForge hiện là private. Không nhúng Personal Access Token vào EXE để đọc release private. Nếu phát hành cho nhiều máy, hãy dùng một public release repository riêng hoặc một endpoint manifest public có chữ ký/checksum. Nếu không đặt `FRAMEFORGE_UPDATE_MANIFEST_URL`, app sẽ không gọi network để kiểm tra cập nhật EXE.
+
+Có thể tắt updater EXE bằng:
+
+```bat
+set FRAMEFORGE_APP_UPDATE=0
+```
+
+Biến `FRAMEFORGE_AUTO_UPDATE=0` chỉ tắt updater yt-dlp, không phải updater EXE.
