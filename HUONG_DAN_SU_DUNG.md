@@ -208,9 +208,23 @@ Nếu browser không phát được preview, hãy đổi video sang MP4/H.264. �
 
 Từ v0.1.16, mỗi URL và mỗi lần retry tải video vào staging riêng `.frameforge_download_*`, rồi mới chuyển file hoàn tất sang thư mục lưu video. Cách này tránh việc file cũ cùng video khiến yt-dlp bỏ qua download và FrameForge báo nhầm `yt-dlp không tạo được file video đầu ra`. Staging được dọn tự động sau cả thành công và lỗi.
 
+## 12. Chọn tỉ lệ crop screenshot
+
+Trong nhóm **Đầu ra**, trường `Tỉ lệ crop screenshot` có năm lựa chọn: `Không crop`, `16:9`, `9:16`, `4:5` và `1:1`. FrameForge crop chính giữa khung hình, không kéo giãn nội dung, rồi mới áp dụng `Chiều rộng đầu ra`. Vì vậy ảnh không bị méo; phần thừa ở hai bên hoặc phía trên/dưới sẽ được cắt đối xứng.
+
+| Tỉ lệ | Phù hợp với |
+|---|---|
+| `16:9` | Video ngang, thumbnail và màn hình rộng |
+| `9:16` | Video dọc, TikTok, Reels và Shorts |
+| `4:5` | Bài đăng feed dọc |
+| `1:1` | Ảnh vuông, avatar và thumbnail vuông |
+| `Không crop` | Giữ toàn bộ khung hình gốc |
+
+Preset **Video dọc / TikTok** tự chọn `9:16`. Các preset còn lại giữ `Không crop` để không tự động cắt nội dung; bạn có thể chọn tỉ lệ khác sau khi áp dụng preset.
+
 Nếu một Reel vẫn thất bại, hãy kiểm tra URL còn mở công khai trong trình duyệt cùng mạng, thử preset chất lượng `Tốt nhất` và cập nhật FrameForge/yt-dlp. Một số Reel có thể không cung cấp format cho yt-dlp do URL đã bị gỡ, giới hạn khu vực/mạng hoặc thay đổi từ Facebook. FrameForge không hỗ trợ cookie, đăng nhập, bypass DRM hoặc nội dung riêng tư.
 
-## 12. Chọn số worker theo phần cứng
+## 13. Chọn số worker theo phần cứng
 
 Worker chỉ song song giữa các video độc lập. Số worker không nên vượt quá số video cần xử lý, số lõi CPU hiệu dụng hoặc mức RAM có thể dành cho ứng dụng.
 

@@ -8,6 +8,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import numpy as np
+from PIL import Image
+
 import video_screenshot_advanced as engine
 from timeline_utils import build_timeline_entries, filter_timeline_entries
 
@@ -51,6 +54,29 @@ class CacheCheckpointTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.context.cleanup()
+
+    def test_crop_ratios_and_resize_preserve_aspect(self) -> None:
+        frame = np.zeros((100, 200, 3), dtype=np.uint8)
+        expected_shapes = {
+            "16:9": (100, 178),
+            "9:16": (100, 56),
+            "4:5": (100, 80),
+            "1:1": (100, 100),
+        }
+        for ratio, (expected_height, expected_width) in expected_shapes.items():
+            cropped = engine.crop_to_aspect_ratio(frame, ratio)
+            self.assertEqual(cropped.shape[:2], (expected_height, expected_width))
+            self.assertAlmostEqual(cropped.shape[1] / cropped.shape[0], engine.CROP_RATIO_VALUES[ratio], delta=0.02)
+        self.assertIs(engine.crop_to_aspect_ratio(frame, "Không crop"), frame)
+        with self.assertRaises(ValueError):
+            engine.crop_to_aspect_ratio(frame, "3:2")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "cropped.jpg"
+            engine.save_image(frame, output, "jpg", 90, 100, "9:16")
+            with Image.open(output) as image:
+                self.assertEqual(image.size, (56, 100))
+                self.assertAlmostEqual(image.size[0] / image.size[1], 9 / 16, delta=0.02)
 
     def test_scene_cache_hit_and_cross_run_duplicate_rejection(self) -> None:
         first_output = self.root / "first"

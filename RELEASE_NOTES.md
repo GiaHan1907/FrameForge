@@ -1,5 +1,13 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.17
+
+## Crop screenshot theo tỉ lệ
+
+Bổ sung lựa chọn `Không crop`, `16:9`, `9:16`, `4:5` và `1:1` trong nhóm Đầu ra của Streamlit. Crop được thực hiện ở chính giữa khung hình, không kéo giãn nội dung, sau đó mới áp dụng giới hạn chiều rộng đầu ra. Preset `Video dọc / TikTok` tự chọn `9:16`; các preset khác mặc định giữ nguyên toàn bộ khung hình.
+
+CLI cũng hỗ trợ `--crop-ratio` với các giá trị trên. Nếu không truyền tham số, hành vi mặc định vẫn là `Không crop` để bảo toàn tương thích với các job cũ.
+
 # FrameForge v0.1.16
 
 ## Sửa lỗi Facebook Reel không nhận diện file output

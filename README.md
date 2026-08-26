@@ -8,6 +8,10 @@ Bản desktop xóa file input tạm sau từng video hoàn tất và dọn work 
 
 Khu vực tải video công khai dùng panel responsive hai tầng: vùng URL rộng ở phía trên, quality ở cột bên cạnh, và playlist limit/retry/action ở hàng dưới. Preview video dùng khung 16:9 tối đa 560px, tự co theo màn hình. Theme chính được đồng bộ dark mode cho canvas, card, input, select, timeline và cảnh báo. Screenshot mới có tên dạng `HH-MM-SS.mmm.jpg`; video tải xuống có tên dạng `video_YYYYMMDD_HHMMSS.ext` với hậu tố collision khi cần.
 
+## Ghi chú v0.1.17
+
+Bổ sung lựa chọn **tỉ lệ crop screenshot**: `Không crop`, `16:9`, `9:16`, `4:5` và `1:1`. Crop được thực hiện ở chính giữa khung hình, giữ nguyên tỉ lệ không kéo giãn, sau đó mới áp dụng chiều rộng đầu ra. Preset `Video dọc / TikTok` tự chọn `9:16`; các preset khác mặc định không crop nhưng người dùng có thể đổi thủ công.
+
 ## Ghi chú v0.1.16
 
 Bản vá downloader cô lập từng URL và từng lần retry vào thư mục staging riêng `.frameforge_download_*`, sau đó chỉ chuyển file hoàn tất sang thư mục video đích. Cách này tránh trường hợp yt-dlp thấy file cùng ID đã tồn tại, bỏ qua download và khiến FrameForge hiểu nhầm là không có file output mới. Staging được dọn cả khi thành công, lỗi hoặc retry.
@@ -40,6 +44,7 @@ Adaptive extraction worker nay xét đồng thời **số timestamp yêu cầu, 
 | Preset cấu hình | Bốn preset cho tốc độ, cân bằng, chất lượng cao và video dọc; mọi giá trị vẫn có thể tinh chỉnh thủ công. |
 | Live telemetry | Hiển thị FPS, ETA và RSS RAM trong lúc xử lý; ETA chỉ xuất hiện khi đã có đơn vị tiến độ hợp lệ. |
 | Adaptive worker theo duration | Cấp extraction worker dựa trên thời lượng cùng số timestamp, ngoài CPU/RAM và số video worker. |
+| Crop tỉ lệ screenshot | Crop trung tâm theo `16:9`, `9:16`, `4:5`, `1:1` hoặc giữ nguyên; crop trước resize để không méo hình. |
 
 ## Cấu trúc
 

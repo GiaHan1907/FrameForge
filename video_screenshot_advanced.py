@@ -37,6 +37,15 @@ VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".flv", ".wmv", ".ts", ".mts"
 }
 REFERENCE_ANALYSIS_WIDTH = 640
+CROP_RATIO_LABELS = ("Không crop", "16:9", "9:16", "4:5", "1:1")
+CROP_RATIO_VALUES = {
+    "Không crop": None,
+    "none": None,
+    "16:9": 16 / 9,
+    "9:16": 9 / 16,
+    "4:5": 4 / 5,
+    "1:1": 1.0,
+}
 
 
 @dataclass
@@ -700,7 +709,36 @@ def timestamp_label(seconds: float) -> str:
     return f"{hours:02d}-{minutes:02d}-{secs:02d}.{milliseconds:03d}"
 
 
-def save_image(frame: np.ndarray, output: Path, image_format: str, quality: int, width: int | None) -> None:
+def crop_to_aspect_ratio(frame: np.ndarray, crop_ratio: str | None) -> np.ndarray:
+    """Crop chính giữa theo tỉ lệ khung hình, không kéo giãn nội dung."""
+    if crop_ratio in (None, "", "Không crop", "none"):
+        return frame
+    target_ratio = CROP_RATIO_VALUES.get(str(crop_ratio))
+    if target_ratio is None:
+        raise ValueError(f"Tỉ lệ crop không hợp lệ: {crop_ratio}")
+    height, width = frame.shape[:2]
+    if height <= 0 or width <= 0:
+        return frame
+    current_ratio = width / height
+    if abs(current_ratio - target_ratio) < 1e-6:
+        return frame
+    if current_ratio > target_ratio:
+        cropped_width = max(1, min(width, round(height * target_ratio)))
+        left = max(0, (width - cropped_width) // 2)
+        return frame[:, left:left + cropped_width]
+    cropped_height = max(1, min(height, round(width / target_ratio)))
+    top = max(0, (height - cropped_height) // 2)
+    return frame[top:top + cropped_height, :]
+
+def save_image(
+    frame: np.ndarray,
+    output: Path,
+    image_format: str,
+    quality: int,
+    width: int | None,
+    crop_ratio: str | None = None,
+) -> None:
+    frame = crop_to_aspect_ratio(frame, crop_ratio)
     if width is not None and frame.shape[1] > width:
         target_height = max(1, round(frame.shape[0] * width / frame.shape[1]))
         frame = cv2.resize(frame, (width, target_height), interpolation=cv2.INTER_AREA)
@@ -753,7 +791,14 @@ def accept_and_save(
     output = output_dir / filename
     if output.exists() and not args.overwrite:
         return "existing", candidate.hash_value
-    save_image(candidate.frame, output, args.format, args.quality, args.width)
+    save_image(
+        candidate.frame,
+        output,
+        args.format,
+        args.quality,
+        args.width,
+        getattr(args, "crop_ratio", "Không crop"),
+    )
     if existing_hashes is not None:
         existing_hashes.add(candidate.hash_value)
     if duplicate_buckets is not None:
@@ -1565,6 +1610,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--format", choices=("jpg", "png", "webp"), default="jpg", help="Định dạng ảnh.")
     parser.add_argument("--quality", type=int, choices=range(1, 101), metavar="1-100", default=95, help="Chất lượng JPG/WebP.")
     parser.add_argument("--width", type=positive_int, default=None, help="Chiều rộng ảnh đầu ra; mặc định giữ kích thước nguồn.")
+    parser.add_argument(
+        "--crop-ratio",
+        choices=CROP_RATIO_LABELS,
+        default="Không crop",
+        help="Crop chính giữa theo tỉ lệ trước khi resize/lưu; mặc định không crop.",
+    )
     parser.add_argument("-r", "--recursive", action="store_true", help="Quét cả thư mục con.")
     parser.add_argument("--overwrite", action="store_true", help="Ghi đè ảnh đã tồn tại.")
     parser.add_argument("--retries", type=non_negative_int, default=2, help="Số lần retry cho mỗi video lỗi; mặc định: 2.")
