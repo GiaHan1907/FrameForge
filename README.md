@@ -90,7 +90,7 @@ Một số tùy chọn hiệu năng:
 | `--min-sharpness 100` | Ngưỡng độ nét chuẩn hóa theo chiều rộng tham chiếu 640 px. |
 | `--flash-return-ratio 0.55` | Mức tương đồng với cảnh cũ để nhận diện flash. |
 | `--flash-brightness-threshold 0.18` | Giới hạn thay đổi độ sáng khi xác nhận flash. |
-| `--extract-workers N` | Số process trích frame cho fixed/count mode. `0` tự chọn tối đa 4, `1` chạy tuần tự; tự kích hoạt từ 8 timestamp. |
+| `--extract-workers N` | Số process trích frame cho fixed/count mode. `0` tự chọn tối đa 4, `1` chạy tuần tự; từ 8 timestamp sẽ tự kích hoạt nếu adaptive budget cho phép. Budget thực tế còn bị giới hạn theo số video worker, CPU và RAM. |
 | `--queue-db FILE` | SQLite queue bền vững; mặc định là `<output>/.frameforge_queue.sqlite3`. |
 
 ## Scene detection thông thường
@@ -106,7 +106,9 @@ python3 video_screenshot_advanced.py video.mp4 \
 
 Pipeline vẫn đọc video một lần. Chế độ này giữ frame đầu của mỗi scene; chế độ Best frame per scene giữ frame có điểm sharpness cao nhất trong scene đó. Multiprocessing extraction chỉ áp dụng cho fixed/count mode; process chính vẫn giữ thứ tự timestamp, áp dụng lọc và là nơi duy nhất ghi output để tránh race condition. Scene mode tiếp tục decode tuần tự nhằm bảo toàn scene cache.
 
-Từ v0.1.7, queue xử lý screenshot được lưu bền vững bằng SQLite tại `<output>/.frameforge_queue.sqlite3`. Database giữ trạng thái từng video, attempts, lỗi cuối và report để resume sau khi app bị đóng; JSON checkpoint vẫn được giữ để tương thích ngược.
+Từ v0.1.7, queue xử lý screenshot được lưu bền vững bằng SQLite tại `<output>/.frameforge_queue.sqlite3`. Database giữ trạng thái từng video, attempts, lỗi cuối và report để resume sau khi app bị đóng; JSON checkpoint vẫn được giữ để tương thích ngược. Khi hủy ở single-worker mode, các item còn lại được đánh dấu `cancelled` và database được đóng sạch.
+
+Từ v0.1.9, report bổ sung `video_workers`, `configured_extract_workers` và `adaptive_extract_workers`. Khi chạy nhiều video cùng lúc, FrameForge tự hạ số process extraction trên mỗi video để tránh dùng CPU/RAM quá mức; Streamlit cũng hiển thị các giá trị thực tế sau khi hoàn tất.
 
 Benchmark CI nằm tại `benchmarks/benchmark_frame_extraction.py` và đo elapsed time, throughput, RSS memory cho các mức `--workers`. Kết quả được lưu thành artifact trên pull request và Windows release, không áp dụng speedup cố định vì còn phụ thuộc codec, CPU và ổ đĩa.
 

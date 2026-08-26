@@ -130,7 +130,7 @@ Các tùy chọn chính:
 | `--retry-delay N` | Số giây chờ giữa các lần retry. |
 | `--disk-reserve-mb N` | Vùng đệm dung lượng trống tối thiểu trước khi xử lý. |
 | `--temp-cleanup-hours N` | Dọn work directory tạm cũ hơn N giờ khi khởi động CLI. |
-| `--extract-workers N` | Số process trích frame cho fixed/count mode; `0` tự chọn tối đa 4, `1` chạy tuần tự. Multiprocessing tự kích hoạt từ 8 timestamp. |
+| `--extract-workers N` | Số process trích frame cho fixed/count mode; `0` tự chọn tối đa 4, `1` chạy tuần tự. Multiprocessing tự kích hoạt từ 8 timestamp nếu adaptive budget theo số video worker, CPU và RAM cho phép. |
 | `--resume` | Tiếp tục queue từ checkpoint của output run hiện tại. |
 | `--checkpoint FILE` | Đường dẫn checkpoint JSON tùy chỉnh. |
 | `--cache-dir DIR` | Cache timestamp scene để dùng lại giữa các lần chạy. |
@@ -153,6 +153,8 @@ python video_screenshot_advanced.py ./videos \
 ```
 
 Checkpoint được ghi atomically sau mỗi video hoàn tất. Khi resume, FrameForge chỉ bỏ qua video đã hoàn tất với cùng processing signature; nếu thay đổi cấu hình xử lý, checkpoint sẽ được coi là không tương thích và queue sẽ chạy lại an toàn.
+
+Report sau khi hoàn tất có thêm `video_workers`, `configured_extract_workers` và `adaptive_extract_workers`, giúp kiểm tra số worker thực tế thay vì chỉ nhìn cấu hình ban đầu. Khi hủy queue single-worker, toàn bộ item còn lại được ghi trạng thái `cancelled` vào SQLite và kết nối database được đóng sạch.
 
 Từ v0.1.7, queue còn được lưu bền vững trong SQLite tại `<output>/.frameforge_queue.sqlite3`. Database ghi trạng thái từng video (`queued`, `running`, `retrying`, `completed`, `failed`, `cancelled`), số lần thử, lỗi cuối cùng và report JSON. JSON checkpoint vẫn được giữ để tương thích ngược và làm file resume dễ kiểm tra. CLI có thể đổi vị trí bằng `--queue-db FILE`; Streamlit tự dùng database trong thư mục output. Khi ứng dụng bị đóng sau khi một video hoàn tất, lần resume sau sẽ đọc cả SQLite và checkpoint để bỏ qua video đó.
 
@@ -207,7 +209,7 @@ Trong thực tế, worker thường có lợi nhất khi có ít nhất hai vide
 
 ## 13. Adaptive worker và benchmark
 
-FrameForge v0.1.7 có adaptive worker cho hai lớp xử lý. `--workers` điều khiển số video chạy song song, còn `--extract-workers` điều khiển số process seek/trích frame trong fixed/count mode. Khi đặt `--extract-workers 0`, ứng dụng tự chọn tối đa 4 process theo CPU; nếu có ít hơn 8 timestamp, pipeline giữ tuần tự để tránh overhead. Có thể xem kết quả trong `report.json` qua các trường `extraction_mode` và `extraction_workers`.
+FrameForge v0.1.9 có adaptive worker cho hai lớp xử lý. `--workers` điều khiển số video chạy song song, còn `--extract-workers` điều khiển số process seek/trích frame trong fixed/count mode. Khi đặt `--extract-workers 0`, ứng dụng tự chọn tối đa 4 process theo CPU/RAM; nếu có ít hơn 8 timestamp, pipeline giữ tuần tự để tránh overhead. Khi nhiều video chạy đồng thời, ngân sách extraction trên từng video được hạ xuống để tránh oversubscription. Có thể xem kết quả trong `report.json` qua các trường `extraction_mode`, `extraction_workers`, `video_workers`, `configured_extract_workers` và `adaptive_extract_workers`.
 
 Benchmark CI nằm tại `benchmarks/benchmark_frame_extraction.py`. Script tạo video synthetic nếu không truyền `--video`, chạy các mức worker, đo thời gian, throughput và RSS memory, sau đó ghi JSON/CSV:
 

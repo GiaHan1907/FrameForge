@@ -603,6 +603,42 @@ def recommended_extract_workers() -> int:
     return max(1, min(4, max(1, cpu_count // 2)))
 
 
+def adaptive_extract_workers(
+    video_worker_count: int = 1,
+    requested_workers: int | str | None = 0,
+    target_count: int | None = None,
+) -> int:
+    """Chọn số process trích frame để tránh oversubscription CPU/RAM.
+
+    `video_worker_count` là số video chạy đồng thời ở lớp ngoài. Khi lớp ngoài
+    tăng, ngân sách process cho mỗi video giảm tương ứng. Multiprocessing chỉ
+    có ý nghĩa từ 8 target trở lên; target ít hơn luôn dùng tuần tự.
+    """
+    outer_workers = max(1, int(video_worker_count))
+    if target_count is not None and int(target_count) < 8:
+        return 1
+    if isinstance(requested_workers, str) and requested_workers.lower() == "auto":
+        requested = recommended_extract_workers()
+    else:
+        try:
+            requested = int(requested_workers or 0)
+        except (TypeError, ValueError):
+            requested = 1
+        if requested <= 0:
+            requested = recommended_extract_workers()
+    cpu_budget = max(1, math.ceil((os.cpu_count() or 2) / outer_workers))
+    memory_budget = 4
+    memory_gb = available_memory_gb()
+    if memory_gb is not None:
+        if memory_gb < 8:
+            memory_budget = 1
+        elif memory_gb < 16:
+            memory_budget = 2
+        elif memory_gb < 32:
+            memory_budget = 3
+    return max(1, min(4, requested, cpu_budget, memory_budget))
+
+
 def _extract_frame_chunk(task: tuple[str, list[tuple[int, float]], str]) -> list[tuple[int, float, str | None, str | None]]:
     video_path, targets, temp_dir = task
     capture = cv2.VideoCapture(video_path)
@@ -1145,6 +1181,11 @@ def process_videos(
         requested_workers = recommend_workers(len(videos))
     worker_count = min(max(1, int(requested_workers)), len(videos))
     retry_count = max(0, int(max_retries))
+    extract_worker_request = getattr(args, "extract_workers", 1)
+    extract_worker_count = adaptive_extract_workers(worker_count, extract_worker_request)
+    runtime_args = copy.copy(args)
+    runtime_args.extract_workers = extract_worker_count
+    runtime_args.extract_min_targets = max(1, int(getattr(args, "extract_min_targets", 8)))
     results: dict[int, dict[str, object]] = {}
     checkpoint_file = checkpoint_path(output_root, args)
     run_signature = processing_signature(args)
@@ -1177,8 +1218,11 @@ def process_videos(
             if queue_store is not None and queue_job_id is not None:
                 queue_store.mark_running(queue_job_id, index, attempt + 1)
             try:
-                report = process_one_video(video, output_root, source_root, args, on_progress, cancel_event)
+                report = process_one_video(video, output_root, source_root, runtime_args, on_progress, cancel_event)
                 report["attempts"] = attempt + 1
+                report["video_workers"] = worker_count
+                report["configured_extract_workers"] = str(extract_worker_request)
+                report["adaptive_extract_workers"] = extract_worker_count
                 return report
             except ProcessingCancelled:
                 if queue_store is not None and queue_job_id is not None:
@@ -1231,6 +1275,9 @@ def process_videos(
             try:
                 report = run_item(index, video)
             except ProcessingCancelled:
+                if queue_store is not None and queue_job_id is not None:
+                    queue_store.mark_cancelled(queue_job_id)
+                    queue_store.close()
                 raise
             except (RuntimeError, ValueError, OSError) as exc:
                 report = {"video": str(video), "error": str(exc), "attempts": retry_count + 1}

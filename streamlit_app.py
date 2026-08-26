@@ -1318,7 +1318,14 @@ def _render_processing_job() -> None:
     metric_c.metric("Motion blur", total_motion_blur)
     metric_d.metric("Loại vì trùng", total_duplicate)
     metric_e.metric("Lỗi / retry", f"{total_errors} / {max(0, total_attempts - len(reports))}")
-    st.caption(f"Tổng số lượt thử xử lý: {total_attempts} · retry tự động theo từng video.")
+    adaptive_workers = sorted({int(item.get("adaptive_extract_workers", 1)) for item in reports if "error" not in item})
+    video_workers = sorted({int(item.get("video_workers", 1)) for item in reports if "error" not in item})
+    adaptive_label = ", ".join(str(value) for value in adaptive_workers) or "1"
+    video_label = ", ".join(str(value) for value in video_workers) or "1"
+    st.caption(
+        f"Tổng số lượt thử xử lý: {total_attempts} · retry tự động theo từng video · "
+        f"video worker: {video_label} · extraction worker thực tế/video: {adaptive_label}."
+    )
 
     download_col, report_col = st.columns([1, 1])
     with download_col:

@@ -1,5 +1,13 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.9
+
+## Tối ưu adaptive worker và queue bền vững
+
+Bản nâng cấp này giới hạn số process trích frame theo số video worker chạy đồng thời, CPU và RAM khả dụng để tránh oversubscription trên máy nhiều lõi. Báo cáo JSON và giao diện Streamlit hiện hiển thị số video worker, số extraction worker được cấu hình và số worker adaptive thực tế cho từng video.
+
+SQLite queue được đóng sạch khi hủy xử lý trong single-worker mode và vẫn giữ trạng thái `cancelled` cho toàn bộ item còn lại, giúp lần mở lại sau không gặp database connection treo hoặc trạng thái queue không nhất quán. Bộ test mới kiểm tra adaptive budget, resume report từ SQLite và cancel lifecycle thực tế qua `process_videos()`.
+
 ## Phạm vi bản cập nhật
 
 Bản cập nhật mới bổ sung scene cache, checkpoint resume, duplicate detection giữa các lần chạy và timeline tương tác với zoom/bộ lọc scene. Updater ứng dụng hỗ trợ stable/beta channel, release notes trong UI và rollback installer có xác minh SHA-256.

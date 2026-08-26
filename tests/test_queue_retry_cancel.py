@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import video_screenshot_advanced as engine
+from persistent_queue import PersistentQueueStore
 
 
 class QueueRetryCancelTests(unittest.TestCase):
@@ -87,6 +88,69 @@ class QueueRetryCancelTests(unittest.TestCase):
                     on_progress=request_cancel,
                     cancel_event=cancel_event,
                 )
+
+    def test_adaptive_extract_workers_caps_nested_parallelism(self) -> None:
+        with patch.object(engine.os, "cpu_count", return_value=8), patch.object(engine, "available_memory_gb", return_value=16.0):
+            self.assertEqual(engine.adaptive_extract_workers(1, 4, target_count=4), 1)
+            self.assertEqual(engine.adaptive_extract_workers(1, 4, target_count=8), 3)
+            self.assertEqual(engine.adaptive_extract_workers(4, 4, target_count=8), 2)
+            self.assertEqual(engine.adaptive_extract_workers(8, 4, target_count=8), 1)
+
+    def test_sqlite_queue_resume_completed_reports(self) -> None:
+        queue_db = self.root / "queue.sqlite3"
+        checkpoint = self.root / "checkpoint.json"
+        args = SimpleNamespace(
+            workers=1,
+            extract_workers=4,
+            extract_min_targets=8,
+            queue_db=queue_db,
+            checkpoint_path=checkpoint,
+            resume=False,
+            disk_reserve_bytes=0,
+        )
+        calls: list[str] = []
+
+        def fake_process(video, output_root, source_root, args, on_progress=None, cancel_event=None):
+            calls.append(video.name)
+            return {"video": str(video), "saved": 1}
+
+        with patch.object(engine, "process_one_video", side_effect=fake_process):
+            first = engine.process_videos(self.videos, self.root / "output", None, args)
+            args.resume = True
+            resumed = engine.process_videos(self.videos, self.root / "output", None, args)
+
+        self.assertEqual(calls, ["one.mp4", "two.mp4"])
+        self.assertEqual([item["saved"] for item in first], [1, 1])
+        self.assertEqual([item["saved"] for item in resumed], [1, 1])
+        with PersistentQueueStore(queue_db) as store:
+            job_id = store.open_job(self.videos, engine.processing_signature(args), resume=True)
+            self.assertEqual([item.status for item in store.snapshot(job_id)], ["completed", "completed"])
+
+    def test_sqlite_queue_cancel_marks_all_items_and_closes(self) -> None:
+        queue_db = self.root / "cancel.sqlite3"
+        args = SimpleNamespace(
+            workers=1,
+            extract_workers=1,
+            extract_min_targets=8,
+            queue_db=queue_db,
+            checkpoint_path=self.root / "cancel-checkpoint.json",
+            resume=False,
+            disk_reserve_bytes=0,
+        )
+        cancel_event = threading.Event()
+
+        def fake_process(video, output_root, source_root, args, on_progress=None, cancel_event=None):
+            cancel_event.set()
+            engine.check_cancelled(cancel_event)
+            return {"video": str(video), "saved": 1}
+
+        with patch.object(engine, "process_one_video", side_effect=fake_process):
+            with self.assertRaises(engine.ProcessingCancelled):
+                engine.process_videos(self.videos, self.root / "cancel-output", None, args, cancel_event=cancel_event)
+
+        with PersistentQueueStore(queue_db) as store:
+            job_id = store.open_job(self.videos, engine.processing_signature(args), resume=True)
+            self.assertEqual([item.status for item in store.snapshot(job_id)], ["cancelled", "cancelled"])
 
     def test_disk_guard_and_stale_temp_cleanup(self) -> None:
         with self.assertRaises(engine.InsufficientDiskSpace):
