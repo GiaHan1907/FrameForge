@@ -94,6 +94,17 @@ def _manifest_url() -> str:
     return os.environ.get("FRAMEFORGE_UPDATE_MANIFEST_URL", DEFAULT_MANIFEST_URL).strip()
 
 
+def _sha256_file(path: Path) -> str | None:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return None
+    return digest.hexdigest().lower()
+
+
 def _download_verified(url: str, expected_sha256: str, destination: Path, timeout: float = 60.0) -> None:
     if not url.lower().startswith("https://"):
         raise ValueError("Installer URL phải dùng HTTPS.")
@@ -136,8 +147,18 @@ def read_app_update_status() -> AppUpdateStatus:
             pending_path.unlink(missing_ok=True)
             path.unlink(missing_ok=True)
             pending = None
-        elif version and path.is_file() and re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
+        elif (
+            version
+            and path.is_file()
+            and re.fullmatch(r"[0-9a-fA-F]{64}", sha256)
+            and _sha256_file(path) == sha256.lower()
+        ):
             return AppUpdateStatus(current, version, True, True, True, str(path), "Đã tải Setup mới và chờ người dùng cài đặt.")
+        elif pending:
+            # Không mở lại file pending đã bị sửa, thiếu hoặc có metadata hỏng.
+            pending_path.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
+            pending = None
     try:
         state = json.loads(_state_path().read_text(encoding="utf-8"))
         return AppUpdateStatus(
@@ -177,9 +198,9 @@ def maybe_update_app(force: bool = False, timeout: float = 10.0, download: bool 
         return AppUpdateStatus(current, None, False, False, False, None, "Chưa cấu hình update feed công khai cho ứng dụng.")
     try:
         manifest = _fetch_json(manifest_url, timeout=timeout)
-        if manifest.get("schema") not in (None, 1):
+        if manifest.get("schema") != 1:
             raise ValueError("Manifest có schema không được hỗ trợ.")
-        if manifest.get("app") not in (None, "FrameForge"):
+        if manifest.get("app") != "FrameForge":
             raise ValueError("Manifest không thuộc ứng dụng FrameForge.")
         latest = str(manifest.get("version") or "")
         installer_url = str(manifest.get("installer_url") or "")
@@ -187,12 +208,15 @@ def maybe_update_app(force: bool = False, timeout: float = 10.0, download: bool 
         installer_name = Path(str(manifest.get("installer") or "FrameForge-Setup.exe")).name
         if not re.fullmatch(r"\d+\.\d+\.\d+", latest):
             raise ValueError("Manifest có version không hợp lệ.")
-        if not installer_name.lower().endswith(".exe"):
-            raise ValueError("Manifest không trỏ tới installer .exe.")
+        if installer_name != f"FrameForge-Setup-{latest}.exe":
+            raise ValueError("Tên installer không khớp version trong manifest.")
         if not installer_url.lower().startswith("https://"):
             raise ValueError("Manifest có installer URL không dùng HTTPS.")
         if not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
             raise ValueError("Manifest có SHA-256 không hợp lệ.")
+        release_tag = manifest.get("release_tag")
+        if release_tag is not None and release_tag != f"v{latest}":
+            raise ValueError("release_tag không khớp version trong manifest.")
         available = _version_key(latest) > _version_key(current)
         state = {
             "checked_at": time.time(),
