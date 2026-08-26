@@ -515,6 +515,14 @@ def choose_local_directory(title: str) -> str | None:
         return None
 
 
+def choose_and_store_directory(directory_key: str, widget_key: str, title: str) -> None:
+    """Folder picker callback; widget state may be changed safely inside callback."""
+    selected = choose_local_directory(title)
+    if selected:
+        st.session_state[directory_key] = selected
+        st.session_state[widget_key] = selected
+
+
 def normalize_output_dir(value: str, fallback: Path) -> Path:
     raw = (value or "").strip()
     path = Path(os.path.expandvars(os.path.expanduser(raw))) if raw else fallback
@@ -765,12 +773,14 @@ with video_path_col:
             help="Đường dẫn local trên máy đang chạy FrameForge.",
         )
     with video_pick_col:
-        if st.button("Chọn…", key="choose_video_dir", use_container_width=True, help="Mở folder picker để chọn nơi lưu video tải xuống."):
-            selected = choose_local_directory("Chọn thư mục lưu video")
-            if selected:
-                st.session_state["download_dir"] = selected
-                st.session_state["video_dir_text"] = selected
-                st.rerun()
+        st.button(
+            "Chọn…",
+            key="choose_video_dir",
+            use_container_width=True,
+            help="Mở folder picker để chọn nơi lưu video tải xuống.",
+            on_click=choose_and_store_directory,
+            args=("download_dir", "video_dir_text", "Chọn thư mục lưu video"),
+        )
     st.session_state["download_dir"] = video_dir_text
 with screenshot_path_col:
     screenshot_input_col, screenshot_pick_col = st.columns([4.4, 1.1], vertical_alignment="bottom")
@@ -782,12 +792,14 @@ with screenshot_path_col:
             help="Mỗi lần xử lý sẽ tạo một thư mục FrameForge_YYYYMMDD_HHMMSS bên trong.",
         )
     with screenshot_pick_col:
-        if st.button("Chọn…", key="choose_screenshot_dir", use_container_width=True, help="Mở folder picker để chọn nơi lưu screenshot."):
-            selected = choose_local_directory("Chọn thư mục gốc lưu screenshot")
-            if selected:
-                st.session_state["screenshot_dir"] = selected
-                st.session_state["screenshot_dir_text"] = selected
-                st.rerun()
+        st.button(
+            "Chọn…",
+            key="choose_screenshot_dir",
+            use_container_width=True,
+            help="Mở folder picker để chọn nơi lưu screenshot.",
+            on_click=choose_and_store_directory,
+            args=("screenshot_dir", "screenshot_dir_text", "Chọn thư mục gốc lưu screenshot"),
+        )
     st.session_state["screenshot_dir"] = screenshot_dir_text
 
 # Persist the most recent valid paths for the next app start.

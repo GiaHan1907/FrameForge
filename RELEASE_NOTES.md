@@ -1,5 +1,11 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.12
+
+## Sửa lỗi chọn thư mục trong Streamlit
+
+Bản vá sửa lỗi `StreamlitAPIException` xảy ra khi nút chọn thư mục cố gắng ghi trực tiếp vào key của `st.text_input` sau khi widget đã được khởi tạo. Hai nút chọn thư mục hiện dùng callback `on_click`, nên đường dẫn video và screenshot được cập nhật an toàn trong session state và vẫn được lưu vào cấu hình người dùng.
+
 # FrameForge v0.1.11
 
 ## Sửa lỗi thiếu module trong Windows installer
