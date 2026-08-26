@@ -10,7 +10,9 @@ import os
 import sys
 import shutil
 import tempfile
+import threading
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -26,7 +28,15 @@ update_status = initialize_yt_dlp(
 )
 app_update_status = initialize_app_update()
 
-from video_screenshot_advanced import process_videos, recommend_workers
+from video_screenshot_advanced import (
+    InsufficientDiskSpace,
+    ProcessingCancelled,
+    cleanup_frameforge_temp_dirs,
+    ensure_free_disk_space,
+    format_bytes,
+    process_videos,
+    recommend_workers,
+)
 from video_downloader import (
     QUALITY_FORMATS,
     download_public_videos,
@@ -35,6 +45,8 @@ from video_downloader import (
     result_summary,
 )
 
+
+cleanup_frameforge_temp_dirs(older_than_seconds=24 * 60 * 60)
 
 st.set_page_config(
     page_title="FrameForge · Video Screenshot",
@@ -677,7 +689,7 @@ if download_health["ready_for_merge"]:
     st.caption(f"✓ FFmpeg sẵn sàng ({health_source}) · {download_health.get('version') or 'version không rõ'}")
 else:
     st.warning("Chưa tìm thấy FFmpeg nhúng hoặc trong PATH. Một số format video/audio riêng có thể không ghép được.")
-download_col, quality_col, limit_col, action_col = st.columns([2.3, 1.15, 0.85, 0.9])
+download_col, quality_col, limit_col, retry_col, action_col = st.columns([2.1, 1.05, 0.75, 0.7, 0.9])
 with download_col:
     download_urls_text = st.text_area(
         "Queue URL",
@@ -701,6 +713,15 @@ with limit_col:
         step=1,
         help="Giới hạn số video lấy từ mỗi playlist.",
     )
+with retry_col:
+    download_retry_count = st.number_input(
+        "Retry tải",
+        min_value=0,
+        max_value=5,
+        value=2,
+        step=1,
+        help="Số lần thử lại mỗi URL khi mạng hoặc nguồn tạm thời lỗi.",
+    )
 with action_col:
     download_clicked = st.button("⇩ Tải queue", use_container_width=True)
 
@@ -717,13 +738,32 @@ if download_clicked:
         if not health["ready_for_merge"]:
             st.warning("Chưa tìm thấy FFmpeg. Video/audio tách riêng có thể không ghép được ở chất lượng cao nhất.")
         try:
+            download_progress = st.progress(0.0, text="Đang chuẩn bị queue tải...")
+
+            def download_hook(data: dict[str, object]) -> None:
+                downloaded = int(data.get("downloaded_bytes") or 0)
+                total = int(data.get("total_bytes") or data.get("total_bytes_estimate") or 0)
+                fraction = downloaded / total if total > 0 else 0.0
+                filename = Path(str(data.get("filename") or "video")).name
+                state = str(data.get("status") or "downloading")
+                if state == "finished":
+                    fraction = 1.0
+                download_progress.progress(
+                    min(1.0, max(0.0, fraction)),
+                    text=f"{state} · {filename} · {fraction:.0%}",
+                )
+
             with st.spinner(f"Đang tải queue gồm {len(download_urls)} URL..."):
                 download_results = download_public_videos(
                     download_urls,
                     Path(st.session_state["download_dir"]),
                     download_quality,
                     max_playlist_items=int(playlist_max_items),
+                    max_retries=int(download_retry_count),
+                    retry_delay_seconds=1.0,
+                    progress_hook=download_hook,
                 )
+            download_progress.progress(1.0, text=f"Đã tải xong {len(download_results)} video")
             for result in download_results:
                 if str(result.path) not in st.session_state["downloaded_paths"]:
                     st.session_state["downloaded_paths"].append(str(result.path))
@@ -911,6 +951,29 @@ with st.sidebar:
         step=64,
     )
     overwrite = st.checkbox("Ghi đè file đầu ra đã tồn tại", value=True)
+    retry_count = st.number_input(
+        "Số lần retry mỗi video",
+        min_value=0,
+        max_value=5,
+        value=2,
+        step=1,
+        help="Nếu một video lỗi tạm thời, FrameForge sẽ tự thử lại trước khi chuyển sang video kế tiếp.",
+    )
+    retry_delay = st.number_input(
+        "Thời gian chờ retry (giây)",
+        min_value=0.0,
+        max_value=30.0,
+        value=1.0,
+        step=0.5,
+    )
+    disk_reserve_mb = st.number_input(
+        "Vùng đệm dung lượng tối thiểu (MB)",
+        min_value=0,
+        max_value=8192,
+        value=512,
+        step=128,
+        help="Không bắt đầu hoặc tiếp tục ghi khi dung lượng trống thấp hơn vùng đệm này.",
+    )
 
 
 def build_args() -> SimpleNamespace:
@@ -936,7 +999,193 @@ def build_args() -> SimpleNamespace:
         width=int(width) if width else None,
         overwrite=bool(overwrite),
         workers=workers,
+        retries=int(retry_count),
+        retry_delay=float(retry_delay),
+        disk_reserve_bytes=int(disk_reserve_mb) * 1024**2,
     )
+
+
+def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output_dir: Path, work_dir: Path) -> None:
+    cancel_event = threading.Event()
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="frameforge-ui")
+    progress_state = {str(path): {"phase": "queued", "fraction": 0.0, "message": "Đang xếp hàng"} for path in input_paths}
+    completed = {"count": 0}
+
+    def on_progress(video: Path, phase: str, fraction: float, message: str) -> None:
+        progress_state[str(video)] = {"phase": phase, "fraction": fraction, "message": message}
+
+    def on_complete(video: Path, report: dict[str, object]) -> None:
+        completed["count"] += 1
+        progress_state[str(video)] = {
+            "phase": "completed" if "error" not in report else "error",
+            "fraction": 1.0,
+            "message": f"Đã hoàn tất · lưu {report.get('saved', 0)} ảnh" if "error" not in report else str(report.get("error")),
+        }
+
+    future = executor.submit(
+        process_videos,
+        input_paths,
+        output_dir,
+        None,
+        args,
+        on_complete,
+        on_progress,
+        cancel_event,
+        args.retries,
+        args.retry_delay,
+    )
+    st.session_state["processing_job"] = {
+        "status": "running",
+        "future": future,
+        "executor": executor,
+        "cancel_event": cancel_event,
+        "progress": progress_state,
+        "completed": completed,
+        "input_paths": input_paths,
+        "output_dir": output_dir,
+        "work_dir": work_dir,
+        "reports": None,
+        "error": None,
+        "cleaned": False,
+    }
+
+
+def _finish_processing_job(job: dict[str, object]) -> None:
+    if job.get("cleaned"):
+        return
+    work_dir = Path(str(job["work_dir"]))
+    shutil.rmtree(work_dir, ignore_errors=True)
+    job["cleaned"] = True
+    executor = job.get("executor")
+    if executor is not None:
+        executor.shutdown(wait=False, cancel_futures=True)
+        job["executor"] = None
+
+
+def _poll_processing_job() -> dict[str, object] | None:
+    job = st.session_state.get("processing_job")
+    if not isinstance(job, dict) or job.get("status") != "running":
+        return job if isinstance(job, dict) else None
+    future = job.get("future")
+    if future is None or not future.done():
+        return job
+    try:
+        reports = future.result()
+        output_dir = Path(str(job["output_dir"]))
+        report_path = output_dir / "report.json"
+        report_path.write_text(json.dumps(reports, ensure_ascii=False, indent=2), encoding="utf-8")
+        job["reports"] = reports
+        job["report_path"] = report_path
+        job["status"] = "completed"
+        job["message"] = "Đã xử lý xong queue."
+    except ProcessingCancelled as exc:
+        job["status"] = "cancelled"
+        job["error"] = str(exc)
+        job["message"] = "Đã hủy xử lý; các screenshot đã ghi trước đó vẫn được giữ lại."
+    except InsufficientDiskSpace as exc:
+        job["status"] = "error"
+        job["error"] = str(exc)
+        job["message"] = str(exc)
+    except Exception as exc:
+        job["status"] = "error"
+        job["error"] = str(exc)
+        job["message"] = f"Không thể xử lý queue: {exc}"
+    _finish_processing_job(job)
+    return job
+
+
+@st.fragment(run_every=1.0)
+def _render_processing_job() -> None:
+    job = _poll_processing_job()
+    if not job:
+        return
+    status = str(job.get("status"))
+    if status == "running":
+        st.markdown('<div class="section-heading"><span>◌</span> Tiến trình xử lý</div>', unsafe_allow_html=True)
+        input_paths = list(job.get("input_paths", []))
+        progress_state = job.get("progress", {})
+        fractions = [float(progress_state.get(str(path), {}).get("fraction", 0.0)) for path in input_paths]
+        overall = sum(fractions) / max(1, len(fractions))
+        completed = int(job.get("completed", {}).get("count", 0))
+        st.progress(overall, text=f"Tổng thể: {overall:.0%} · hoàn tất {completed}/{len(input_paths)} video")
+        for path in input_paths:
+            item = progress_state.get(str(path), {})
+            phase = str(item.get("phase", "queued"))
+            fraction = float(item.get("fraction", 0.0))
+            message = str(item.get("message", "Đang chờ"))
+            st.caption(f"**{path.name}** · {phase} · {fraction:.0%} · {message}")
+        if st.button("Hủy xử lý", key="cancel_processing", type="secondary"):
+            cancel_event = job.get("cancel_event")
+            if cancel_event is not None:
+                cancel_event.set()
+            job["message"] = "Đang dừng an toàn sau checkpoint gần nhất..."
+            st.warning(job["message"])
+        else:
+            st.caption("Bạn có thể hủy; FrameForge sẽ giải phóng VideoCapture và dọn file tạm.")
+        return
+
+    if status == "cancelled":
+        st.warning(str(job.get("message", "Đã hủy xử lý.")))
+        return
+    if status == "error":
+        st.error(str(job.get("message", "Có lỗi khi xử lý queue.")))
+        return
+    reports = job.get("reports") or []
+    output_dir = Path(str(job["output_dir"]))
+    report_path = Path(str(job["report_path"]))
+    zip_bytes = make_zip(output_dir, report_path)
+    st.success(f"Đã lưu screenshot và report trực tiếp tại: {output_dir}")
+
+    total_saved = sum(int(item.get("saved", 0)) for item in reports)
+    total_blurry = sum(int(item.get("rejected_blurry", 0)) for item in reports)
+    total_duplicate = sum(int(item.get("rejected_duplicate", 0)) for item in reports)
+    total_motion_blur = sum(int(item.get("rejected_motion_blur", 0)) for item in reports)
+    total_errors = sum(int(item.get("capture_errors", 0)) for item in reports) + sum("error" in item for item in reports)
+    total_attempts = sum(int(item.get("attempts", 1)) for item in reports)
+    metric_a, metric_b, metric_c, metric_d, metric_e = st.columns(5)
+    metric_a.metric("Đã lưu", total_saved)
+    metric_b.metric("Loại vì mờ", total_blurry)
+    metric_c.metric("Motion blur", total_motion_blur)
+    metric_d.metric("Loại vì trùng", total_duplicate)
+    metric_e.metric("Lỗi / retry", f"{total_errors} / {max(0, total_attempts - len(reports))}")
+    st.caption(f"Tổng số lượt thử xử lý: {total_attempts} · retry tự động theo từng video.")
+
+    download_col, report_col = st.columns([1, 1])
+    with download_col:
+        st.download_button(
+            "⬇  Tải screenshot + report ZIP",
+            data=zip_bytes,
+            file_name="screenshots_filtered.zip",
+            mime="application/zip",
+            type="primary",
+            use_container_width=True,
+            key="processing_zip_download",
+        )
+    with report_col:
+        st.download_button(
+            "Tải report JSON",
+            data=json.dumps(reports, ensure_ascii=False, indent=2),
+            file_name="report.json",
+            mime="application/json",
+            use_container_width=True,
+            key="processing_report_download",
+        )
+    show_scene_timeline(reports)
+    image_files = sorted(output_dir.rglob("*.jpg")) + sorted(output_dir.rglob("*.png")) + sorted(output_dir.rglob("*.webp"))
+    if image_files:
+        st.markdown(
+            f'<div class="section-heading"><span>▦</span> Preview <small style="color:#8b95a7;font-family:DM Sans;font-size:.78rem;font-weight:500;">{len(image_files)} ảnh được tạo</small></div>',
+            unsafe_allow_html=True,
+        )
+        preview_files = image_files[:24]
+        columns = st.columns(4)
+        for index, image_path in enumerate(preview_files):
+            with columns[index % 4]:
+                st.image(str(image_path), caption=image_path.name, use_container_width=True)
+        if len(image_files) > len(preview_files):
+            st.info(f"Chỉ hiển thị {len(preview_files)} ảnh đầu tiên; toàn bộ ảnh nằm trong file ZIP.")
+    else:
+        st.warning("Không có frame nào vượt qua các bộ lọc đã chọn.")
 
 
 # Main overview
@@ -1009,6 +1258,9 @@ with step_c:
         unsafe_allow_html=True,
     )
 
+active_job = st.session_state.get("processing_job")
+job_running = isinstance(active_job, dict) and active_job.get("status") == "running"
+
 st.markdown("<br>", unsafe_allow_html=True)
 run_col, hint_col = st.columns([1, 2.2])
 with run_col:
@@ -1016,7 +1268,7 @@ with run_col:
         "▶  Bắt đầu xử lý",
         type="primary",
         use_container_width=True,
-        disabled=not uploaded_files and not downloaded_paths,
+        disabled=(not uploaded_files and not downloaded_paths) or job_running,
     )
 with hint_col:
     if not uploaded_files and not downloaded_paths:
@@ -1032,128 +1284,40 @@ with hint_col:
 
 if run_clicked:
     args = build_args()
-    work_dir = Path(tempfile.mkdtemp(prefix="video_screenshot_web_"))
-    input_dir = work_dir / "input"
-    screenshot_root = normalize_output_dir(
-        st.session_state.get("screenshot_dir", ""),
-        Path.home() / "Videos" / "FrameForge" / "screenshots",
-    )
-    output_dir = screenshot_root / f"FrameForge_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    input_dir.mkdir(parents=True)
-    output_dir.mkdir(parents=True)
-    reports = []
-    input_paths = list(downloaded_paths)
-    for uploaded in (uploaded_files or []):
-        input_path = input_dir / Path(uploaded.name).name
-        input_path.write_bytes(uploaded.getbuffer())
-        input_paths.append(input_path)
-
+    work_dir: Path | None = None
     try:
-        with st.status(
-            f"Đang xử lý {len(input_paths)} video bằng {args.workers} worker...",
-            expanded=True,
-        ) as status:
-            progress = st.progress(0, text="Đang chuẩn bị...")
-            logs = io.StringIO()
-            errors = io.StringIO()
-            completed = [0]
-
-            def on_complete(video: Path, report: dict[str, object]) -> None:
-                completed[0] += 1
-                progress.progress(
-                    completed[0] / len(input_paths),
-                    text=f"Đã xử lý {completed[0]}/{len(input_paths)} video",
-                )
-                st.write(f"✓ Hoàn tất **{video.name}** · lưu {report.get('saved', 0)} ảnh")
-
-            with contextlib.redirect_stdout(logs), contextlib.redirect_stderr(errors):
-                reports = process_videos(
-                    input_paths,
-                    output_dir,
-                    None,
-                    args,
-                    on_complete=on_complete,
-                )
-            with st.expander("Nhật ký xử lý", expanded=False):
-                st.code(logs.getvalue() + errors.getvalue())
-            status.update(label="Đã xử lý xong", state="complete", expanded=False)
-
-        report_path = work_dir / "report.json"
-        report_path.write_text(
-            json.dumps(reports, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        screenshot_root = normalize_output_dir(
+            st.session_state.get("screenshot_dir", ""),
+            Path.home() / "Videos" / "FrameForge" / "screenshots",
         )
-        zip_bytes = make_zip(output_dir, report_path)
-        st.success(f"Đã lưu screenshot và report trực tiếp tại: {output_dir}")
-
-        total_saved = sum(int(item.get("saved", 0)) for item in reports)
-        total_blurry = sum(int(item.get("rejected_blurry", 0)) for item in reports)
-        total_duplicate = sum(int(item.get("rejected_duplicate", 0)) for item in reports)
-        total_motion_blur = sum(int(item.get("rejected_motion_blur", 0)) for item in reports)
-        total_errors = sum(int(item.get("capture_errors", 0)) for item in reports)
-        st.markdown(
-
-            '<div class="result-banner">✓ Hoàn tất. Các frame đã được phân tích, lọc và đóng gói.</div>',
-            unsafe_allow_html=True,
+        free_bytes = ensure_free_disk_space(
+            screenshot_root,
+            required_bytes=0,
+            reserve_bytes=args.disk_reserve_bytes,
         )
-        st.markdown('<div class="section-heading"><span>↗</span> Kết quả xử lý</div>', unsafe_allow_html=True)
-        metric_a, metric_b, metric_c, metric_d, metric_e = st.columns(5)
-        metric_a.metric("Đã lưu", total_saved)
-        metric_b.metric("Loại vì mờ", total_blurry)
-        metric_c.metric("Motion blur", total_motion_blur)
-        metric_d.metric("Loại vì trùng", total_duplicate)
-        metric_e.metric("Lỗi", total_errors)
+        work_dir = Path(tempfile.mkdtemp(prefix="video_screenshot_web_"))
+        input_dir = work_dir / "input"
+        output_dir = screenshot_root / f"FrameForge_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        input_dir.mkdir(parents=True)
+        output_dir.mkdir(parents=True)
+        input_paths = list(downloaded_paths)
+        for uploaded in (uploaded_files or []):
+            input_path = input_dir / Path(uploaded.name).name
+            input_path.write_bytes(uploaded.getbuffer())
+            input_paths.append(input_path)
+        _start_processing_job(args, input_paths, output_dir, work_dir)
+        st.info(f"Đã xếp {len(input_paths)} video vào queue · còn trống {format_bytes(free_bytes)} trước khi xử lý.")
+        st.rerun()
+    except InsufficientDiskSpace as exc:
+        if work_dir is not None:
+            shutil.rmtree(work_dir, ignore_errors=True)
+        st.error(str(exc))
+    except OSError as exc:
+        if work_dir is not None:
+            shutil.rmtree(work_dir, ignore_errors=True)
+        st.error(f"Không thể tạo thư mục xử lý tạm: {exc}")
 
-        download_col, report_col = st.columns([1, 1])
-        with download_col:
-            st.download_button(
-                "⬇  Tải screenshot + report ZIP",
-                data=zip_bytes,
-                file_name="screenshots_filtered.zip",
-                mime="application/zip",
-                type="primary",
-                use_container_width=True,
-            )
-        with report_col:
-            st.download_button(
-                "Tải report JSON",
-                data=json.dumps(reports, ensure_ascii=False, indent=2),
-                file_name="report.json",
-                mime="application/json",
-                use_container_width=True,
-            )
-
-        show_scene_timeline(reports)
-
-        image_files = (
-            sorted(output_dir.rglob("*.jpg"))
-            + sorted(output_dir.rglob("*.png"))
-            + sorted(output_dir.rglob("*.webp"))
-        )
-        if image_files:
-            st.markdown(
-                f'<div class="section-heading"><span>▦</span> Preview <small style="color:#8b95a7;font-family:DM Sans;font-size:.78rem;font-weight:500;">{len(image_files)} ảnh được tạo</small></div>',
-                unsafe_allow_html=True,
-            )
-            preview_files = image_files[:24]
-            columns = st.columns(4)
-            for index, image_path in enumerate(preview_files):
-                with columns[index % 4]:
-                    st.image(
-                        str(image_path),
-                        caption=image_path.name,
-                        use_container_width=True,
-                    )
-            if len(image_files) > len(preview_files):
-                st.info(
-                    f"Chỉ hiển thị {len(preview_files)} ảnh đầu tiên; toàn bộ ảnh nằm trong file ZIP."
-                )
-        else:
-            st.warning("Không có frame nào vượt qua các bộ lọc đã chọn.")
-    except Exception as exc:
-        st.error(f"Không thể xử lý: {exc}")
-    finally:
-        shutil.rmtree(work_dir, ignore_errors=True)
+_render_processing_job()
 
 st.markdown(
     '<div style="margin-top:2.4rem;padding-top:1rem;border-top:1px solid #e6eaf0;color:#8b95a7;font-size:.78rem;">FrameForge · Scene-aware video screenshot studio · Pipeline đọc một lần, phân tích nhanh và lọc chất lượng tự động.</div>',

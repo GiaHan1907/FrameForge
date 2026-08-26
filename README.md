@@ -239,7 +239,7 @@ Tham khảo: [yt-dlp repository](https://github.com/yt-dlp/yt-dlp), [yt-dlp supp
 
 ## Queue và playlist downloader
 
-Khu vực **Tải video công khai** nhận nhiều URL, mỗi URL trên một dòng. URL đơn tải một video; URL playlist sẽ được mở rộng theo giới hạn **Tối đa mỗi playlist**. Các URL được xử lý tuần tự để giảm tải mạng và tránh ghi đè tên file. File tải thành công được giữ trong phiên làm việc, có thể preview, đưa thẳng vào pipeline screenshot hoặc tải toàn bộ dưới dạng ZIP.
+Khu vực **Tải video công khai** nhận nhiều URL, mỗi URL trên một dòng. URL đơn tải một video; URL playlist sẽ được mở rộng theo giới hạn **Tối đa mỗi playlist**. Các URL được xử lý tuần tự để giảm tải mạng và tránh ghi đè tên file. Trường **Retry tải** cho phép tự thử lại từng URL khi lỗi mạng tạm thời; các file tải thành công trước đó vẫn được giữ trong phiên làm việc, có thể preview, đưa thẳng vào pipeline screenshot hoặc tải toàn bộ dưới dạng ZIP.
 
 ```text
 https://www.tiktok.com/...
@@ -247,7 +247,9 @@ https://www.facebook.com/...
 https://pin.it/...
 ```
 
-API Python tương ứng là `download_public_videos(urls, output_dir, quality, max_playlist_items=50)`. Queue được giới hạn tối đa 100 URL trong một lần gọi; playlist có giới hạn riêng bằng `max_playlist_items`.
+API Python tương ứng là `download_public_videos(urls, output_dir, quality, max_playlist_items=50, max_retries=2, retry_delay_seconds=1.0)`. Queue được giới hạn tối đa 100 URL trong một lần gọi; playlist có giới hạn riêng bằng `max_playlist_items`.
+
+Khi bấm **Bắt đầu xử lý**, FrameForge chạy queue screenshot trong job nền và hiển thị progress tổng thể cùng progress riêng cho từng video. Có thể bấm **Hủy xử lý** để dừng tại checkpoint an toàn; mỗi video lỗi sẽ được retry độc lập trước khi queue chuyển sang item kế tiếp. Ứng dụng kiểm tra vùng đệm dung lượng tại thư mục screenshot trước khi chạy, ghi `report.json` trong thư mục run và tự dọn work directory tạm cũ có tiền tố `video_screenshot_web_`.
 
 ## Health check FFmpeg
 

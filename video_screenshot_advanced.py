@@ -19,6 +19,8 @@ import math
 import os
 import shutil
 import sys
+import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 from dataclasses import dataclass
@@ -46,6 +48,18 @@ class FrameCandidate:
     histogram: np.ndarray
 
 
+class ProcessingCancelled(RuntimeError):
+    """Được phát ra khi người dùng yêu cầu dừng pipeline xử lý."""
+
+
+class InsufficientDiskSpace(RuntimeError):
+    """Được phát ra trước khi tạo dữ liệu tạm nếu ổ đĩa không đủ chỗ trống."""
+
+
+ProgressCallback = Callable[[Path, str, float, str], None]
+CancelCheck = Callable[[], bool]
+
+
 @dataclass
 class PendingCut:
     before_gray: np.ndarray
@@ -53,6 +67,87 @@ class PendingCut:
     before_brightness: float
     candidate: FrameCandidate
     confirmations: int = 1
+
+
+def cancellation_requested(cancel_event=None) -> bool:
+    if cancel_event is None:
+        return False
+    if callable(cancel_event):
+        return bool(cancel_event())
+    is_set = getattr(cancel_event, "is_set", None)
+    return bool(is_set()) if callable(is_set) else bool(cancel_event)
+
+
+def check_cancelled(cancel_event=None) -> None:
+    if cancellation_requested(cancel_event):
+        raise ProcessingCancelled("Đã hủy theo yêu cầu người dùng.")
+
+
+def emit_progress(
+    callback: ProgressCallback | None,
+    video: Path,
+    phase: str,
+    fraction: float,
+    message: str,
+) -> None:
+    if callback is None:
+        return
+    try:
+        callback(video, phase, min(1.0, max(0.0, float(fraction))), message)
+    except Exception:
+        # Progress UI không được phép làm hỏng pipeline xử lý.
+        pass
+
+
+def format_bytes(value: int | float) -> str:
+    amount = float(max(0, value))
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if amount < 1024 or unit == "TB":
+            return f"{amount:.1f} {unit}"
+        amount /= 1024
+    return f"{amount:.1f} TB"
+
+
+def free_disk_bytes(path: Path) -> int:
+    path.mkdir(parents=True, exist_ok=True)
+    return int(shutil.disk_usage(path).free)
+
+
+def ensure_free_disk_space(path: Path, required_bytes: int = 0, reserve_bytes: int = 512 * 1024**2) -> int:
+    """Kiểm tra đủ dung lượng cho dữ liệu dự kiến và vùng đệm an toàn."""
+    free = free_disk_bytes(path)
+    needed = max(0, int(required_bytes)) + max(0, int(reserve_bytes))
+    if free < needed:
+        raise InsufficientDiskSpace(
+            f"Ổ đĩa tại {path} chỉ còn {format_bytes(free)}, "
+            f"cần tối thiểu {format_bytes(needed)} (gồm vùng đệm an toàn)."
+        )
+    return free
+
+
+def cleanup_frameforge_temp_dirs(
+    temp_root: Path | None = None,
+    prefix: str = "video_screenshot_web_",
+    older_than_seconds: int = 24 * 60 * 60,
+) -> int:
+    """Dọn work directory cũ của FrameForge, không đụng tới thư mục đang dùng."""
+    root = temp_root or Path(tempfile.gettempdir())
+    cutoff = time.time() - max(0, older_than_seconds)
+    removed = 0
+    try:
+        candidates = list(root.glob(f"{prefix}*"))
+    except OSError:
+        return 0
+    for candidate in candidates:
+        try:
+            if not candidate.is_dir() or candidate.stat().st_mtime >= cutoff:
+                continue
+            shutil.rmtree(candidate, ignore_errors=True)
+            if not candidate.exists():
+                removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 def positive_float(value: str) -> float:
@@ -379,6 +474,8 @@ def process_fixed_mode(
     output_dir: Path,
     duration: float,
     args: argparse.Namespace,
+    on_progress: ProgressCallback | None = None,
+    cancel_event=None,
 ) -> dict[str, object]:
     actual_start = min(args.start, duration)
     actual_end = duration if args.end is None else min(args.end, duration)
@@ -413,7 +510,9 @@ def process_fixed_mode(
     target_index = 0
     frame_index = 0
     previous_hash: int | None = None
+    estimated_frames = max(1, int(max(0.0, actual_end - actual_start) * max(args.source_fps, 1.0)))
     while target_index < len(targets):
+        check_cancelled(cancel_event)
         ok, frame = capture.read()
         if not ok:
             reports["capture_errors"] = int(reports["capture_errors"]) + (len(targets) - target_index)
@@ -422,6 +521,9 @@ def process_fixed_mode(
         if timestamp <= 0 or not math.isfinite(timestamp):
             timestamp = frame_index / max(args.source_fps, 1.0)
         frame_index += 1
+        if frame_index == 1 or frame_index % 15 == 0:
+            fraction = min(0.99, max(0.0, (timestamp - actual_start) / max(actual_end - actual_start, 1e-6)))
+            emit_progress(on_progress, video, "analyzing", fraction, f"Đang phân tích {timestamp:.1f}s")
         if timestamp + 1e-6 < targets[target_index]:
             continue
         if timestamp > actual_end + 0.05:
@@ -431,7 +533,22 @@ def process_fixed_mode(
             candidate, output_dir, video.stem, target_index + 1, args, previous_hash
         )
         reports[status_key(status)] = int(reports[status_key(status)]) + 1
+        emit_progress(
+            on_progress,
+            video,
+            "selecting",
+            target_index / max(len(targets), 1),
+            f"Đã xử lý {target_index}/{len(targets)} mốc",
+        )
         target_index += 1
+        emit_progress(
+            on_progress,
+            video,
+            "selecting",
+            target_index / max(len(targets), 1),
+            f"Đã xử lý {target_index}/{len(targets)} mốc",
+        )
+    emit_progress(on_progress, video, "saving", 1.0, "Đã hoàn tất ghi screenshot")
     return reports
 
 
@@ -451,6 +568,8 @@ def process_scene_mode(
     output_dir: Path,
     duration: float,
     args: argparse.Namespace,
+    on_progress: ProgressCallback | None = None,
+    cancel_event=None,
 ) -> dict[str, object]:
     actual_start = min(args.start, duration)
     actual_end = duration if args.end is None else min(args.end, duration)
@@ -483,6 +602,7 @@ def process_scene_mode(
     frame_index = 0
 
     def flush(candidate: FrameCandidate | None, index: int, previous: int | None) -> int | None:
+        check_cancelled(cancel_event)
         if candidate is None:
             return previous
         reports["requested"] = int(reports["requested"]) + 1
@@ -491,6 +611,7 @@ def process_scene_mode(
         return updated_hash
 
     while True:
+        check_cancelled(cancel_event)
         ok, frame = capture.read()
         if not ok:
             break
@@ -498,6 +619,9 @@ def process_scene_mode(
         if timestamp <= 0 or not math.isfinite(timestamp):
             timestamp = frame_index / max(args.source_fps, 1.0)
         frame_index += 1
+        if frame_index == 1 or frame_index % 15 == 0:
+            fraction = min(0.99, max(0.0, (timestamp - actual_start) / max(actual_end - actual_start, 1e-6)))
+            emit_progress(on_progress, video, "analyzing", fraction, f"Đang phân tích scene tại {timestamp:.1f}s")
         if timestamp + 1e-6 < actual_start:
             continue
         if timestamp > actual_end:
@@ -506,6 +630,13 @@ def process_scene_mode(
             continue
         next_sample = timestamp + sample_interval
         candidate = frame_candidate(frame, timestamp, args.analysis_width)
+        emit_progress(
+            on_progress,
+            video,
+            "analyzing",
+            min(0.99, max(0.0, (timestamp - actual_start) / max(actual_end - actual_start, 1e-6))),
+            f"Đang phân tích scene tại {timestamp:.1f}s",
+        )
 
         if current_best is None:
             current_best = candidate
@@ -600,6 +731,7 @@ def process_scene_mode(
                 getattr(args, "motion_blur_threshold", 0.0),
             )
     flush(current_best, scene_index + 1, previous_hash)
+    emit_progress(on_progress, video, "saving", 1.0, "Đã hoàn tất ghi screenshot")
     return reports
 
 
@@ -608,7 +740,10 @@ def process_video(
     output_root: Path,
     source_root: Path | None,
     args: argparse.Namespace,
+    on_progress: ProgressCallback | None = None,
+    cancel_event=None,
 ) -> dict[str, object]:
+    check_cancelled(cancel_event)
     metadata = probe_video(video)
     duration = float(metadata["duration"])
     if source_root is not None:
@@ -617,6 +752,8 @@ def process_video(
     else:
         output_dir = output_root / video.stem
     output_dir.mkdir(parents=True, exist_ok=True)
+    ensure_free_disk_space(output_dir, required_bytes=0, reserve_bytes=int(getattr(args, "disk_reserve_bytes", 512 * 1024**2)))
+    emit_progress(on_progress, video, "preparing", 0.0, "Đã mở video và kiểm tra dung lượng")
 
     args.source_fps = float(metadata["fps"])
     capture = cv2.VideoCapture(str(video))
@@ -624,9 +761,9 @@ def process_video(
         raise RuntimeError(f"Không mở được video: {video}")
     try:
         if args.scene_detection:
-            reports = process_scene_mode(capture, video, output_dir, duration, args)
+            reports = process_scene_mode(capture, video, output_dir, duration, args, on_progress, cancel_event)
         else:
-            reports = process_fixed_mode(capture, video, output_dir, duration, args)
+            reports = process_fixed_mode(capture, video, output_dir, duration, args, on_progress, cancel_event)
     finally:
         capture.release()
 
@@ -651,10 +788,12 @@ def process_one_video(
     output_root: Path,
     source_root: Path | None,
     args: argparse.Namespace,
+    on_progress: ProgressCallback | None = None,
+    cancel_event=None,
 ) -> dict[str, object]:
     # Mỗi worker có một bản args riêng vì process_video bổ sung source_fps vào args.
     worker_args = copy.copy(args)
-    return process_video(video, output_root, source_root, worker_args)
+    return process_video(video, output_root, source_root, worker_args, on_progress, cancel_event)
 
 
 def process_videos(
@@ -663,8 +802,12 @@ def process_videos(
     source_root: Path | None,
     args: argparse.Namespace,
     on_complete: Callable[[Path, dict[str, object]], None] | None = None,
+    on_progress: ProgressCallback | None = None,
+    cancel_event=None,
+    max_retries: int = 0,
+    retry_delay_seconds: float = 1.0,
 ) -> list[dict[str, object]]:
-    """Xử lý các video độc lập song song và trả báo cáo theo thứ tự đầu vào."""
+    """Xử lý queue video, retry từng item và trả báo cáo theo thứ tự đầu vào."""
     if not videos:
         return []
 
@@ -672,7 +815,40 @@ def process_videos(
     if isinstance(requested_workers, str) and requested_workers.lower() == "auto":
         requested_workers = recommend_workers(len(videos))
     worker_count = min(max(1, int(requested_workers)), len(videos))
+    retry_count = max(0, int(max_retries))
     results: dict[int, dict[str, object]] = {}
+
+    def run_item(index: int, video: Path) -> dict[str, object]:
+        last_error: Exception | None = None
+        for attempt in range(retry_count + 1):
+            check_cancelled(cancel_event)
+            phase = "retrying" if attempt else "queued"
+            message = (
+                f"Thử lại {attempt}/{retry_count} cho {video.name}"
+                if attempt
+                else f"Bắt đầu xử lý {video.name}"
+            )
+            emit_progress(on_progress, video, phase, 0.0, message)
+            try:
+                report = process_one_video(video, output_root, source_root, args, on_progress, cancel_event)
+                report["attempts"] = attempt + 1
+                return report
+            except ProcessingCancelled:
+                raise
+            except (RuntimeError, ValueError, OSError) as exc:
+                last_error = exc
+                if attempt >= retry_count:
+                    break
+                emit_progress(
+                    on_progress,
+                    video,
+                    "retrying",
+                    0.0,
+                    f"Lỗi lần {attempt + 1}; sẽ thử lại sau {retry_delay_seconds:g}s: {exc}",
+                )
+                time.sleep(max(0.0, float(retry_delay_seconds)))
+        assert last_error is not None
+        raise last_error
 
     def collect(index: int, video: Path, report: dict[str, object]) -> None:
         results[index] = report
@@ -681,10 +857,13 @@ def process_videos(
 
     if worker_count == 1:
         for index, video in enumerate(videos):
+            check_cancelled(cancel_event)
             try:
-                report = process_one_video(video, output_root, source_root, args)
+                report = run_item(index, video)
+            except ProcessingCancelled:
+                raise
             except (RuntimeError, ValueError, OSError) as exc:
-                report = {"video": str(video), "error": str(exc)}
+                report = {"video": str(video), "error": str(exc), "attempts": retry_count + 1}
                 print(f"Bỏ qua {video}: {exc}", file=sys.stderr)
             collect(index, video, report)
         return [results[index] for index in range(len(videos))]
@@ -695,15 +874,18 @@ def process_videos(
         thread_name_prefix="video-worker",
     ) as executor:
         future_map = {
-            executor.submit(process_one_video, video, output_root, source_root, args): (index, video)
+            executor.submit(run_item, index, video): (index, video)
             for index, video in enumerate(videos)
         }
         for future in as_completed(future_map):
+            check_cancelled(cancel_event)
             index, video = future_map[future]
             try:
                 report = future.result()
+            except ProcessingCancelled:
+                raise
             except (RuntimeError, ValueError, OSError) as exc:
-                report = {"video": str(video), "error": str(exc)}
+                report = {"video": str(video), "error": str(exc), "attempts": retry_count + 1}
                 print(f"Bỏ qua {video}: {exc}", file=sys.stderr)
             collect(index, video, report)
 
@@ -735,6 +917,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--width", type=positive_int, default=None, help="Chiều rộng ảnh đầu ra; mặc định giữ kích thước nguồn.")
     parser.add_argument("-r", "--recursive", action="store_true", help="Quét cả thư mục con.")
     parser.add_argument("--overwrite", action="store_true", help="Ghi đè ảnh đã tồn tại.")
+    parser.add_argument("--retries", type=non_negative_int, default=2, help="Số lần retry cho mỗi video lỗi; mặc định: 2.")
+    parser.add_argument("--retry-delay", type=non_negative_float, default=1.0, help="Số giây chờ giữa các lần retry.")
+    parser.add_argument("--disk-reserve-mb", type=non_negative_int, default=512, help="Dung lượng trống tối thiểu để giữ làm vùng đệm.")
+    parser.add_argument("--temp-cleanup-hours", type=non_negative_int, default=24, help="Dọn work directory tạm cũ hơn số giờ này.")
     parser.add_argument("--min-sharpness", type=non_negative_float, default=100.0, help="Ngưỡng độ nét đã chuẩn hóa về chiều rộng tham chiếu 640 px; 0 để tắt.")
     parser.add_argument("--motion-blur-threshold", type=threshold_01, default=0.30, help="Ngưỡng motion blur 0–1; điểm cao hơn bị loại. Đặt 0 để tắt.")
     parser.add_argument("--duplicate-threshold", type=non_negative_int, default=6, help="Khoảng cách dHash tối đa để xem là trùng; 0 để tắt.")
@@ -754,6 +940,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    cleanup_frameforge_temp_dirs(older_than_seconds=int(args.temp_cleanup_hours) * 60 * 60)
+    args.disk_reserve_bytes = int(args.disk_reserve_mb) * 1024**2
     if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
         print("Cảnh báo: không tìm thấy FFmpeg/ffprobe; pipeline hiện dùng OpenCV nhưng FFmpeg vẫn cần cho môi trường đầy đủ.", file=sys.stderr)
     try:
@@ -774,7 +962,26 @@ def main() -> int:
         else:
             print(f"\n[{video.name}] hoàn tất: lưu={report.get('saved', 0)}")
 
-    reports = process_videos(videos, args.output, source_root, args, on_complete)
+    def on_progress(video: Path, phase: str, fraction: float, message: str) -> None:
+        print(f"[{video.name}] {phase} {fraction:.0%} · {message}")
+
+    try:
+        reports = process_videos(
+            videos,
+            args.output,
+            source_root,
+            args,
+            on_complete,
+            on_progress,
+            max_retries=args.retries,
+            retry_delay_seconds=args.retry_delay,
+        )
+    except ProcessingCancelled as exc:
+        print(str(exc), file=sys.stderr)
+        return 130
+    except InsufficientDiskSpace as exc:
+        print(str(exc), file=sys.stderr)
+        return 3
 
     if args.report is not None:
         args.report.parent.mkdir(parents=True, exist_ok=True)

@@ -50,7 +50,11 @@ Trong sidebar, chọn một hoặc nhiều video. Khu vực **Xem trước video
 | Mỗi N giây | Lấy frame theo khoảng thời gian cố định. |
 | Đúng N frame | Phân bố đều đúng số lượng frame trong khoảng thời gian đã chọn. |
 
-Sau khi chọn cấu hình, bấm **Bắt đầu xử lý**. Ứng dụng hiển thị tiến trình theo từng video, scene timeline, thống kê ảnh và preview ảnh đầu ra.
+Sau khi chọn cấu hình, bấm **Bắt đầu xử lý**. Ứng dụng tạo một job nền và hiển thị progress tổng thể cùng progress riêng cho từng video. Các giai đoạn gồm `queued`, `preparing`, `analyzing`, `selecting`, `saving` và `completed`; khi video lỗi, queue sẽ tự retry theo số lần đã chọn trước khi chuyển sang video tiếp theo.
+
+Trong lúc xử lý, bấm **Hủy xử lý** để dừng an toàn. FrameForge kiểm tra yêu cầu hủy giữa các checkpoint, giải phóng `VideoCapture` và giữ lại các screenshot đã ghi trước đó. Job đang chạy sẽ khóa nút bắt đầu mới để tránh tạo hai queue cùng lúc.
+
+Trước khi chạy, ứng dụng kiểm tra dung lượng trống tại thư mục screenshot. Trường **Vùng đệm dung lượng tối thiểu** mặc định là 512 MB; nếu không đủ vùng đệm, job sẽ không bắt đầu. Các work directory tạm của phiên trước có tiền tố `video_screenshot_web_` và cũ hơn 24 giờ sẽ được dọn tự động. Report JSON được ghi trực tiếp trong thư mục run để không bị mất khi thư mục tạm được dọn.
 
 ## 4. Tinh chỉnh scene detection
 
@@ -98,7 +102,11 @@ python video_screenshot_advanced.py ./videos \
   --format jpg \
   --quality 95 \
   --output ./screenshots_filtered \
-  --report ./screenshots_filtered/report.json
+  --report ./screenshots_filtered/report.json \
+  --retries 2 \
+  --retry-delay 1 \
+  --disk-reserve-mb 512 \
+  --temp-cleanup-hours 24
 ```
 
 Các tùy chọn chính:
@@ -115,6 +123,10 @@ Các tùy chọn chính:
 | `--min-sharpness N` | Ngưỡng loại frame mờ. |
 | `--duplicate-threshold N` | Ngưỡng khoảng cách dHash để loại frame trùng. |
 | `--report FILE` | Ghi báo cáo JSON. |
+| `--retries N` | Retry từng video tối đa N lần nếu gặp lỗi tạm thời. |
+| `--retry-delay N` | Số giây chờ giữa các lần retry. |
+| `--disk-reserve-mb N` | Vùng đệm dung lượng trống tối thiểu trước khi xử lý. |
+| `--temp-cleanup-hours N` | Dọn work directory tạm cũ hơn N giờ khi khởi động CLI. |
 
 ## 8. Kết quả và báo cáo
 
@@ -230,7 +242,7 @@ Báo cáo có trường `rejected_motion_blur` để biết bao nhiêu frame b�
 
 Trong khu vực **Tải video công khai**, nhập mỗi URL trên một dòng. Có thể trộn URL video đơn và URL playlist trong cùng một queue. Trường **Tối đa mỗi playlist** giới hạn số mục lấy từ từng playlist; tổng số URL trong một lần gọi được giới hạn ở mức an toàn 100 URL.
 
-Ứng dụng xử lý queue tuần tự, hiển thị tối đa 10 kết quả đầu trong giao diện và cho phép tải toàn bộ video đã tải thành công trong file `frameforge_downloads.zip`. Nếu một URL gặp lỗi, thông báo sẽ ghi rõ URL đó để bạn có thể xử lý lại riêng.
+Ứng dụng xử lý queue tuần tự, hiển thị progress tải theo file và tự retry từng URL theo trường **Retry tải**. Nếu một URL vẫn gặp lỗi sau các lần thử, thông báo sẽ ghi rõ URL và số lần đã thử; các video tải thành công trước đó vẫn được giữ lại để preview hoặc tải ZIP.
 
 Ví dụ queue:
 

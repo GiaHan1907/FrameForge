@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -182,6 +183,8 @@ def _download_batch(
     quality: str,
     max_items: int | None = None,
     progress_hook=None,
+    max_retries: int = 2,
+    retry_delay_seconds: float = 1.0,
 ) -> list[DownloadResult]:
     if yt_dlp is None:
         raise RuntimeError("Chưa cài yt-dlp. Hãy chạy: python -m pip install yt-dlp") from _IMPORT_ERROR
@@ -209,36 +212,45 @@ def _download_batch(
         options["ffmpeg_location"] = str(Path(str(health["ffmpeg_path"])).parent)
 
     all_results: list[DownloadResult] = []
+    retry_limit = max(0, int(max_retries))
     for url in urls:
         validate_public_url(url)
-        before = _file_snapshot(output_dir)
-        try:
-            with yt_dlp.YoutubeDL(options) as downloader:
-                info = downloader.extract_info(url, download=True)
-                raw_entries = info.get("entries") if isinstance(info, dict) else None
-                entries = [item for item in (raw_entries or []) if isinstance(item, dict)] if raw_entries else [info]
-                new_files = _new_video_files(output_dir, before)
-                if not new_files:
-                    raise FileNotFoundError("yt-dlp không tạo được file video đầu ra.")
-                for path in new_files:
-                    entry = _entry_for_path(path, entries)
-                    all_results.append(
-                        DownloadResult(
-                            path=path,
-                            title=str(entry.get("title") or path.stem),
-                            webpage_url=str(entry.get("webpage_url") or url),
-                            extractor=str(entry.get("extractor_key") or entry.get("extractor") or "unknown"),
-                            height=int(entry["height"]) if entry.get("height") else None,
-                            duration=float(entry["duration"]) if entry.get("duration") else None,
-                            filesize=path.stat().st_size if path.exists() else None,
-                            playlist_index=int(entry["playlist_index"]) if entry.get("playlist_index") else None,
+        last_error: Exception | None = None
+        for attempt in range(retry_limit + 1):
+            before = _file_snapshot(output_dir)
+            try:
+                with yt_dlp.YoutubeDL(options) as downloader:
+                    info = downloader.extract_info(url, download=True)
+                    raw_entries = info.get("entries") if isinstance(info, dict) else None
+                    entries = [item for item in (raw_entries or []) if isinstance(item, dict)] if raw_entries else [info]
+                    new_files = _new_video_files(output_dir, before)
+                    if not new_files:
+                        raise FileNotFoundError("yt-dlp không tạo được file video đầu ra.")
+                    for path in new_files:
+                        entry = _entry_for_path(path, entries)
+                        all_results.append(
+                            DownloadResult(
+                                path=path,
+                                title=str(entry.get("title") or path.stem),
+                                webpage_url=str(entry.get("webpage_url") or url),
+                                extractor=str(entry.get("extractor_key") or entry.get("extractor") or "unknown"),
+                                height=int(entry["height"]) if entry.get("height") else None,
+                                duration=float(entry["duration"]) if entry.get("duration") else None,
+                                filesize=path.stat().st_size if path.exists() else None,
+                                playlist_index=int(entry["playlist_index"]) if entry.get("playlist_index") else None,
+                            )
                         )
-                    )
-        except Exception as exc:
-            message = str(exc)
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+                if attempt < retry_limit:
+                    time.sleep(max(0.0, float(retry_delay_seconds)))
+        if last_error is not None:
+            message = str(last_error)
             if not health["ffmpeg_path"] and ("Requested format is not available" in message or "merging" in message.lower()):
                 message += "\nGợi ý: cài FFmpeg và thêm ffmpeg.exe vào PATH để ghép video/audio chất lượng cao."
-            raise RuntimeError(f"{url}\n{message}") from exc
+            raise RuntimeError(f"{url}\nĐã thử {retry_limit + 1} lần.\n{message}") from last_error
     return all_results
 
 
@@ -262,6 +274,8 @@ def download_public_videos(
     max_playlist_items: int | None = 50,
     max_queue_items: int = 100,
     progress_hook=None,
+    max_retries: int = 2,
+    retry_delay_seconds: float = 1.0,
 ) -> list[DownloadResult]:
     """Tải tuần tự queue URL; mỗi playlist bị giới hạn max_playlist_items mục."""
     clean_urls = [url.strip() for url in urls if url and url.strip()]
@@ -272,6 +286,8 @@ def download_public_videos(
         quality,
         max_items=max_playlist_items,
         progress_hook=progress_hook,
+        max_retries=max_retries,
+        retry_delay_seconds=retry_delay_seconds,
     )
 
 
