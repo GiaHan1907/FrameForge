@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import video_screenshot_advanced as engine
+from timeline_utils import build_timeline_entries, filter_timeline_entries
 
 
 class CacheCheckpointTests(unittest.TestCase):
@@ -60,6 +61,32 @@ class CacheCheckpointTests(unittest.TestCase):
         second = engine.process_video(self.video, second_output, None, self.args)
         self.assertTrue(second["cache_hit"])
         self.assertGreaterEqual(int(second["rejected_duplicate_cross_run"]), 1)
+        duplicate_index = engine.duplicate_index_path(self.video, self.args.duplicate_root)
+        self.assertTrue(duplicate_index.exists())
+        self.assertEqual(len(list(second_output.rglob("*.jpg"))), 0)
+
+    def test_timeline_build_and_filters(self) -> None:
+        reports = [
+            {
+                "video": "/videos/alpha.mp4",
+                "scene_times": [1.0, 5.0],
+                "selected_times": [1.2, 4.8],
+                "cache_hit": True,
+            },
+            {
+                "video": "/videos/beta.mp4",
+                "scene_times": [2.5],
+                "selected_times": [2.5],
+            },
+        ]
+        entries = build_timeline_entries(reports)
+        self.assertEqual(len(entries), 3)
+        self.assertEqual(entries[0]["representative_seconds"], 1.2)
+        self.assertTrue(entries[0]["cache_hit"])
+        alpha = filter_timeline_entries(entries, video_name="alpha.mp4")
+        self.assertEqual(len(alpha), 2)
+        late = filter_timeline_entries(entries, query="scene 2", min_seconds=4.0, max_seconds=6.0)
+        self.assertEqual([(item["video"], item["scene"]) for item in late], [("alpha.mp4", 2)])
 
     def test_checkpoint_resume_skips_completed_video(self) -> None:
         videos = [self.root / "one.mp4", self.root / "two.mp4"]

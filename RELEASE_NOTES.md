@@ -2,6 +2,8 @@
 
 ## Phạm vi bản cập nhật
 
+Bản cập nhật mới bổ sung scene cache, checkpoint resume, duplicate detection giữa các lần chạy và timeline tương tác với zoom/bộ lọc scene. Updater ứng dụng hỗ trợ stable/beta channel, release notes trong UI và rollback installer có xác minh SHA-256.
+
 Bản cập nhật này hoàn thiện hướng phát hành **PyInstaller onedir + FFmpeg/ffprobe nhúng + updater yt-dlp riêng**. Giao diện timeline đã bỏ `st.table` và chuyển sang HTML/CSS thuần, nhờ đó profile minimal không cần Pandas hoặc PyArrow. Các chức năng cốt lõi của FrameForge vẫn được giữ: preview video, tải URL công khai được phép bằng yt-dlp, queue/playlist, scene detection, chống flash, lọc motion blur, dHash, Best frame per scene, worker tự động và benchmark.
 
 ## Profile và số đo
@@ -68,3 +70,7 @@ Giữ lại các file license, readme và `BUILD_METADATA.txt` do `prepare_ffmpe
 Workflow mới tại `.github/workflows/windows-release.yml` chạy trên `windows-2022`, chọn profile minimal/full, gọi `build_windows.bat`, smoke-test endpoint HTTP 200 của executable đã đóng gói, cài Inno Setup bằng Chocolatey, tạo Setup, sinh checksum và upload artifact. Push tag dạng `v1.2.3` sẽ tự tạo GitHub Release; chạy thủ công cho phép chọn profile và chỉ publish nếu bật `publish_release`.
 
 Workflow dùng `GITHUB_TOKEN` với `contents: write`. Repository phải cho phép Actions tạo Release. Không commit Personal Access Token hoặc secret nhạy cảm vào YAML. Trước phát hành chính thức nên thay URL FFmpeg alias `latest` bằng asset/version được ghim hoặc truyền qua Repository Variable/Secret.
+
+Kênh `stable` tạo `latest.json` và GitHub Release thông thường. Kênh `beta` tạo prerelease và asset `latest-beta.json`; người dùng chọn kênh trong UI hoặc đặt `FRAMEFORGE_UPDATE_CHANNEL=beta`. Updater chỉ chấp nhận manifest đúng channel, HTTPS và SHA-256 hợp lệ. Stable release mới sẽ ghi metadata rollback tới stable release trước đó nếu asset `latest.json` cũ còn truy cập được.
+
+Để ký installer bằng Authenticode, tạo hai Actions secrets: `WINDOWS_CERTIFICATE_BASE64` chứa file PFX đã mã hóa Base64 và `WINDOWS_CERTIFICATE_PASSWORD` chứa mật khẩu PFX. Workflow sẽ dùng `signtool.exe`, timestamp SHA-256 và kiểm tra `Get-AuthenticodeSignature`. Nếu secrets chưa được cấu hình, build vẫn phát hành nhưng manifest ghi rõ `signature_status=unsigned`; không nên coi bản unsigned là bản phân phối production cuối cùng.

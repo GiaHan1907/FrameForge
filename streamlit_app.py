@@ -20,7 +20,14 @@ import streamlit as st
 
 from updater import initialize_yt_dlp
 from app_config import load_output_dirs, save_output_dirs
-from app_update import initialize_app_update, update_app_now
+from app_update import (
+    get_update_channel,
+    initialize_app_update,
+    launch_rollback_installer,
+    rollback_app_now,
+    set_update_channel,
+    update_app_now,
+)
 
 # Kiểm tra tối đa một lần mỗi 24 giờ; bản mới chỉ được kích hoạt từ lần chạy kế tiếp.
 update_status = initialize_yt_dlp(
@@ -38,6 +45,7 @@ from video_screenshot_advanced import (
     recommend_workers,
     timestamp_label,
 )
+from timeline_utils import build_timeline_entries, filter_timeline_entries
 from video_downloader import (
     QUALITY_FORMATS,
     download_public_videos,
@@ -556,12 +564,49 @@ def show_scene_timeline(reports: list[dict[str, object]], output_dir: Path | Non
         for timestamp in (report.get("selected_times", []) if isinstance(report.get("selected_times", []), list) else [])
     ]
     max_time = max([float(row["time_seconds"]) for row in rows] + all_selected_times + [1.0])
+    timeline_entries = build_timeline_entries(reports)
+    video_options = ["Tất cả"] + sorted({str(entry["video"]) for entry in timeline_entries})
+    filter_col, query_col, range_col, zoom_col = st.columns([1.1, 1.2, 1.8, 1.0])
+    with filter_col:
+        selected_video_filter = st.selectbox("Lọc video", video_options, key="timeline_video_filter")
+    with query_col:
+        scene_query = st.text_input("Lọc scene", placeholder="Ví dụ: scene 2", key="timeline_scene_query")
+    with range_col:
+        selected_range = st.slider(
+            "Khoảng thời gian (giây)",
+            min_value=0.0,
+            max_value=float(max_time),
+            value=(0.0, float(max_time)),
+            step=0.001,
+            format="%.3f s",
+            key="timeline_time_filter",
+        )
+    with zoom_col:
+        zoom_percent = st.slider("Zoom", 25, 100, 100, 5, format="%d%%", key="timeline_zoom")
+    filtered_entries = filter_timeline_entries(
+        timeline_entries,
+        video_name=selected_video_filter,
+        query=scene_query,
+        min_seconds=selected_range[0],
+        max_seconds=selected_range[1],
+    )
+    if not filtered_entries:
+        st.info("Không có scene phù hợp với bộ lọc hiện tại.")
+        return
+    rows = filtered_entries
+    range_start, range_end = float(selected_range[0]), float(selected_range[1])
+    filter_span = max(range_end - range_start, 1e-3)
+    visible_span = max(filter_span * zoom_percent / 100.0, min(filter_span, 1.0))
+    visible_center = (range_start + range_end) / 2.0
+    view_start = max(range_start, visible_center - visible_span / 2.0)
+    view_end = min(range_end, view_start + visible_span)
+    view_start = max(range_start, view_end - visible_span)
     timeline_rows = []
     for row in rows:
         video_label = html.escape(str(row["video"]))
         scene_number = int(row["scene"])
         timestamp = float(row["time_seconds"])
-        position = min(100.0, max(0.0, timestamp / max_time * 100.0))
+        position = min(100.0, max(0.0, (timestamp - view_start) / max(view_end - view_start, 1e-6) * 100.0))
         timeline_rows.append(
             f"<div class='timeline-row'>"
             f"<div class='timeline-name'>{video_label} · Scene {scene_number}</div>"
@@ -572,7 +617,7 @@ def show_scene_timeline(reports: list[dict[str, object]], output_dir: Path | Non
     st.markdown(
         "<div class='timeline-card'>"
         "<div class='timeline-axis'><span>0s</span><span>Scene markers</span><span>"
-        f"{max_time:.3f}s</span></div>"
+        f"{view_end:.3f}s</span></div>"
         + "".join(timeline_rows)
         + "</div>",
         unsafe_allow_html=True,
@@ -594,50 +639,67 @@ def show_scene_timeline(reports: list[dict[str, object]], output_dir: Path | Non
     )
 
     st.markdown("**Timeline tương tác**")
-    interactive_options = []
-    for report in reports:
-        video_name = Path(str(report.get("video", "video"))).name
-        selected = report.get("selected_times", [])
-        if not isinstance(selected, list):
-            selected = []
-        for scene_number, timestamp in enumerate(selected, start=1):
-            interactive_options.append((f"{video_name} · Scene {scene_number} · {float(timestamp):.3f}s", video_name, float(timestamp)))
-    if interactive_options:
-        labels = [item[0] for item in interactive_options]
-        selected_label = st.selectbox("Chọn scene/frame", labels, key="interactive_scene_choice")
-        _, selected_video, selected_timestamp = next(item for item in interactive_options if item[0] == selected_label)
-        adjusted_timestamp = st.slider(
-            "Mốc preview (giây)",
-            min_value=0.0,
-            max_value=float(max_time),
-            value=min(float(max_time), max(0.0, selected_timestamp)),
-            step=0.001,
-            format="%.3f s",
-            key="interactive_scene_timestamp",
+    interactive_options = [
+        (
+            f"{entry['video']} · Scene {int(entry['scene'])} · {float(entry['representative_seconds']):.3f}s",
+            entry,
         )
-        st.caption(f"Đã chọn **{selected_video}** tại **{adjusted_timestamp:.3f}s**. Mốc gần nhất được dùng để preview.")
-        if output_dir is not None:
-            selected_report = next(
-                report for report in reports if Path(str(report.get("video", "video"))).name == selected_video
-            )
-            candidates = [float(item) for item in selected_report.get("selected_times", [])]
-            nearest = min(candidates, key=lambda item: abs(item - adjusted_timestamp)) if candidates else selected_timestamp
-            pattern = f"*_{timestamp_label(nearest)}.*"
-            preview_candidates = sorted(output_dir.rglob(pattern))
-            if preview_candidates:
-                st.image(str(preview_candidates[0]), caption=f"Preview gần nhất · {nearest:.3f}s", use_container_width=True)
-            else:
-                st.info("Chưa tìm thấy file ảnh tương ứng trong output run này.")
+        for entry in filtered_entries
+    ]
+    labels = [item[0] for item in interactive_options]
+    selected_label = st.selectbox("Chọn scene/frame", labels, key="interactive_scene_choice")
+    selected_entry = next(item[1] for item in interactive_options if item[0] == selected_label)
+    selected_timestamp = float(selected_entry["representative_seconds"])
+    adjusted_timestamp = st.slider(
+        "Mốc preview (giây)",
+        min_value=float(view_start),
+        max_value=float(view_end),
+        value=min(float(view_end), max(float(view_start), selected_timestamp)),
+        step=0.001,
+        format="%.3f s",
+        key="interactive_scene_timestamp",
+    )
+    st.caption(
+        f"Đã chọn **{selected_entry['video']} · Scene {int(selected_entry['scene'])}** tại "
+        f"**{adjusted_timestamp:.3f}s**. Zoom {zoom_percent}% · mốc gần nhất được dùng để preview."
+    )
+    if output_dir is not None:
+        nearest = float(selected_entry["representative_seconds"])
+        pattern = f"*_{timestamp_label(nearest)}.*"
+        preview_candidates = sorted(output_dir.rglob(pattern))
+        if preview_candidates:
+            st.image(str(preview_candidates[0]), caption=f"Preview gần nhất · {nearest:.3f}s", use_container_width=True)
+        else:
+            st.info("Chưa tìm thấy file ảnh tương ứng trong output run này.")
 
 
 # Header
+current_channel = get_update_channel()
+channel_choice = st.selectbox(
+    "Kênh cập nhật",
+    ["stable", "beta"],
+    index=0 if current_channel == "stable" else 1,
+    format_func=lambda value: "Stable — bản ổn định" if value == "stable" else "Beta — bản thử nghiệm",
+    key="update_channel_choice",
+)
+if channel_choice != current_channel:
+    set_update_channel(channel_choice)
+    st.success(f"Đã chuyển sang kênh {channel_choice}. Kiểm tra lại feed ở lần tải giao diện kế tiếp.")
+    st.rerun()
+
 if update_status.updated:
     st.info(f"Đã tải bản yt-dlp {update_status.latest_version}; bản cập nhật sẽ được kích hoạt ở lần mở ứng dụng kế tiếp.")
 elif update_status.message and "mới nhất" not in update_status.message and "tắt" not in update_status.message and update_status.checked:
     st.caption(f"yt-dlp updater: {update_status.message}")
 
 if app_update_status.available:
-    st.info(f"Có bản cập nhật FrameForge {app_update_status.latest_version}. {app_update_status.message}")
+    channel_label = "Beta" if app_update_status.channel == "beta" else "Stable"
+    st.info(f"[{channel_label}] Có bản cập nhật FrameForge {app_update_status.latest_version}. {app_update_status.message}")
+    if app_update_status.release_notes:
+        with st.expander("Xem release notes", expanded=False):
+            st.markdown(app_update_status.release_notes)
+            if app_update_status.release_notes_url:
+                st.markdown(f"[Mở release notes trên GitHub]({app_update_status.release_notes_url})")
     if st.button("Cập nhật ngay", type="primary", use_container_width=False):
         with st.spinner("Đang tải, xác minh SHA-256 và mở Setup..."):
             app_update_status = update_app_now(timeout=30.0)
@@ -645,6 +707,22 @@ if app_update_status.available:
             st.success(app_update_status.message)
         else:
             st.error(app_update_status.message)
+
+if app_update_status.rollback_available and app_update_status.rollback_version:
+    with st.expander(f"Rollback về FrameForge {app_update_status.rollback_version}", expanded=False):
+        st.caption("Chỉ dùng rollback khi bản hiện tại gặp lỗi. Installer rollback vẫn được kiểm tra HTTPS và SHA-256 trước khi mở.")
+        if st.button("Tải bản rollback", key="download_rollback"):
+            with st.spinner("Đang tải và xác minh installer rollback..."):
+                rollback_status = rollback_app_now(timeout=30.0)
+            if rollback_status.downloaded:
+                st.success(rollback_status.message)
+            else:
+                st.error(rollback_status.message)
+        if st.button("Mở installer rollback", key="launch_rollback"):
+            if launch_rollback_installer():
+                st.success("Đã mở installer rollback. Hãy hoàn tất cài đặt rồi khởi động lại FrameForge.")
+            else:
+                st.error("Chưa có installer rollback hợp lệ; hãy tải lại trước.")
 
 st.markdown(
     """

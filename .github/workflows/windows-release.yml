@@ -21,6 +21,14 @@ on:
         required: true
         default: false
         type: boolean
+      channel:
+        description: "Update channel"
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - beta
 
 concurrency:
   group: frameforge-windows-${{ github.ref }}
@@ -43,7 +51,7 @@ jobs:
       - name: Compile Python sources
         shell: bash
         run: |
-          python -m py_compile streamlit_app.py video_screenshot_advanced.py video_downloader.py updater.py app_update.py windows_launcher.py measure_package_size.py validate_release_manifest.py tests/test_queue_retry_cancel.py tests/test_cache_checkpoint.py
+          python -m py_compile streamlit_app.py video_screenshot_advanced.py video_downloader.py updater.py app_update.py windows_launcher.py measure_package_size.py validate_release_manifest.py timeline_utils.py tests/test_queue_retry_cancel.py tests/test_cache_checkpoint.py tests/test_app_update_channels.py
       - name: Install test dependencies
         shell: bash
         run: python -m pip install -r requirements.txt
@@ -68,6 +76,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -81,6 +91,13 @@ jobs:
       - name: Select profile and version
         run: |
           $requestedProfile = "${{ github.event.inputs.profile }}"
+          $requestedChannel = "${{ github.event.inputs.channel }}"
+          if ([string]::IsNullOrWhiteSpace($requestedChannel)) {
+            $requestedChannel = "stable"
+          }
+          if (@("stable", "beta") -notcontains $requestedChannel) {
+            throw "Unsupported UPDATE_CHANNEL: $requestedChannel"
+          }
           if ([string]::IsNullOrWhiteSpace($requestedProfile)) {
             $requestedProfile = "minimal"
           }
@@ -103,6 +120,7 @@ jobs:
           }
 
           "BUILD_PROFILE=$requestedProfile" >> $env:GITHUB_ENV
+          "FRAMEFORGE_CHANNEL=$requestedChannel" >> $env:GITHUB_ENV
           "BUILD_MODE=onedir" >> $env:GITHUB_ENV
           "FRAMEFORGE_VERSION=$version" >> $env:GITHUB_ENV
           "FRAMEFORGE_TAG=$refName" >> $env:GITHUB_ENV
@@ -178,6 +196,40 @@ jobs:
             throw "build_installer.bat failed with exit code $LASTEXITCODE"
           }
 
+      - name: Sign installer when certificate secrets are configured
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $setupPath = Join-Path "installer" "FrameForge-Setup-$env:FRAMEFORGE_VERSION.exe"
+          "FRAMEFORGE_SIGNATURE_STATUS=unsigned" >> $env:GITHUB_ENV
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            Write-Warning "Windows signing secrets are not configured; release will be marked unsigned."
+            exit 0
+          }
+          $certPath = Join-Path $env:RUNNER_TEMP "frameforge-signing.pfx"
+          try {
+            [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+            $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match "\\x64\\" } |
+              Sort-Object FullName -Descending | Select-Object -First 1
+            if (-not $signTool) {
+              throw "signtool.exe was not found on the Windows runner"
+            }
+            & $signTool.FullName sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f $certPath /p $env:WINDOWS_CERTIFICATE_PASSWORD $setupPath
+            if ($LASTEXITCODE -ne 0) {
+              throw "signtool.exe failed with exit code $LASTEXITCODE"
+            }
+            $signature = Get-AuthenticodeSignature $setupPath
+            if ($signature.Status -ne "Valid") {
+              throw "Installer signature status is $($signature.Status), expected Valid"
+            }
+            "FRAMEFORGE_SIGNATURE_STATUS=signed" >> $env:GITHUB_ENV
+            "FRAMEFORGE_SIGNER_SUBJECT=$($signature.SignerCertificate.Subject)" >> $env:GITHUB_ENV
+          } finally {
+            Remove-Item $certPath -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Measure package and generate checksums
         run: |
           python measure_package_size.py . --dist-path dist\VideoScreenshotFilter --top 25 --json build_size_report.json
@@ -200,19 +252,32 @@ jobs:
           }
           $hashLines += "Profile: $env:BUILD_PROFILE"
           $hashLines += "Version: $env:FRAMEFORGE_VERSION"
+          $hashLines += "Signature status: $env:FRAMEFORGE_SIGNATURE_STATUS"
+          if ($env:FRAMEFORGE_SIGNER_SUBJECT) { $hashLines += "Signer subject: $env:FRAMEFORGE_SIGNER_SUBJECT" }
           $hashLines | Set-Content SHA256SUMS.txt -Encoding UTF8
           python -m pip freeze | Out-File build_environment.txt -Encoding utf8
+          $notesPath = "RELEASE_NOTES.md"
+          $notesContent = if (Test-Path $notesPath) { Get-Content $notesPath -Raw } else { "" }
+          $releaseNotes = $notesContent.Substring(0, [Math]::Min(12000, $notesContent.Length))
           $manifest = [ordered]@{
             schema = 1
             app = "FrameForge"
+            channel = $env:FRAMEFORGE_CHANNEL
             version = $env:FRAMEFORGE_VERSION
             release_tag = $env:FRAMEFORGE_TAG
             profile = $env:BUILD_PROFILE
             installer = $setup.Name
             sha256 = $setupHash.ToLowerInvariant()
+            signature_status = $env:FRAMEFORGE_SIGNATURE_STATUS
+            signer_subject = if ($env:FRAMEFORGE_SIGNER_SUBJECT) { $env:FRAMEFORGE_SIGNER_SUBJECT } else { $null }
+            release_notes = $releaseNotes
+            release_notes_url = "https://github.com/GiaHan1907/FrameForge/releases/tag/$env:FRAMEFORGE_TAG"
             installer_url = "https://github.com/GiaHan1907/FrameForge/releases/download/$env:FRAMEFORGE_TAG/$($setup.Name)"
           }
-          $manifest | ConvertTo-Json | Set-Content latest.json -Encoding utf8
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content latest.json -Encoding utf8
+          if ($env:FRAMEFORGE_CHANNEL -eq "beta") {
+            Copy-Item latest.json latest-beta.json -Force
+          }
           if ($env:FRAMEFORGE_TAG -match '^v\d+\.\d+\.\d+$') {
             python validate_release_manifest.py latest.json $setup.FullName $env:FRAMEFORGE_TAG
           } else {
@@ -226,13 +291,14 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: frameforge-release-payload
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
           path: |
             installer/FrameForge-Setup-*.exe
             build_size_report.json
             SHA256SUMS.txt
             latest.json
+            latest-beta.json
             build_environment.txt
             vendor/ffmpeg/BUILD_METADATA.txt
 
@@ -265,21 +331,49 @@ jobs:
           test -f release_payload/build_size_report.json
           test -f release_payload/latest.json
           test -f release_payload/vendor/ffmpeg/BUILD_METADATA.txt
-          python3 validate_release_manifest.py release_payload/latest.json "$setup" "$tag"
+          channel="$(jq -r '.channel // "stable"' release_payload/latest.json)"
+          manifest_path="release_payload/latest.json"
+          if [ "$channel" = "beta" ]; then
+            test -f release_payload/latest-beta.json
+            manifest_path="release_payload/latest-beta.json"
+          fi
+
+          if [ "$channel" = "stable" ]; then
+            previous_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=20" --jq '[.[] | select(.draft == false and .prerelease == false and .tag_name != env.GITHUB_REF_NAME) | .tag_name] | .[0]')"
+            if [ -n "$previous_tag" ] && [ "$previous_tag" != "null" ]; then
+              previous_manifest="$(mktemp)"
+              if curl -fsSL "https://github.com/${GITHUB_REPOSITORY}/releases/download/${previous_tag}/latest.json" -o "$previous_manifest"; then
+                jq --slurpfile previous "$previous_manifest" '.rollback = {version: $previous[0].version, installer_url: $previous[0].installer_url, sha256: $previous[0].sha256, signature_status: ($previous[0].signature_status // "unsigned"), signer_subject: ($previous[0].signer_subject // null)}' "$manifest_path" > release_payload/latest.merged.json
+                mv release_payload/latest.merged.json "$manifest_path"
+              fi
+              rm -f "$previous_manifest"
+            fi
+          fi
+          python3 validate_release_manifest.py "$manifest_path" "$setup" "$tag"
 
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" \
               "$setup" \
               release_payload/SHA256SUMS.txt \
-              release_payload/latest.json \
+              "$manifest_path" \
               release_payload/build_size_report.json \
               release_payload/vendor/ffmpeg/BUILD_METADATA.txt \
               --clobber
+          elif [ "$channel" = "beta" ]; then
+            gh release create "$tag" \
+              "$setup" \
+              release_payload/SHA256SUMS.txt \
+              "$manifest_path" \
+              release_payload/build_size_report.json \
+              release_payload/vendor/ffmpeg/BUILD_METADATA.txt \
+              --title "FrameForge ${tag#v} (Beta)" \
+              --prerelease \
+              --generate-notes
           else
             gh release create "$tag" \
               "$setup" \
               release_payload/SHA256SUMS.txt \
-              release_payload/latest.json \
+              "$manifest_path" \
               release_payload/build_size_report.json \
               release_payload/vendor/ffmpeg/BUILD_METADATA.txt \
               --title "FrameForge ${tag#v}" \

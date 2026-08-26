@@ -108,7 +108,9 @@ Mở `http://localhost:8501`. Dockerfile tự cài FFmpeg và dependency Python.
 
 CLI có thể ghi báo cáo bằng `--report report.json`. Với scene mode, trường `scene_times` chứa các mốc timestamp phát hiện được và `selected_times` chứa frame đại diện đã chọn. Các trường `saved`, `rejected_blurry`, `rejected_duplicate`, `rejected_duplicate_cross_run`, `cache_hit` và `capture_errors` giúp đánh giá chất lượng xử lý.
 
-FrameForge lưu scene cache JSON theo fingerprint của video và cấu hình phân tích. Có thể dùng lại cache bằng `--cache-dir`, tiếp tục queue bằng `--resume --checkpoint FILE`, và dùng `--duplicate-index-dir` để loại các frame gần trùng với những lần chạy trước. Trong Streamlit, phần **Timeline tương tác** cho phép chọn marker, điều chỉnh timestamp và xem preview frame gần nhất.
+FrameForge lưu scene cache JSON theo fingerprint của video và cấu hình phân tích. Có thể dùng lại cache bằng `--cache-dir`, tiếp tục queue bằng `--resume --checkpoint FILE`, và dùng `--duplicate-index-dir` để loại các frame gần trùng với những lần chạy trước. Trong Streamlit, phần **Timeline tương tác** cho phép lọc video/scene/khoảng thời gian, zoom vùng timeline, chọn marker, điều chỉnh timestamp và xem preview frame gần nhất.
+
+Updater ứng dụng có hai kênh: `stable` dùng `latest.json`, còn `beta` dùng prerelease asset `latest-beta.json`. Có thể chuyển kênh trong UI hoặc đặt `FRAMEFORGE_UPDATE_CHANNEL=beta`. Release notes được nhúng vào manifest và hiển thị trong expander **Xem release notes**. Stable manifest mới có thể chứa metadata rollback tới release stable trước đó; rollback luôn kiểm tra HTTPS và SHA-256 trước khi mở installer.
 
 ## Tham khảo
 
@@ -484,15 +486,25 @@ Artifacts của workflow có thời hạn lưu mặc định 30 ngày. Release a
 
 `updater.py` hiện tiếp tục cập nhật riêng yt-dlp. Module `app_update.py` bổ sung luồng cập nhật ứng dụng an toàn hơn: mỗi lần khởi động đọc manifest HTTPS và so sánh SemVer; chỉ khi người dùng bấm nút **Cập nhật ngay** app mới tải installer, xác minh SHA-256 và mở Setup. Ứng dụng không tự ghi đè executable đang chạy trong nền. Có thể tắt kiểm tra startup bằng `FRAMEFORGE_APP_UPDATE_STARTUP=0`.
 
-Workflow GitHub Actions tạo asset `latest.json` trong mỗi release tag. Manifest chứa version, tag, tên Setup, URL tải và SHA-256. Để bật kiểm tra cập nhật EXE, cấu hình biến môi trường trên máy người dùng:
+Workflow GitHub Actions tạo asset `latest.json` trong mỗi stable release tag và `latest-beta.json` trong beta prerelease. Manifest chứa channel, version, tag, tên Setup, URL tải, SHA-256, signature status, release notes và metadata rollback. Có thể chọn kênh trong UI hoặc cấu hình:
 
 ```bat
+set FRAMEFORGE_UPDATE_CHANNEL=stable
 set FRAMEFORGE_UPDATE_MANIFEST_URL=https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest.json
+```
+
+Với beta channel:
+
+```bat
+set FRAMEFORGE_UPDATE_CHANNEL=beta
+set FRAMEFORGE_UPDATE_MANIFEST_URL=https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest-beta.json
 ```
 
 Repository FrameForge hiện đã là public, nên có thể dùng trực tiếp GitHub Release làm feed cập nhật công khai mà không cần Personal Access Token. App có URL manifest public mặc định; vẫn có thể ghi đè bằng `FRAMEFORGE_UPDATE_MANIFEST_URL` nếu chuyển sang feed khác.
 
-Quy trình phát hành khuyến nghị là tạo tag SemVer, chờ GitHub Actions build và tạo Release, sau đó kiểm tra `latest.json`, `SHA256SUMS.txt` và Setup asset. Người dùng có thể tắt updater EXE bằng `FRAMEFORGE_APP_UPDATE=0`, hoặc chỉ tắt kiểm tra lúc khởi động bằng `FRAMEFORGE_APP_UPDATE_STARTUP=0`; updater yt-dlp vẫn được điều khiển riêng bằng `FRAMEFORGE_AUTO_UPDATE=0`.
+Quy trình phát hành khuyến nghị là tạo tag SemVer, chờ GitHub Actions build và tạo Release, sau đó kiểm tra manifest, `SHA256SUMS.txt` và Setup asset. Khi manifest có rollback, UI cho phép tải bản stable trước đó, kiểm tra lại SHA-256 và mở installer rollback. Người dùng có thể tắt updater EXE bằng `FRAMEFORGE_APP_UPDATE=0`, hoặc chỉ tắt kiểm tra lúc khởi động bằng `FRAMEFORGE_APP_UPDATE_STARTUP=0`; updater yt-dlp vẫn được điều khiển riêng bằng `FRAMEFORGE_AUTO_UPDATE=0`.
+
+Để ký installer, thêm Actions secrets `WINDOWS_CERTIFICATE_BASE64` và `WINDOWS_CERTIFICATE_PASSWORD`. Secret đầu tiên là file PFX được mã hóa Base64; không commit PFX hoặc password vào repository. Nếu chưa có certificate, workflow vẫn ghi rõ `signature_status=unsigned`; cần cấu hình certificate tin cậy trước khi phân phối production.
 
 
 ## Chọn thư mục lưu file

@@ -18,6 +18,10 @@ CHECK_INTERVAL_SECONDS = 24 * 60 * 60
 APP_UPDATE_DIR_NAME = "app_updates"
 STATE_FILE_NAME = "app_update_check.json"
 PENDING_FILE_NAME = "pending.json"
+ROLLBACK_PENDING_FILE_NAME = "rollback_pending.json"
+CHANNEL_FILE_NAME = "update_channel.json"
+DEFAULT_BETA_MANIFEST_URL = "https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest-beta.json"
+SUPPORTED_CHANNELS = {"stable", "beta"}
 
 
 @dataclass
@@ -29,6 +33,26 @@ class AppUpdateStatus:
     downloaded: bool
     installer_path: str | None
     message: str
+    channel: str = "stable"
+    release_notes: str | None = None
+    release_notes_url: str | None = None
+    rollback_version: str | None = None
+    rollback_available: bool = False
+
+
+def _atomic_write_json(path: Path, value: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+
+
+def _read_json(path: Path) -> dict[str, object] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def app_data_dir() -> Path:
@@ -90,8 +114,92 @@ def _fetch_json(url: str, timeout: float = 10.0) -> dict[str, object]:
     return value
 
 
-def _manifest_url() -> str:
-    return os.environ.get("FRAMEFORGE_UPDATE_MANIFEST_URL", DEFAULT_MANIFEST_URL).strip()
+def _channel_path() -> Path:
+    return app_data_dir() / CHANNEL_FILE_NAME
+
+
+def normalize_channel(value: str | None) -> str:
+    normalized = str(value or "stable").strip().lower()
+    return normalized if normalized in SUPPORTED_CHANNELS else "stable"
+
+
+def get_update_channel() -> str:
+    configured = os.environ.get("FRAMEFORGE_UPDATE_CHANNEL")
+    if configured:
+        return normalize_channel(configured)
+    value = _read_json(_channel_path())
+    return normalize_channel(str(value.get("channel")) if value else "stable")
+
+
+def set_update_channel(channel: str) -> str:
+    normalized = normalize_channel(channel)
+    _atomic_write_json(_channel_path(), {"version": 1, "channel": normalized, "updated_at": time.time()})
+    return normalized
+
+
+def _manifest_url(channel: str | None = None) -> str:
+    override = os.environ.get("FRAMEFORGE_UPDATE_MANIFEST_URL")
+    if override:
+        return override.strip()
+    return DEFAULT_BETA_MANIFEST_URL if normalize_channel(channel or get_update_channel()) == "beta" else DEFAULT_MANIFEST_URL
+
+
+def _validate_manifest(manifest: dict[str, object], channel: str) -> dict[str, object]:
+    if manifest.get("schema") != 1:
+        raise ValueError("Manifest có schema không được hỗ trợ.")
+    if manifest.get("app") != "FrameForge":
+        raise ValueError("Manifest không thuộc ứng dụng FrameForge.")
+    latest = str(manifest.get("version") or "")
+    installer_url = str(manifest.get("installer_url") or "")
+    sha256 = str(manifest.get("sha256") or "")
+    installer_name = Path(str(manifest.get("installer") or "FrameForge-Setup.exe")).name
+    if not re.fullmatch(r"\d+\.\d+\.\d+", latest):
+        raise ValueError("Manifest có version không hợp lệ.")
+    if installer_name != f"FrameForge-Setup-{latest}.exe":
+        raise ValueError("Tên installer không khớp version trong manifest.")
+    if not installer_url.lower().startswith("https://"):
+        raise ValueError("Manifest có installer URL không dùng HTTPS.")
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
+        raise ValueError("Manifest có SHA-256 không hợp lệ.")
+    release_tag = manifest.get("release_tag")
+    if release_tag is not None and release_tag != f"v{latest}":
+        raise ValueError("release_tag không khớp version trong manifest.")
+    raw_channel = str(manifest.get("channel") or channel).strip().lower()
+    if raw_channel not in SUPPORTED_CHANNELS or raw_channel != normalize_channel(channel):
+        raise ValueError("Manifest channel không khớp kênh đang chọn.")
+    manifest_channel = raw_channel
+    signature_status = str(manifest.get("signature_status") or "unsigned").strip().lower()
+    if signature_status not in {"signed", "unsigned"}:
+        raise ValueError("signature_status không hợp lệ.")
+    signer_subject = str(manifest.get("signer_subject") or "") or None
+    if signature_status == "signed" and not signer_subject:
+        raise ValueError("Manifest signed phải có signer_subject.")
+    release_notes_url = str(manifest.get("release_notes_url") or "") or None
+    if release_notes_url and not release_notes_url.lower().startswith("https://"):
+        raise ValueError("release_notes_url phải dùng HTTPS.")
+    rollback = manifest.get("rollback")
+    if rollback is not None:
+        if not isinstance(rollback, dict):
+            raise ValueError("Rollback metadata không hợp lệ.")
+        rollback_version = str(rollback.get("version") or "")
+        rollback_url = str(rollback.get("installer_url") or "")
+        rollback_sha = str(rollback.get("sha256") or "")
+        if not re.fullmatch(r"\d+\.\d+\.\d+", rollback_version):
+            raise ValueError("Rollback version không hợp lệ.")
+        if not rollback_url.lower().startswith("https://") or not re.fullmatch(r"[0-9a-fA-F]{64}", rollback_sha):
+            raise ValueError("Rollback URL hoặc SHA-256 không hợp lệ.")
+    return {
+        "version": latest,
+        "installer_url": installer_url,
+        "sha256": sha256.lower(),
+        "installer": installer_name,
+        "channel": manifest_channel,
+        "signature_status": signature_status,
+        "signer_subject": signer_subject,
+        "release_notes": str(manifest.get("release_notes") or "")[:12000] or None,
+        "release_notes_url": release_notes_url,
+        "rollback": rollback if isinstance(rollback, dict) else None,
+    }
 
 
 def _sha256_file(path: Path) -> str | None:
@@ -103,6 +211,25 @@ def _sha256_file(path: Path) -> str | None:
     except OSError:
         return None
     return digest.hexdigest().lower()
+
+
+def _authenticode_valid(path: Path) -> bool:
+    """Kiểm tra chữ ký Authenticode bằng PowerShell khi chạy trên Windows."""
+    if sys.platform != "win32":
+        return False
+    escaped = str(path).replace("'", "''")
+    command = f"(Get-AuthenticodeSignature -LiteralPath '{escaped}').Status"
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and result.stdout.strip().lower() == "valid"
 
 
 def _download_verified(url: str, expected_sha256: str, destination: Path, timeout: float = 60.0) -> None:
@@ -152,8 +279,14 @@ def read_app_update_status() -> AppUpdateStatus:
             and path.is_file()
             and re.fullmatch(r"[0-9a-fA-F]{64}", sha256)
             and _sha256_file(path) == sha256.lower()
+            and (str(pending.get("signature_status") or "unsigned").lower() != "signed" or _authenticode_valid(path))
         ):
-            return AppUpdateStatus(current, version, True, True, True, str(path), "Đã tải Setup mới và chờ người dùng cài đặt.")
+            return AppUpdateStatus(
+                current, version, True, True, True, str(path), "Đã tải Setup mới và chờ người dùng cài đặt.",
+                normalize_channel(str(pending.get("channel") or get_update_channel())),
+                str(pending.get("release_notes") or "") or None,
+                str(pending.get("release_notes_url") or "") or None,
+            )
         elif pending:
             # Không mở lại file pending đã bị sửa, thiếu hoặc có metadata hỏng.
             pending_path.unlink(missing_ok=True)
@@ -161,6 +294,7 @@ def read_app_update_status() -> AppUpdateStatus:
             pending = None
     try:
         state = json.loads(_state_path().read_text(encoding="utf-8"))
+        rollback = state.get("rollback") if isinstance(state.get("rollback"), dict) else None
         return AppUpdateStatus(
             current,
             str(state.get("latest_version")) if state.get("latest_version") else None,
@@ -169,6 +303,11 @@ def read_app_update_status() -> AppUpdateStatus:
             False,
             None,
             str(state.get("message") or "Chưa kiểm tra cập nhật."),
+            normalize_channel(str(state.get("channel") or get_update_channel())),
+            str(state.get("release_notes") or "") or None,
+            str(state.get("release_notes_url") or "") or None,
+            str(rollback.get("version")) if rollback else None,
+            bool(rollback),
         )
     except (OSError, ValueError, TypeError):
         return AppUpdateStatus(current, None, False, False, False, None, "Chưa kiểm tra cập nhật.")
@@ -189,46 +328,46 @@ def maybe_update_app(force: bool = False, timeout: float = 10.0, download: bool 
             state = json.loads(state_path.read_text(encoding="utf-8"))
             checked_at = float(state.get("checked_at", 0))
             if checked_at + CHECK_INTERVAL_SECONDS > time.time():
-                return AppUpdateStatus(current, state.get("latest_version"), False, bool(state.get("available")), False, None, "Đã kiểm tra cập nhật gần đây.")
+                rollback = state.get("rollback") if isinstance(state.get("rollback"), dict) else None
+                return AppUpdateStatus(
+                    current, state.get("latest_version"), False, bool(state.get("available")), False, None,
+                    "Đã kiểm tra cập nhật gần đây.", normalize_channel(str(state.get("channel") or get_update_channel())),
+                    str(state.get("release_notes") or "") or None, str(state.get("release_notes_url") or "") or None,
+                    str(rollback.get("version")) if rollback else None, bool(rollback),
+                )
         except (OSError, ValueError, TypeError):
             pass
 
-    manifest_url = _manifest_url()
+    channel = get_update_channel()
+    manifest_url = _manifest_url(channel)
     if not manifest_url:
-        return AppUpdateStatus(current, None, False, False, False, None, "Chưa cấu hình update feed công khai cho ứng dụng.")
+        return AppUpdateStatus(current, None, False, False, False, None, "Chưa cấu hình update feed công khai cho ứng dụng.", channel=channel)
     try:
         manifest = _fetch_json(manifest_url, timeout=timeout)
-        if manifest.get("schema") != 1:
-            raise ValueError("Manifest có schema không được hỗ trợ.")
-        if manifest.get("app") != "FrameForge":
-            raise ValueError("Manifest không thuộc ứng dụng FrameForge.")
-        latest = str(manifest.get("version") or "")
-        installer_url = str(manifest.get("installer_url") or "")
-        sha256 = str(manifest.get("sha256") or "")
-        installer_name = Path(str(manifest.get("installer") or "FrameForge-Setup.exe")).name
-        if not re.fullmatch(r"\d+\.\d+\.\d+", latest):
-            raise ValueError("Manifest có version không hợp lệ.")
-        if installer_name != f"FrameForge-Setup-{latest}.exe":
-            raise ValueError("Tên installer không khớp version trong manifest.")
-        if not installer_url.lower().startswith("https://"):
-            raise ValueError("Manifest có installer URL không dùng HTTPS.")
-        if not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
-            raise ValueError("Manifest có SHA-256 không hợp lệ.")
-        release_tag = manifest.get("release_tag")
-        if release_tag is not None and release_tag != f"v{latest}":
-            raise ValueError("release_tag không khớp version trong manifest.")
+        normalized = _validate_manifest(manifest, channel)
+        latest = str(normalized["version"])
+        installer_url = str(normalized["installer_url"])
+        sha256 = str(normalized["sha256"])
+        installer_name = str(normalized["installer"])
         available = _version_key(latest) > _version_key(current)
+        rollback = normalized.get("rollback") if isinstance(normalized.get("rollback"), dict) else None
         state = {
             "checked_at": time.time(),
             "latest_version": latest,
             "available": available,
+            "channel": channel,
+            "signature_status": normalized.get("signature_status", "unsigned"),
+            "signer_subject": normalized.get("signer_subject"),
+            "release_notes": normalized.get("release_notes"),
+            "release_notes_url": normalized.get("release_notes_url"),
+            "rollback": rollback,
             "message": "Có bản cập nhật mới." if available else "Ứng dụng đã là phiên bản mới nhất.",
         }
-        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        _atomic_write_json(state_path, state)
         if not available:
-            return AppUpdateStatus(current, latest, True, False, False, None, str(state["message"]))
+            return AppUpdateStatus(current, latest, True, False, False, None, str(state["message"]), channel, normalized.get("release_notes"), normalized.get("release_notes_url"), str(rollback.get("version")) if rollback else None, bool(rollback))
         if not download:
-            return AppUpdateStatus(current, latest, True, True, False, None, "Có bản cập nhật mới. Nhấn Cập nhật ngay để tải và cài đặt.")
+            return AppUpdateStatus(current, latest, True, True, False, None, "Có bản cập nhật mới. Nhấn Cập nhật ngay để tải và cài đặt.", channel, normalized.get("release_notes"), normalized.get("release_notes_url"), str(rollback.get("version")) if rollback else None, bool(rollback))
 
         update_root = _update_root()
         target = update_root / installer_name
@@ -241,13 +380,118 @@ def maybe_update_app(force: bool = False, timeout: float = 10.0, download: bool 
             temporary_path.replace(target)
         finally:
             temporary_path.unlink(missing_ok=True)
-        pending = {"version": latest, "installer_path": str(target), "sha256": sha256.lower()}
-        (update_root / PENDING_FILE_NAME).write_text(json.dumps(pending, ensure_ascii=False, indent=2), encoding="utf-8")
-        return AppUpdateStatus(current, latest, True, True, True, str(target), "Đã tải và xác minh Setup mới; hãy bấm cài đặt khi sẵn sàng.")
+        pending = {
+            "version": latest,
+            "installer_path": str(target),
+            "sha256": sha256.lower(),
+            "channel": channel,
+            "signature_status": normalized.get("signature_status", "unsigned"),
+            "signer_subject": normalized.get("signer_subject"),
+            "release_notes": normalized.get("release_notes"),
+            "release_notes_url": normalized.get("release_notes_url"),
+        }
+        _atomic_write_json(update_root / PENDING_FILE_NAME, pending)
+        return AppUpdateStatus(current, latest, True, True, True, str(target), "Đã tải và xác minh Setup mới; hãy bấm cài đặt khi sẵn sàng.", channel, normalized.get("release_notes"), normalized.get("release_notes_url"), str(rollback.get("version")) if rollback else None, bool(rollback))
     except (OSError, ValueError, urllib.error.URLError, TimeoutError) as exc:
         message = f"Không kiểm tra được bản cập nhật ứng dụng: {exc}"
-        state_path.write_text(json.dumps({"checked_at": time.time(), "available": False, "message": message}, ensure_ascii=False, indent=2), encoding="utf-8")
+        _atomic_write_json(state_path, {"checked_at": time.time(), "available": False, "channel": channel if 'channel' in locals() else get_update_channel(), "message": message})
         return AppUpdateStatus(current, None, True, False, False, None, message)
+
+
+def _rollback_pending_path() -> Path:
+    return _update_root() / ROLLBACK_PENDING_FILE_NAME
+
+
+def _read_rollback_pending() -> dict[str, object] | None:
+    value = _read_json(_rollback_pending_path())
+    if not value:
+        return None
+    path = Path(str(value.get("installer_path") or ""))
+    sha256 = str(value.get("sha256") or "")
+    update_root = _update_root().resolve()
+    try:
+        path.resolve().relative_to(update_root)
+    except ValueError:
+        _rollback_pending_path().unlink(missing_ok=True)
+        return None
+    signature_status = str(value.get("signature_status") or "unsigned").lower()
+    if not path.is_file() or not re.fullmatch(r"[0-9a-fA-F]{64}", sha256) or _sha256_file(path) != sha256.lower() or (signature_status == "signed" and not _authenticode_valid(path)):
+        _rollback_pending_path().unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
+        return None
+    return value
+
+
+def rollback_app_now(timeout: float = 10.0) -> AppUpdateStatus:
+    """Tải và xác minh bản rollback được workflow ghi trong manifest."""
+    status = maybe_update_app(force=True, timeout=timeout, download=False)
+    state = _read_json(_state_path()) or {}
+    rollback = state.get("rollback") if isinstance(state.get("rollback"), dict) else None
+    if not rollback:
+        return AppUpdateStatus(
+            status.current_version, status.latest_version, status.checked, status.available, False, None,
+            "Manifest không cung cấp bản rollback an toàn.", status.channel, status.release_notes,
+            status.release_notes_url, None, False,
+        )
+    version = str(rollback.get("version") or "")
+    url = str(rollback.get("installer_url") or "")
+    sha256 = str(rollback.get("sha256") or "").lower()
+    signature_status = str(rollback.get("signature_status") or "unsigned").lower()
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not url.lower().startswith("https://") or not re.fullmatch(r"[0-9a-f]{64}", sha256) or signature_status not in {"signed", "unsigned"}:
+        return AppUpdateStatus(
+            status.current_version, status.latest_version, status.checked, status.available, False, None,
+            "Metadata rollback không hợp lệ.", status.channel, status.release_notes, status.release_notes_url,
+            None, False,
+        )
+    existing = _read_rollback_pending()
+    if existing and str(existing.get("version")) == version:
+        return AppUpdateStatus(
+            status.current_version, status.latest_version, status.checked, status.available, True,
+            str(existing.get("installer_path")), "Đã tải và xác minh bản rollback; hãy bấm mở installer.",
+            status.channel, status.release_notes, status.release_notes_url, version, True,
+        )
+    update_root = _update_root()
+    target = update_root / f"FrameForge-Setup-{version}.exe"
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="FrameForge-Rollback-", suffix=".tmp", dir=update_root, delete=False) as temporary:
+            temporary_path = Path(temporary.name)
+        _download_verified(url, sha256, temporary_path, timeout=max(timeout, 60.0))
+        target.unlink(missing_ok=True)
+        temporary_path.replace(target)
+        _atomic_write_json(_rollback_pending_path(), {
+            "version": version,
+            "installer_path": str(target),
+            "sha256": sha256,
+            "signature_status": signature_status,
+            "signer_subject": rollback.get("signer_subject"),
+        })
+        return AppUpdateStatus(
+            status.current_version, status.latest_version, status.checked, status.available, True, str(target),
+            "Đã tải và xác minh bản rollback; hãy bấm mở installer.", status.channel, status.release_notes,
+            status.release_notes_url, version, True,
+        )
+    except (OSError, ValueError, urllib.error.URLError, TimeoutError) as exc:
+        return AppUpdateStatus(
+            status.current_version, status.latest_version, status.checked, status.available, False, None,
+            f"Không thể tải rollback: {exc}", status.channel, status.release_notes, status.release_notes_url,
+            version, True,
+        )
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def launch_rollback_installer() -> bool:
+    pending = _read_rollback_pending()
+    if not pending:
+        return False
+    path = Path(str(pending.get("installer_path") or ""))
+    if sys.platform == "win32":
+        os.startfile(str(path))  # type: ignore[attr-defined]
+    else:
+        subprocess.Popen([str(path)])
+    return True
 
 
 def initialize_app_update() -> AppUpdateStatus:
@@ -290,7 +534,10 @@ def launch_pending_installer() -> bool:
     if not pending:
         return False
     path = Path(str(pending.get("installer_path") or ""))
-    if not path.is_file():
+    sha256 = str(pending.get("sha256") or "")
+    if not path.is_file() or not re.fullmatch(r"[0-9a-fA-F]{64}", sha256) or _sha256_file(path) != sha256.lower():
+        _update_root().joinpath(PENDING_FILE_NAME).unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
         return False
     if sys.platform == "win32":
         os.startfile(str(path))  # type: ignore[attr-defined]
