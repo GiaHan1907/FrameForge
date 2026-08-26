@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import csv
 import ctypes
+import io
 import json
 import os
 try:
@@ -86,7 +87,7 @@ def run_case(video: Path, work: Path, workers: int, frames: int) -> dict[str, ob
     args = make_args(work, workers, frames)
     before = rss_bytes()
     started = time.perf_counter()
-    with contextlib.redirect_stdout(open(os.devnull, "w")), contextlib.redirect_stderr(open(os.devnull, "w")):
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         report = engine.process_video(video, output, None, args)
     elapsed = time.perf_counter() - started
     after = rss_bytes()
