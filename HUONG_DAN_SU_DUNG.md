@@ -60,6 +60,12 @@ Trước khi chạy, ứng dụng kiểm tra dung lượng trống tại thư m�
 
 Khu vực **Tải video công khai** dùng layout hai tầng: URL ở vùng rộng phía trên, chất lượng ở cột bên cạnh, còn giới hạn playlist, số lần retry và nút **Tải queue** nằm trên cùng một hàng bên dưới. Toàn bộ giao diện dùng dark mode thống nhất cho nền, card, ô nhập, select, bảng timeline và nút thao tác.
 
+### Preset cấu hình và telemetry
+
+Ở đầu sidebar, chọn **Preset cấu hình** trước khi tinh chỉnh chi tiết. `Nhanh` giảm kích thước/FPS phân tích để xử lý nhanh; `Cân bằng` là mặc định; `Chất lượng cao` ưu tiên phân tích và chất lượng ảnh; `Video dọc / TikTok` dùng các kích thước phù hợp nội dung dọc. Preset chỉ điền giá trị khởi đầu, bạn vẫn có thể sửa bất kỳ trường nào sau đó.
+
+Trong khi xử lý, ba thẻ telemetry hiển thị **FPS**, **ETA** và **RAM process**. FPS là số đơn vị tiến độ đã hoàn thành chia cho thời gian chạy; ETA là thời gian còn lại ước tính tuyến tính khi đã biết tổng số frame/mốc; RAM process là RSS của process FrameForge. Đây không phải tổng RAM máy hoặc tổng RSS của các process con. Khi engine chưa gửi được `frame x/y` hoặc `mốc x/y`, FPS/ETA có thể hiển thị trạng thái chờ thay vì một con số thiếu tin cậy.
+
 ## 4. Tinh chỉnh scene detection
 
 `Độ nhạy thay đổi cảnh` thấp hơn sẽ nhạy hơn và thường tạo nhiều scene hơn. `Khoảng cách tối thiểu giữa scene` giúp tránh tạo quá nhiều scene trong các đoạn chuyển tiếp nhanh. Cơ chế chống flash kiểm tra xem frame sau thay đổi có quay lại cảnh cũ hay không.
@@ -136,7 +142,7 @@ Các tùy chọn chính:
 | `--temp-cleanup-hours N` | Dọn work directory tạm cũ hơn N giờ khi khởi động CLI. |
 | `--temp-quota-mb N` | Giới hạn tổng work directory tạm cũ; mặc định 2048 MB, `0` để tắt quota. |
 | `--cache-quota-mb N` | Giới hạn scene cache cũ; mặc định 1024 MB, `0` để tắt quota. |
-| `--extract-workers N` | Số process trích frame cho fixed/count mode; `0` tự chọn tối đa 4, `1` chạy tuần tự. Multiprocessing tự kích hoạt từ 8 timestamp nếu adaptive budget theo số video worker, CPU và RAM cho phép. |
+| `--extract-workers N` | Số process trích frame cho fixed/count mode; `0` tự chọn tối đa 4, `1` chạy tuần tự. Adaptive worker còn xét thời lượng và số timestamp: clip ngắn/ít mốc thường giữ 1 process, job dài/nhiều mốc mới mở thêm process trong giới hạn CPU/RAM và số video worker. |
 | `--resume` | Tiếp tục queue từ checkpoint của output run hiện tại. |
 | `--checkpoint FILE` | Đường dẫn checkpoint JSON tùy chỉnh. |
 | `--cache-dir DIR` | Cache timestamp scene để dùng lại giữa các lần chạy. |
@@ -217,7 +223,7 @@ Trong thực tế, worker thường có lợi nhất khi có ít nhất hai vide
 
 ## 13. Adaptive worker và benchmark
 
-FrameForge v0.1.9 có adaptive worker cho hai lớp xử lý. `--workers` điều khiển số video chạy song song, còn `--extract-workers` điều khiển số process seek/trích frame trong fixed/count mode. Khi đặt `--extract-workers 0`, ứng dụng tự chọn tối đa 4 process theo CPU/RAM; nếu có ít hơn 8 timestamp, pipeline giữ tuần tự để tránh overhead. Khi nhiều video chạy đồng thời, ngân sách extraction trên từng video được hạ xuống để tránh oversubscription. Có thể xem kết quả trong `report.json` qua các trường `extraction_mode`, `extraction_workers`, `video_workers`, `configured_extract_workers` và `adaptive_extract_workers`.
+FrameForge v0.1.15 có adaptive worker cho hai lớp xử lý. `--workers` điều khiển số video chạy song song, còn `--extract-workers` điều khiển số process seek/trích frame trong fixed/count mode. Khi đặt `--extract-workers 0`, ứng dụng tự chọn tối đa 4 process theo CPU/RAM; quyết định cuối còn xét thời lượng video và số timestamp. Quy tắc thận trọng hiện giữ 1 process cho clip dưới 30 giây với dưới 96 mốc, dưới 90 giây với dưới 160 mốc, và dưới 180 giây với dưới 240 mốc; các job lớn hơn có thể được cấp thêm process theo ngân sách. Khi nhiều video chạy đồng thời, ngân sách extraction trên từng video được hạ xuống để tránh oversubscription. Có thể xem kết quả trong `report.json` qua các trường `extraction_mode`, `extraction_workers`, `video_workers`, `configured_extract_workers` và `adaptive_extract_workers`.
 
 Benchmark CI nằm tại `benchmarks/benchmark_frame_extraction.py`. Script tạo video synthetic nếu không truyền `--video`, chạy các mức worker, đo thời gian, throughput và RSS memory, sau đó ghi JSON/CSV:
 
@@ -228,7 +234,7 @@ python benchmarks/benchmark_frame_extraction.py \
   --output benchmark_results.json
 ```
 
-GitHub Actions chạy benchmark riêng trên pull request với 24 frame và trên Windows release với 60 frame; kết quả được lưu thành artifact, không được dùng làm ngưỡng cứng vì hiệu năng phụ thuộc codec, CPU, ổ đĩa và runner.
+GitHub Actions chạy benchmark riêng trên pull request với 24 frame và trên Windows release với 60 frame; kết quả được lưu thành artifact, không được dùng làm ngưỡng cứng vì hiệu năng phụ thuộc codec, CPU, ổ đĩa và runner. Với clip tổng hợp ngắn, việc Auto chọn tuần tự là chủ ý vì chi phí khởi tạo process có thể lớn hơn lợi ích multiprocessing.
 
 ## 14. Chạy benchmark cũ
 

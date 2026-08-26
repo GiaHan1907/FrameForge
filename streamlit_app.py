@@ -7,9 +7,11 @@ from datetime import datetime
 
 import html
 import json
+import math
 import mimetypes
 import multiprocessing as mp
 import os
+import re
 import sys
 import shutil
 import tempfile
@@ -46,6 +48,7 @@ from video_screenshot_advanced import (
     ProcessingCancelled,
     cleanup_frameforge_cache,
     cleanup_frameforge_temp_dirs,
+    current_process_rss_bytes,
     ensure_free_disk_space,
     format_bytes,
     process_videos,
@@ -64,6 +67,148 @@ from video_downloader import (
 
 
 cleanup_frameforge_temp_dirs(older_than_seconds=24 * 60 * 60, max_total_bytes=2 * 1024**3)
+
+PRESET_CONFIGS = {
+    "Nhanh": {
+        "mode_label": "Scene detection",
+        "scene_threshold": 0.35,
+        "min_scene_gap": 0.8,
+        "flash_return_ratio": 0.55,
+        "flash_brightness_threshold": 0.20,
+        "scene_confirmations": 1,
+        "analysis_width": 320,
+        "analysis_fps": 4.0,
+        "extract_worker_choice": "Auto (khuyến nghị)",
+        "min_sharpness": 70.0,
+        "duplicate_threshold": 6,
+        "motion_blur_threshold": 0.35,
+        "image_format": "jpg",
+        "quality": 85,
+        "width": 1280,
+        "retries": 1,
+        "retry_delay": 0.5,
+        "disk_reserve_mb": 512,
+        "use_scene_cache": True,
+        "cross_run_duplicates": True,
+    },
+    "Cân bằng": {
+        "mode_label": "Best frame per scene",
+        "scene_threshold": 0.30,
+        "min_scene_gap": 0.5,
+        "flash_return_ratio": 0.55,
+        "flash_brightness_threshold": 0.18,
+        "scene_confirmations": 2,
+        "analysis_width": 640,
+        "analysis_fps": 8.0,
+        "extract_worker_choice": "Auto (khuyến nghị)",
+        "min_sharpness": 100.0,
+        "duplicate_threshold": 6,
+        "motion_blur_threshold": 0.30,
+        "image_format": "jpg",
+        "quality": 95,
+        "width": 0,
+        "retries": 2,
+        "retry_delay": 1.0,
+        "disk_reserve_mb": 512,
+        "use_scene_cache": True,
+        "cross_run_duplicates": True,
+    },
+    "Chất lượng cao": {
+        "mode_label": "Best frame per scene",
+        "scene_threshold": 0.25,
+        "min_scene_gap": 0.4,
+        "flash_return_ratio": 0.50,
+        "flash_brightness_threshold": 0.15,
+        "scene_confirmations": 3,
+        "analysis_width": 960,
+        "analysis_fps": 12.0,
+        "extract_worker_choice": "Auto (khuyến nghị)",
+        "min_sharpness": 120.0,
+        "duplicate_threshold": 4,
+        "motion_blur_threshold": 0.25,
+        "image_format": "jpg",
+        "quality": 98,
+        "width": 1920,
+        "retries": 2,
+        "retry_delay": 1.0,
+        "disk_reserve_mb": 1024,
+        "use_scene_cache": True,
+        "cross_run_duplicates": True,
+    },
+    "Video dọc / TikTok": {
+        "mode_label": "Best frame per scene",
+        "scene_threshold": 0.30,
+        "min_scene_gap": 0.5,
+        "flash_return_ratio": 0.55,
+        "flash_brightness_threshold": 0.18,
+        "scene_confirmations": 2,
+        "analysis_width": 640,
+        "analysis_fps": 8.0,
+        "extract_worker_choice": "Auto (khuyến nghị)",
+        "min_sharpness": 100.0,
+        "duplicate_threshold": 6,
+        "motion_blur_threshold": 0.30,
+        "image_format": "jpg",
+        "quality": 92,
+        "width": 1080,
+        "retries": 2,
+        "retry_delay": 1.0,
+        "disk_reserve_mb": 512,
+        "use_scene_cache": True,
+        "cross_run_duplicates": True,
+    },
+}
+
+
+def apply_preset(name: str) -> None:
+    for key, value in PRESET_CONFIGS[name].items():
+        st.session_state[key] = value
+    st.session_state["preset_status"] = f"Đã áp dụng preset: {name}"
+
+
+def apply_selected_preset() -> None:
+    apply_preset(str(st.session_state.get("preset_choice", "Cân bằng")))
+
+
+def format_eta(seconds: float | None) -> str:
+    if seconds is None or not math.isfinite(float(seconds)) or seconds < 0:
+        return "—"
+    total = int(round(float(seconds)))
+    minutes, secs = divmod(total, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}g {minutes:02d}p"
+    if minutes:
+        return f"{minutes}p {secs:02d}s"
+    return f"{secs}s"
+
+
+def parse_progress_units(message: str) -> tuple[int, int] | None:
+    match = re.search(r"(\d+)\s*/\s*(\d+)\s*(?:mốc|frame)", message)
+    if not match:
+        return None
+    return int(match.group(1)), max(1, int(match.group(2)))
+
+
+def progress_telemetry(item: dict[str, object]) -> dict[str, float | int | None]:
+    done = int(item.get("units_done", 0) or 0)
+    total = int(item.get("units_total", 0) or 0)
+    started_at = float(item.get("started_at", 0.0) or 0.0)
+    elapsed = max(0.0, time.monotonic() - started_at) if started_at else 0.0
+    fps = done / elapsed if done > 0 and elapsed > 0.2 else None
+    eta = ((total - done) / fps) if fps and total > done else None
+    return {
+        "fps": fps,
+        "eta": eta,
+        "rss": int(item.get("rss_bytes", 0) or 0),
+        "done": done,
+        "total": total,
+    }
+
+
+st.session_state.setdefault("preset_choice", "Cân bằng")
+for _preset_key, _preset_value in PRESET_CONFIGS["Cân bằng"].items():
+    st.session_state.setdefault(_preset_key, _preset_value)
 
 st.set_page_config(
     page_title="FrameForge · Video Screenshot",
@@ -1076,10 +1221,20 @@ with st.sidebar:
         st.caption("Chưa có video nào được chọn")
 
     st.markdown('<div class="eyebrow">02 · Cách chọn frame</div>', unsafe_allow_html=True)
+    st.selectbox(
+        "Preset cấu hình",
+        list(PRESET_CONFIGS),
+        key="preset_choice",
+        on_change=apply_selected_preset,
+        help="Áp dụng nhanh nhóm thông số; bạn vẫn có thể tinh chỉnh từng trường sau đó.",
+    )
+    if st.session_state.get("preset_status"):
+        st.caption(st.session_state.pop("preset_status"))
     mode_label = st.radio(
         "Chế độ xử lý",
         ["Best frame per scene", "Scene detection", "Mỗi N giây", "Đúng N frame"],
         index=0,
+        key="mode_label",
         help="Best frame per scene giữ ảnh sắc nét nhất trong từng cảnh; Scene detection giữ frame đầu của từng cảnh.",
     )
 
@@ -1107,36 +1262,41 @@ with st.sidebar:
                 "Độ nhạy thay đổi cảnh",
                 0.05,
                 0.95,
-                0.30,
+                float(st.session_state.get("scene_threshold", 0.30)),
                 0.05,
+                key="scene_threshold",
                 help="Thấp hơn sẽ nhạy hơn và có thể tạo nhiều scene hơn.",
             )
             min_scene_gap = st.number_input(
                 "Khoảng cách tối thiểu giữa scene (giây)",
                 min_value=0.1,
-                value=0.5,
+                value=float(st.session_state.get("min_scene_gap", 0.5)),
                 step=0.1,
+                key="min_scene_gap",
             )
             flash_return_ratio = st.slider(
                 "Ngưỡng chống flash",
                 0.10,
                 0.95,
-                0.55,
+                float(st.session_state.get("flash_return_ratio", 0.55)),
                 0.05,
+                key="flash_return_ratio",
                 help="Thấp hơn giúp bỏ các thay đổi ngắn quay lại cảnh cũ.",
             )
             flash_brightness_threshold = st.slider(
                 "Độ lệch sáng tối đa khi nhận diện flash",
                 0.01,
                 0.50,
-                0.18,
+                float(st.session_state.get("flash_brightness_threshold", 0.18)),
                 0.01,
+                key="flash_brightness_threshold",
             )
             scene_confirmations = st.slider(
                 "Số frame xác nhận thay đổi cảnh",
                 1,
                 5,
-                2,
+                int(st.session_state.get("scene_confirmations", 2)),
+                key="scene_confirmations",
                 help="Tăng lên để chống nhiễu/flash; giảm xuống 1 cho chuyển cảnh rất nhanh.",
             )
     elif mode_label == "Mỗi N giây":
@@ -1155,6 +1315,7 @@ with st.sidebar:
         "Video xử lý song song",
         ["Auto (khuyến nghị)", 1, 2, 3, 4],
         index=0,
+        key="worker_choice",
         help="Auto tự cân bằng theo CPU/RAM. Mỗi worker xử lý một video độc lập.",
     )
     workers = "auto" if worker_choice == "Auto (khuyến nghị)" else int(worker_choice)
@@ -1164,95 +1325,115 @@ with st.sidebar:
             "Chiều rộng phân tích",
             min_value=160,
             max_value=1920,
-            value=640,
+            value=int(st.session_state.get("analysis_width", 640)),
             step=80,
+            key="analysis_width",
             help="Frame được thu nhỏ trước khi đo scene, độ nét và trùng lặp.",
         )
         analysis_fps = st.number_input(
             "FPS phân tích scene",
             min_value=1.0,
             max_value=30.0,
-            value=8.0,
+            value=float(st.session_state.get("analysis_fps", 8.0)),
             step=1.0,
+            key="analysis_fps",
             help="Giảm FPS để tăng tốc; tăng FPS nếu cảnh thay đổi rất nhanh.",
         )
         extract_worker_choice = st.selectbox(
             "Process trích frame fixed/count",
             ["Auto (khuyến nghị)", 1, 2, 3, 4],
             index=0,
+            key="extract_worker_choice",
             help="Chỉ áp dụng cho Mỗi N giây/Đúng N frame khi có từ 8 timestamp. Scene mode vẫn decode tuần tự để giữ cache scene chính xác.",
         )
 
     min_sharpness = st.number_input(
         "Ngưỡng độ nét tối thiểu",
         min_value=0.0,
-        value=100.0,
+        value=float(st.session_state.get("min_sharpness", 100.0)),
         step=10.0,
+        key="min_sharpness",
         help="Điểm đã chuẩn hóa về chiều rộng tham chiếu 640 px. Đặt 0 để tắt lọc mờ.",
     )
     duplicate_threshold = st.slider(
         "Ngưỡng trùng dHash",
         0,
         32,
-        6,
+        int(st.session_state.get("duplicate_threshold", 6)),
+        key="duplicate_threshold",
         help="Khoảng cách càng nhỏ thì frame càng giống. Đặt 0 để tắt lọc trùng.",
     )
     motion_blur_threshold = st.slider(
         "Ngưỡng motion blur",
         0.0,
         1.0,
-        0.30,
+        float(st.session_state.get("motion_blur_threshold", 0.30)),
         0.05,
+        key="motion_blur_threshold",
         help="Điểm càng cao càng có nguy cơ nhòe chuyển động. Đặt 0 để tắt.",
     )
 
     st.markdown('<div class="eyebrow">04 · Đầu ra</div>', unsafe_allow_html=True)
-    image_format = st.selectbox("Định dạng ảnh", ["jpg", "png", "webp"], index=0)
+    image_format = st.selectbox(
+        "Định dạng ảnh", ["jpg", "png", "webp"], index=0,
+        key="image_format",
+    )
     quality = st.slider(
         "Chất lượng JPG/WebP",
         1,
         100,
-        95,
+        int(st.session_state.get("quality", 95)),
+        key="quality",
         disabled=image_format == "png",
     )
     width = st.number_input(
         "Chiều rộng đầu ra (0 = giữ nguyên)",
         min_value=0,
-        value=0,
+        value=int(st.session_state.get("width", 0)),
         step=64,
+        key="width",
     )
-    overwrite = st.checkbox("Ghi đè file đầu ra đã tồn tại", value=True)
+    overwrite = st.checkbox(
+        "Ghi đè file đầu ra đã tồn tại",
+        value=bool(st.session_state.get("overwrite", True)),
+        key="overwrite",
+    )
     retry_count = st.number_input(
         "Số lần retry mỗi video",
         min_value=0,
         max_value=5,
-        value=2,
+        value=int(st.session_state.get("retries", 2)),
         step=1,
+        key="retries",
         help="Nếu một video lỗi tạm thời, FrameForge sẽ tự thử lại trước khi chuyển sang video kế tiếp.",
     )
     retry_delay = st.number_input(
         "Thời gian chờ retry (giây)",
         min_value=0.0,
         max_value=30.0,
-        value=1.0,
+        value=float(st.session_state.get("retry_delay", 1.0)),
         step=0.5,
+        key="retry_delay",
     )
     disk_reserve_mb = st.number_input(
         "Vùng đệm dung lượng tối thiểu (MB)",
         min_value=0,
         max_value=8192,
-        value=512,
+        value=int(st.session_state.get("disk_reserve_mb", 512)),
         step=128,
+        key="disk_reserve_mb",
         help="Không bắt đầu hoặc tiếp tục ghi khi dung lượng trống thấp hơn vùng đệm này.",
     )
     use_scene_cache = st.checkbox(
         "Dùng cache phân tích scene",
-        value=True,
+        value=bool(st.session_state.get("use_scene_cache", True)),
+        key="use_scene_cache",
         help="Lần chạy sau sẽ seek tới các timestamp đã chọn thay vì phân tích lại toàn bộ video.",
     )
     cross_run_duplicates = st.checkbox(
         "Loại duplicate giữa các lần chạy",
-        value=True,
+        value=bool(st.session_state.get("cross_run_duplicates", True)),
+        key="cross_run_duplicates",
         help="Dùng dHash index trong thư mục screenshot để tránh lưu lại frame gần giống đã xuất trước đó.",
     )
 
@@ -1300,11 +1481,35 @@ def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output
     args.queue_db = Path(str(getattr(args, "queue_db", "") or output_dir / ".frameforge_queue.sqlite3"))
     cancel_event = threading.Event()
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="frameforge-ui")
-    progress_state = {str(path): {"phase": "queued", "fraction": 0.0, "message": "Đang xếp hàng"} for path in input_paths}
+    progress_state = {
+        str(path): {
+            "phase": "queued",
+            "fraction": 0.0,
+            "message": "Đang xếp hàng",
+            "started_at": time.monotonic(),
+            "units_done": 0,
+            "units_total": 0,
+            "rss_bytes": current_process_rss_bytes(),
+        }
+        for path in input_paths
+    }
     completed = {"count": 0}
 
     def on_progress(video: Path, phase: str, fraction: float, message: str) -> None:
-        progress_state[str(video)] = {"phase": phase, "fraction": fraction, "message": message}
+        key = str(video)
+        state = progress_state.setdefault(
+            key,
+            {"started_at": time.monotonic(), "units_done": 0, "units_total": 0},
+        )
+        state.update({
+            "phase": phase,
+            "fraction": fraction,
+            "message": message,
+            "rss_bytes": current_process_rss_bytes(),
+        })
+        units = parse_progress_units(message)
+        if units is not None:
+            state["units_done"], state["units_total"] = units
 
     def on_complete(video: Path, report: dict[str, object]) -> None:
         completed["count"] += 1
@@ -1316,11 +1521,16 @@ def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output
                     resolved_video.unlink(missing_ok=True)
             except OSError:
                 pass
-        progress_state[str(video)] = {
+        state = progress_state.setdefault(str(video), {"started_at": time.monotonic()})
+        state.update({
             "phase": "completed" if "error" not in report else "error",
             "fraction": 1.0,
             "message": f"Đã hoàn tất · lưu {report.get('saved', 0)} ảnh" if "error" not in report else str(report.get("error")),
-        }
+            "rss_bytes": current_process_rss_bytes(),
+        })
+        if report.get("requested") is not None:
+            state["units_done"] = int(report.get("requested", 0) or 0)
+            state["units_total"] = int(report.get("requested", 0) or 0)
 
     future = executor.submit(
         process_videos,
@@ -1504,12 +1714,28 @@ def _render_processing_job() -> None:
         overall = sum(fractions) / max(1, len(fractions))
         completed = int(job.get("completed", {}).get("count", 0))
         st.progress(overall, text=f"Tổng thể: {overall:.0%} · hoàn tất {completed}/{len(input_paths)} video")
+        telemetry = [progress_telemetry(progress_state.get(str(path), {})) for path in input_paths]
+        total_done = sum(int(item["done"] or 0) for item in telemetry)
+        total_units = sum(int(item["total"] or 0) for item in telemetry)
+        started_at = [float(progress_state.get(str(path), {}).get("started_at", 0.0) or 0.0) for path in input_paths]
+        elapsed = max(0.0, time.monotonic() - min((value for value in started_at if value), default=time.monotonic()))
+        overall_fps = total_done / elapsed if total_done > 0 and elapsed > 0.2 else None
+        overall_eta = ((total_units - total_done) / overall_fps) if overall_fps and total_units > total_done else None
+        current_rss = max((int(item["rss"] or 0) for item in telemetry), default=0)
+        fps_col, eta_col, ram_col = st.columns(3)
+        fps_col.metric("Tốc độ", f"{overall_fps:.1f} FPS" if overall_fps else "—")
+        eta_col.metric("ETA", format_eta(overall_eta))
+        ram_col.metric("RAM process", format_bytes(current_rss) if current_rss else "—")
         for path in input_paths:
             item = progress_state.get(str(path), {})
             phase = str(item.get("phase", "queued"))
             fraction = float(item.get("fraction", 0.0))
             message = str(item.get("message", "Đang chờ"))
-            st.caption(f"**{path.name}** · {phase} · {fraction:.0%} · {message}")
+            item_telemetry = progress_telemetry(item)
+            fps_label = f"{float(item_telemetry['fps']):.1f} FPS" if item_telemetry["fps"] else "—"
+            eta_label = format_eta(float(item_telemetry["eta"])) if item_telemetry["eta"] is not None else "—"
+            ram_label = format_bytes(int(item_telemetry["rss"] or 0)) if item_telemetry["rss"] else "—"
+            st.caption(f"**{path.name}** · {phase} · {fraction:.0%} · {message} · {fps_label} · ETA {eta_label} · RAM {ram_label}")
         if st.button("Hủy xử lý", key="cancel_processing", type="secondary"):
             cancel_event = job.get("cancel_event")
             if cancel_event is not None:

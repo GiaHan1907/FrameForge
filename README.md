@@ -8,6 +8,14 @@ Bản desktop xóa file input tạm sau từng video hoàn tất và dọn work 
 
 Khu vực tải video công khai dùng panel responsive hai tầng: vùng URL rộng ở phía trên, quality ở cột bên cạnh, và playlist limit/retry/action ở hàng dưới. Preview video dùng khung 16:9 tối đa 560px, tự co theo màn hình. Theme chính được đồng bộ dark mode cho canvas, card, input, select, timeline và cảnh báo. Screenshot mới có tên dạng `HH-MM-SS.mmm.jpg`; video tải xuống có tên dạng `video_YYYYMMDD_HHMMSS.ext` với hậu tố collision khi cần.
 
+## Ghi chú v0.1.15
+
+Bản này bổ sung **Preset cấu hình** trong sidebar gồm `Nhanh`, `Cân bằng`, `Chất lượng cao` và `Video dọc / TikTok`. Preset chỉ là điểm khởi đầu có thể chỉnh tiếp; khi đổi preset, các trường scene, phân tích, output, retry, cache và extraction được cập nhật đồng bộ mà không ghi trực tiếp vào widget directory.
+
+Trong lúc xử lý, Web UI hiển thị telemetry theo thời gian thực gồm tốc độ xử lý (FPS), ETA và RAM của process giao diện. FPS/ETA được tính từ các message có số frame hoặc mốc đã hoàn thành; ở giai đoạn chưa có đơn vị đo, UI hiển thị trạng thái chờ thay vì ước đoán không đáng tin. RAM là RSS của process FrameForge, không phải tổng RAM toàn hệ thống hay tổng RSS của các child process.
+
+Adaptive extraction worker nay xét đồng thời **số timestamp yêu cầu, thời lượng video, CPU/RAM và số video worker**. Job ngắn với ít mốc ưu tiên chạy tuần tự để tránh overhead khởi tạo process; job dài hoặc có nhiều mốc mới được cấp thêm extraction process trong giới hạn an toàn. Quy tắc này chỉ áp dụng cho `Mỗi N giây` và `Đúng N frame`; scene mode vẫn decode tuần tự để giữ tính nhất quán của phân tích scene/cache.
+
 ## Tính năng
 
 | Tính năng | Mô tả |
@@ -22,6 +30,9 @@ Khu vực tải video công khai dùng panel responsive hai tầng: vùng URL r�
 | Cleanup tạm tự động | Xóa file input tạm sau video hoàn tất và dọn work directory an toàn theo trạng thái job. |
 | Desktop lifecycle | Browser đóng sẽ hủy job, đóng executor và dừng server ở bản EXE desktop. |
 | Dark responsive downloader | Khu vực tải video công khai cân bằng theo grid hai tầng, phù hợp dark mode và màn hình hẹp. |
+| Preset cấu hình | Bốn preset cho tốc độ, cân bằng, chất lượng cao và video dọc; mọi giá trị vẫn có thể tinh chỉnh thủ công. |
+| Live telemetry | Hiển thị FPS, ETA và RSS RAM trong lúc xử lý; ETA chỉ xuất hiện khi đã có đơn vị tiến độ hợp lệ. |
+| Adaptive worker theo duration | Cấp extraction worker dựa trên thời lượng cùng số timestamp, ngoài CPU/RAM và số video worker. |
 
 ## Cấu trúc
 
@@ -99,7 +110,7 @@ Một số tùy chọn hiệu năng:
 | `--min-sharpness 100` | Ngưỡng độ nét chuẩn hóa theo chiều rộng tham chiếu 640 px. |
 | `--flash-return-ratio 0.55` | Mức tương đồng với cảnh cũ để nhận diện flash. |
 | `--flash-brightness-threshold 0.18` | Giới hạn thay đổi độ sáng khi xác nhận flash. |
-| `--extract-workers N` | Số process trích frame cho fixed/count mode. `0` tự chọn tối đa 4, `1` chạy tuần tự; từ 8 timestamp sẽ tự kích hoạt nếu adaptive budget cho phép. Budget thực tế còn bị giới hạn theo số video worker, CPU và RAM. |
+| `--extract-workers N` | Số process trích frame cho fixed/count mode. `0` tự chọn tối đa 4, `1` chạy tuần tự; adaptive budget còn xét số timestamp, thời lượng, số video worker, CPU và RAM. Job ngắn/ít mốc thường giữ 1 process để tránh overhead. |
 | `--queue-db FILE` | SQLite queue bền vững; mặc định là `<output>/.frameforge_queue.sqlite3`. |
 | `--temp-quota-mb N` | Quota work directory tạm cũ; mặc định 2048 MB, `0` để tắt quota. |
 | `--cache-quota-mb N` | Quota scene cache cũ; mặc định 1024 MB, `0` để tắt. |
@@ -119,7 +130,11 @@ Pipeline vẫn đọc video một lần. Chế độ này giữ frame đầu c�
 
 Từ v0.1.7, queue xử lý screenshot được lưu bền vững bằng SQLite tại `<output>/.frameforge_queue.sqlite3`. Database giữ trạng thái từng video, attempts, lỗi cuối và report để resume sau khi app bị đóng; JSON checkpoint vẫn được giữ để tương thích ngược. Khi hủy ở single-worker mode, các item còn lại được đánh dấu `cancelled` và database được đóng sạch.
 
-Từ v0.1.9, report bổ sung `video_workers`, `configured_extract_workers` và `adaptive_extract_workers`. Khi chạy nhiều video cùng lúc, FrameForge tự hạ số process extraction trên mỗi video để tránh dùng CPU/RAM quá mức; Streamlit cũng hiển thị các giá trị thực tế sau khi hoàn tất.
+Từ v0.1.9, report bổ sung `video_workers`, `configured_extract_workers` và `adaptive_extract_workers`. Khi chạy nhiều video cùng lúc, FrameForge tự hạ số process extraction trên mỗi video để tránh dùng CPU/RAM quá mức; Streamlit cũng hiển thị các giá trị thực tế sau khi hoàn tất. Từ v0.1.15, quyết định này còn xét thời lượng video và số timestamp; vì vậy cùng một cấu hình worker có thể chạy tuần tự trên clip ngắn nhưng dùng multiprocessing trên job dài/nhiều mốc.
+
+Trong Web UI, chọn preset ở đầu sidebar rồi kiểm tra lại các trường đã được điền trước khi xử lý. `Nhanh` giảm chi phí phân tích, `Cân bằng` là mặc định, `Chất lượng cao` ưu tiên phân tích và ảnh đầu ra, còn `Video dọc / TikTok` đặt khung phân tích/output phù hợp nội dung dọc. Preset không thay thế quyền chỉnh thủ công.
+
+Telemetry hiển thị `FPS`, `ETA` và `RAM process`. FPS là số đơn vị progress đã hoàn thành chia cho thời gian chạy; ETA là ước tính tuyến tính còn lại khi có tổng đơn vị; RAM là RSS của process cha. Các chỉ số có thể dao động do seek, codec, bộ lọc chất lượng, multiprocessing và tốc độ ổ đĩa.
 
 Từ v0.1.10, dHash index được ghi theo bucket byte ở định dạng v2 để giảm số hash phải so sánh khi threshold không vượt quá 6. Index định dạng v1 chỉ có mảng `hashes` vẫn được đọc bình thường và tự nâng cấp ở lần ghi kế tiếp. CLI dọn work directory tạm cũ theo tuổi và quota, đồng thời dọn scene cache cũ nhất khi vượt quota.
 

@@ -1,5 +1,15 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.15
+
+## Preset, telemetry và adaptive extraction theo thời lượng
+
+Bổ sung bốn preset cấu hình trong Streamlit: `Nhanh`, `Cân bằng`, `Chất lượng cao` và `Video dọc / TikTok`. Preset điền đồng bộ các tham số scene, kích thước/FPS phân tích, chất lượng ảnh, output, retry, disk reserve, cache và extraction; người dùng vẫn có thể chỉnh từng trường sau khi chọn preset. Preset `Cân bằng` là lựa chọn mặc định.
+
+Trong lúc xử lý, giao diện hiển thị tốc độ progress theo FPS, ETA và RSS RAM của process FrameForge. FPS/ETA chỉ được tính khi progress message có số đơn vị dạng `frame x/y` hoặc `mốc x/y`; trước thời điểm đó giao diện hiển thị trạng thái chờ. RSS là bộ nhớ của process cha, không đại diện cho tổng RSS của child process multiprocessing.
+
+Adaptive extraction worker trong fixed/count mode nay xét đồng thời thời lượng video và số timestamp, bên cạnh CPU, RAM, số video worker và giới hạn `--extract-workers`. Clip ngắn ít mốc ưu tiên chạy tuần tự để tránh overhead spawn; video dài hoặc job nhiều mốc mới mở thêm process trong ngân sách an toàn. Scene detection vẫn decode tuần tự để bảo toàn phân tích scene/cache. Report giữ các trường worker thực tế để kiểm tra quyết định sau khi hoàn tất.
+
 # FrameForge v0.1.14
 
 ## Preview gọn và tên file theo timestamp

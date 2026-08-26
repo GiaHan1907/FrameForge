@@ -96,6 +96,21 @@ class QueueRetryCancelTests(unittest.TestCase):
             self.assertEqual(engine.adaptive_extract_workers(4, 4, target_count=8), 2)
             self.assertEqual(engine.adaptive_extract_workers(8, 4, target_count=8), 1)
 
+    def test_adaptive_extract_workers_uses_duration_and_target_count(self) -> None:
+        with patch.object(engine.os, "cpu_count", return_value=8), patch.object(engine, "available_memory_gb", return_value=32.0):
+            self.assertEqual(
+                engine.adaptive_extract_workers(1, 4, target_count=64, duration_seconds=12),
+                1,
+            )
+            self.assertEqual(
+                engine.adaptive_extract_workers(1, 4, target_count=200, duration_seconds=120),
+                2,
+            )
+            self.assertEqual(
+                engine.adaptive_extract_workers(1, 4, target_count=600, duration_seconds=600),
+                4,
+            )
+
     def test_sqlite_queue_resume_completed_reports(self) -> None:
         queue_db = self.root / "queue.sqlite3"
         checkpoint = self.root / "checkpoint.json"

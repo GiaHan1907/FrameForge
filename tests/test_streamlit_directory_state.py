@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import ast
+import math
+import re
+import time
 import unittest
 from pathlib import Path
 
@@ -47,6 +50,40 @@ class StreamlitDirectoryStateTests(unittest.TestCase):
         self.assertIn("aspect-ratio: 16 / 9", self.source)
         self.assertIn("width=560", self.source)
         self.assertIn('pattern = f"*{timestamp_label(nearest)}.*"', self.source)
+
+    def test_presets_and_progress_telemetry_are_present(self) -> None:
+        self.assertIn('PRESET_CONFIGS = {', self.source)
+        for name in ('Nhanh', 'Cân bằng', 'Chất lượng cao', 'Video dọc / TikTok'):
+            self.assertIn(f'"{name}"', self.source)
+        self.assertIn('on_change=apply_selected_preset', self.source)
+        self.assertIn('st.session_state.setdefault("preset_choice", "Cân bằng")', self.source)
+        self.assertIn('def parse_progress_units', self.source)
+        self.assertIn('def progress_telemetry', self.source)
+        self.assertIn('fps_col.metric("Tốc độ"', self.source)
+        self.assertIn('eta_col.metric("ETA"', self.source)
+        self.assertIn('ram_col.metric("RAM process"', self.source)
+
+    def test_progress_parser_and_telemetry_behavior(self) -> None:
+        functions = [
+            node
+            for node in self.tree.body
+            if isinstance(node, ast.FunctionDef) and node.name in {"parse_progress_units", "progress_telemetry"}
+        ]
+        namespace = {"math": math, "re": re, "time": time}
+        exec(compile(ast.Module(body=functions, type_ignores=[]), "streamlit_app.py", "exec"), namespace)
+        parse_progress_units = namespace["parse_progress_units"]
+        progress_telemetry = namespace["progress_telemetry"]
+        self.assertEqual(parse_progress_units("Đã xử lý 7/20 mốc"), (7, 20))
+        self.assertEqual(parse_progress_units("Đã xử lý 9/20 frame"), (9, 20))
+        self.assertIsNone(parse_progress_units("Đang chuẩn bị"))
+        telemetry = progress_telemetry(
+            {"units_done": 5, "units_total": 10, "started_at": time.monotonic() - 1.0, "rss_bytes": 1234}
+        )
+        self.assertEqual(telemetry["done"], 5)
+        self.assertEqual(telemetry["total"], 10)
+        self.assertEqual(telemetry["rss"], 1234)
+        self.assertIsNotNone(telemetry["fps"])
+        self.assertGreaterEqual(float(telemetry["eta"]), 0.0)
 
     def test_desktop_lifecycle_shutdown_is_guarded(self) -> None:
         launcher = (ROOT / "windows_launcher.py").read_text(encoding="utf-8")

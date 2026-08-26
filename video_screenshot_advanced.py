@@ -111,6 +111,45 @@ def format_bytes(value: int | float) -> str:
     return f"{amount:.1f} TB"
 
 
+def current_process_rss_bytes() -> int:
+    """Đọc RSS của process hiện tại bằng stdlib, trả 0 nếu không đọc được."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            class ProcessMemoryCounters(ctypes.Structure):
+                _fields_ = [
+                    ("cb", ctypes.c_ulong),
+                    ("PageFaultCount", ctypes.c_ulong),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
+
+            counters = ProcessMemoryCounters()
+            counters.cb = ctypes.sizeof(ProcessMemoryCounters)
+            ok = ctypes.windll.psapi.GetProcessMemoryInfo(
+                ctypes.windll.kernel32.GetCurrentProcess(),
+                ctypes.byref(counters),
+                counters.cb,
+            )
+            return int(counters.WorkingSetSize) if ok else 0
+        statm = Path("/proc/self/statm")
+        if statm.exists():
+            resident_pages = int(statm.read_text(encoding="ascii").split()[1])
+            return resident_pages * int(os.sysconf("SC_PAGE_SIZE"))
+        resource = __import__("resource")
+        value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        return value if sys.platform == "darwin" else value * 1024
+    except (AttributeError, ImportError, OSError, TypeError, ValueError, IndexError):
+        return 0
+
+
 def free_disk_bytes(path: Path) -> int:
     path.mkdir(parents=True, exist_ok=True)
     return int(shutil.disk_usage(path).free)
@@ -733,12 +772,12 @@ def adaptive_extract_workers(
     video_worker_count: int = 1,
     requested_workers: int | str | None = 0,
     target_count: int | None = None,
+    duration_seconds: float | None = None,
 ) -> int:
-    """Chọn số process trích frame để tránh oversubscription CPU/RAM.
+    """Chọn số process trích frame theo CPU/RAM, duration và số timestamp.
 
-    `video_worker_count` là số video chạy đồng thời ở lớp ngoài. Khi lớp ngoài
-    tăng, ngân sách process cho mỗi video giảm tương ứng. Multiprocessing chỉ
-    có ý nghĩa từ 8 target trở lên; target ít hơn luôn dùng tuần tự.
+    Video ngắn hoặc job ít timestamp ưu tiên tuần tự để tránh chi phí spawn/seek.
+    Tham số duration có default để giữ tương thích với caller cũ.
     """
     outer_workers = max(1, int(video_worker_count))
     if target_count is not None and int(target_count) < 8:
@@ -754,6 +793,22 @@ def adaptive_extract_workers(
             requested = recommended_extract_workers()
     cpu_budget = max(1, math.ceil((os.cpu_count() or 2) / outer_workers))
     memory_budget = 4
+    duration_budget = 4
+    if duration_seconds is not None:
+        try:
+            duration = max(0.0, float(duration_seconds))
+        except (TypeError, ValueError):
+            duration = 0.0
+        samples = max(0, int(target_count or 0))
+        # Spawn/seek overhead dominates short fixed/count jobs.
+        if duration < 30.0 and samples < 96:
+            duration_budget = 1
+        elif duration < 90.0 and samples < 160:
+            duration_budget = 1
+        elif duration < 180.0 and samples < 240:
+            duration_budget = 2
+        elif duration < 300.0 and samples < 360:
+            duration_budget = 3
     memory_gb = available_memory_gb()
     if memory_gb is not None:
         if memory_gb < 8:
@@ -762,7 +817,7 @@ def adaptive_extract_workers(
             memory_budget = 2
         elif memory_gb < 32:
             memory_budget = 3
-    return max(1, min(4, requested, cpu_budget, memory_budget))
+    return max(1, min(4, requested, cpu_budget, memory_budget, duration_budget))
 
 
 def _extract_frame_chunk(task: tuple[str, list[tuple[int, float]], str]) -> list[tuple[int, float, str | None, str | None]]:
@@ -893,6 +948,12 @@ def process_fixed_mode(
             targets.append(current)
             current += interval
 
+    effective_extract_workers = adaptive_extract_workers(
+        video_worker_count=int(getattr(args, "video_workers", 1)),
+        requested_workers=getattr(args, "extract_workers", 1),
+        target_count=len(targets),
+        duration_seconds=duration,
+    )
     reports = {
         "selection_mode": "fixed_interval" if args.count is None else "count",
         "requested": len(targets),
@@ -905,11 +966,13 @@ def process_fixed_mode(
         "capture_errors": 0,
         "scene_times": [],
         "extraction_mode": "sequential",
-        "extraction_workers": 1,
+        "extraction_workers": effective_extract_workers,
     }
-    if int(getattr(args, "extract_workers", 1)) > 1 and len(targets) >= int(getattr(args, "extract_min_targets", 8)):
+    if effective_extract_workers > 1 and len(targets) >= int(getattr(args, "extract_min_targets", 8)):
+        multiprocessing_args = copy.copy(args)
+        multiprocessing_args.extract_workers = effective_extract_workers
         return process_fixed_mode_multiprocess(
-            video, output_dir, targets, args, on_progress, cancel_event, existing_hashes, duplicate_buckets
+            video, output_dir, targets, multiprocessing_args, on_progress, cancel_event, existing_hashes, duplicate_buckets
         )
     target_index = 0
     frame_index = 0
@@ -927,7 +990,13 @@ def process_fixed_mode(
         frame_index += 1
         if frame_index == 1 or frame_index % 15 == 0:
             fraction = min(0.99, max(0.0, (timestamp - actual_start) / max(actual_end - actual_start, 1e-6)))
-            emit_progress(on_progress, video, "analyzing", fraction, f"Đang phân tích {timestamp:.1f}s")
+            emit_progress(
+                on_progress,
+                video,
+                "analyzing",
+                fraction,
+                f"Đang phân tích {timestamp:.1f}s · frame {frame_index}/{estimated_frames}",
+            )
         if timestamp + 1e-6 < targets[target_index]:
             continue
         if timestamp > actual_end + 0.05:
@@ -1010,6 +1079,7 @@ def process_scene_mode(
     previous_hash: int | None = None
     scene_index = 0
     frame_index = 0
+    estimated_frames = max(1, int(max(0.0, actual_end - actual_start) * max(args.source_fps, 1.0)))
 
     def flush(candidate: FrameCandidate | None, index: int, previous: int | None) -> int | None:
         check_cancelled(cancel_event)
@@ -1032,7 +1102,13 @@ def process_scene_mode(
         frame_index += 1
         if frame_index == 1 or frame_index % 15 == 0:
             fraction = min(0.99, max(0.0, (timestamp - actual_start) / max(actual_end - actual_start, 1e-6)))
-            emit_progress(on_progress, video, "analyzing", fraction, f"Đang phân tích scene tại {timestamp:.1f}s")
+            emit_progress(
+                on_progress,
+                video,
+                "analyzing",
+                fraction,
+                f"Đang phân tích scene tại {timestamp:.1f}s · frame {frame_index}/{estimated_frames}",
+            )
         if timestamp + 1e-6 < actual_start:
             continue
         if timestamp > actual_end:
@@ -1046,7 +1122,7 @@ def process_scene_mode(
             video,
             "analyzing",
             min(0.99, max(0.0, (timestamp - actual_start) / max(actual_end - actual_start, 1e-6))),
-            f"Đang phân tích scene tại {timestamp:.1f}s",
+            f"Đang phân tích scene tại {timestamp:.1f}s · frame {frame_index}/{estimated_frames}",
         )
 
         if current_best is None:
@@ -1315,6 +1391,7 @@ def process_videos(
     extract_worker_count = adaptive_extract_workers(worker_count, extract_worker_request)
     runtime_args = copy.copy(args)
     runtime_args.extract_workers = extract_worker_count
+    runtime_args.video_workers = worker_count
     runtime_args.extract_min_targets = max(1, int(getattr(args, "extract_min_targets", 8)))
     results: dict[int, dict[str, object]] = {}
     checkpoint_file = checkpoint_path(output_root, args)

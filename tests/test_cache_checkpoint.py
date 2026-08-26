@@ -94,7 +94,7 @@ class CacheCheckpointTests(unittest.TestCase):
         args = copy.copy(self.args)
         args.scene_detection = False
         args.best_frame_per_scene = False
-        args.count = 8
+        args.count = 200
         args.every = None
         args.extract_workers = 2
         args.extract_min_targets = 1
@@ -102,10 +102,13 @@ class CacheCheckpointTests(unittest.TestCase):
         args.cross_run_duplicates = False
         args.cross_run_duplicate_threshold = 0
         output = self.root / "multiprocess"
-        report = engine.process_video(self.video, output, None, args)
+        with patch.object(engine.os, "cpu_count", return_value=8), patch.object(
+            engine, "available_memory_gb", return_value=16.0
+        ):
+            report = engine.process_video(self.video, output, None, args)
         self.assertEqual(report["extraction_mode"], "multiprocessing")
         self.assertEqual(report["extraction_workers"], 2)
-        self.assertEqual(int(report["requested"]), 8)
+        self.assertEqual(int(report["requested"]), 200)
         self.assertGreaterEqual(int(report["saved"]), 1)
         self.assertEqual(len(list(output.rglob("*.jpg"))), int(report["saved"]))
 
