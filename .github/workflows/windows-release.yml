@@ -1,9 +1,8 @@
 name: FrameForge Windows Release
 
 on:
+  # Chỉ build Windows nặng khi phát hành tag; PR vẫn chạy quick-check.
   push:
-    branches:
-      - main
     tags:
       - "v*"
   pull_request:
@@ -31,6 +30,7 @@ jobs:
   quick-check:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -83,6 +83,13 @@ jobs:
           }
 
           $refName = "${{ github.ref_name }}"
+          $isTag = "${{ github.ref }}" -match '^refs/tags/'
+          if ($isTag -and $refName -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Release tags must use vMAJOR.MINOR.PATCH, got '$refName'"
+          }
+          if ("${{ github.event.inputs.publish_release }}" -eq "true" -and -not $isTag) {
+            throw "publish_release=true is only valid when manually running from a version tag"
+          }
           if ($refName -match '^v?(\d+\.\d+\.\d+)$') {
             $version = $Matches[1]
           } else {
@@ -101,6 +108,25 @@ jobs:
           cmd /c build_windows.bat
           if ($LASTEXITCODE -ne 0) {
             throw "build_windows.bat failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Validate packaged build outputs
+        run: |
+          $versionFile = (Get-Content frameforge_version.txt -Raw).Trim()
+          if ($versionFile -ne $env:FRAMEFORGE_VERSION) {
+            throw "frameforge_version.txt contains '$versionFile', expected '$env:FRAMEFORGE_VERSION'"
+          }
+          if (-not (Test-Path "dist\VideoScreenshotFilter\VideoScreenshotFilter.exe")) {
+            throw "PyInstaller executable was not found"
+          }
+          if (-not (Test-Path "vendor\ffmpeg\ffmpeg.exe")) {
+            throw "Embedded ffmpeg.exe was not found"
+          }
+          if (-not (Test-Path "vendor\ffmpeg\ffprobe.exe")) {
+            throw "Embedded ffprobe.exe was not found"
+          }
+          if (-not (Test-Path "vendor\ffmpeg\BUILD_METADATA.txt")) {
+            throw "FFmpeg build metadata was not found"
           }
 
       - name: Smoke test packaged executable
@@ -148,10 +174,12 @@ jobs:
       - name: Measure package and generate checksums
         run: |
           python measure_package_size.py . --dist-path dist\VideoScreenshotFilter --top 25 --json build_size_report.json
-          $setup = Get-ChildItem installer -Filter "FrameForge-Setup-*.exe" -File | Select-Object -First 1
-          if (-not $setup) {
-            throw "Installer executable was not found"
+          $expectedSetupName = "FrameForge-Setup-$env:FRAMEFORGE_VERSION.exe"
+          $setupPath = Join-Path "installer" $expectedSetupName
+          if (-not (Test-Path $setupPath)) {
+            throw "Expected installer executable was not found: $setupPath"
           }
+          $setup = Get-Item $setupPath
 
           $setupHash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash
           $hashLines = @()
@@ -229,6 +257,7 @@ jobs:
           test -f release_payload/SHA256SUMS.txt
           test -f release_payload/build_size_report.json
           test -f release_payload/latest.json
+          test -f release_payload/vendor/ffmpeg/BUILD_METADATA.txt
           python3 validate_release_manifest.py release_payload/latest.json "$setup" "$tag"
 
           if gh release view "$tag" >/dev/null 2>&1; then
