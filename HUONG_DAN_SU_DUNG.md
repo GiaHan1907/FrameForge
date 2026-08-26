@@ -154,6 +154,8 @@ python video_screenshot_advanced.py ./videos \
 
 Checkpoint được ghi atomically sau mỗi video hoàn tất. Khi resume, FrameForge chỉ bỏ qua video đã hoàn tất với cùng processing signature; nếu thay đổi cấu hình xử lý, checkpoint sẽ được coi là không tương thích và queue sẽ chạy lại an toàn.
 
+Từ v0.1.7, queue còn được lưu bền vững trong SQLite tại `<output>/.frameforge_queue.sqlite3`. Database ghi trạng thái từng video (`queued`, `running`, `retrying`, `completed`, `failed`, `cancelled`), số lần thử, lỗi cuối cùng và report JSON. JSON checkpoint vẫn được giữ để tương thích ngược và làm file resume dễ kiểm tra. CLI có thể đổi vị trí bằng `--queue-db FILE`; Streamlit tự dùng database trong thư mục output. Khi ứng dụng bị đóng sau khi một video hoàn tất, lần resume sau sẽ đọc cả SQLite và checkpoint để bỏ qua video đó.
+
 DHash index trong `--duplicate-index-dir` giúp loại frame gần giống đã lưu ở những lần chạy trước. Đặt `--duplicate-threshold 0` hoặc dùng `--no-cross-run-duplicates` nếu muốn mỗi lần chạy luôn tạo output độc lập.
 
 ## 9. Timeline tương tác
@@ -203,7 +205,22 @@ Chế độ `Auto` dùng quy tắc thận trọng dựa trên CPU, RAM và số 
 
 Trong thực tế, worker thường có lợi nhất khi có ít nhất hai video. Với một video duy nhất, pipeline vẫn đọc video một lần và chế độ đa luồng không thể chia nhỏ việc đọc cùng video thành nhiều worker độc lập. Với chế độ `Mỗi N giây` hoặc `Đúng N frame` có ít nhất 8 timestamp, `--extract-workers` có thể mở nhiều process để seek/extract theo chunk; process chính vẫn giữ thứ tự timestamp, áp dụng lọc dHash và là nơi duy nhất ghi screenshot. Scene mode tiếp tục decode tuần tự để giữ scene cache và checkpoint nhất quán.
 
-## 13. Chạy benchmark
+## 13. Adaptive worker và benchmark
+
+FrameForge v0.1.7 có adaptive worker cho hai lớp xử lý. `--workers` điều khiển số video chạy song song, còn `--extract-workers` điều khiển số process seek/trích frame trong fixed/count mode. Khi đặt `--extract-workers 0`, ứng dụng tự chọn tối đa 4 process theo CPU; nếu có ít hơn 8 timestamp, pipeline giữ tuần tự để tránh overhead. Có thể xem kết quả trong `report.json` qua các trường `extraction_mode` và `extraction_workers`.
+
+Benchmark CI nằm tại `benchmarks/benchmark_frame_extraction.py`. Script tạo video synthetic nếu không truyền `--video`, chạy các mức worker, đo thời gian, throughput và RSS memory, sau đó ghi JSON/CSV:
+
+```bash
+python benchmarks/benchmark_frame_extraction.py \
+  --frames 60 \
+  --workers 1,2,4 \
+  --output benchmark_results.json
+```
+
+GitHub Actions chạy benchmark riêng trên pull request với 24 frame và trên Windows release với 60 frame; kết quả được lưu thành artifact, không được dùng làm ngưỡng cứng vì hiệu năng phụ thuộc codec, CPU, ổ đĩa và runner.
+
+## 14. Chạy benchmark cũ
 
 Dùng thư mục có ít nhất hai video để so sánh công bằng:
 

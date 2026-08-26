@@ -1153,10 +1153,12 @@ def build_args() -> SimpleNamespace:
         checkpoint_path=None,
         cache_root=None,
         duplicate_root=None,
+        queue_db=None,
     )
 
 
 def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output_dir: Path, work_dir: Path) -> None:
+    args.queue_db = Path(str(getattr(args, "queue_db", "") or output_dir / ".frameforge_queue.sqlite3"))
     cancel_event = threading.Event()
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="frameforge-ui")
     progress_state = {str(path): {"phase": "queued", "fraction": 0.0, "message": "Đang xếp hàng"} for path in input_paths}

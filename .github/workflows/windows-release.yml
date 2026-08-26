@@ -51,13 +51,26 @@ jobs:
       - name: Compile Python sources
         shell: bash
         run: |
-          python -m py_compile streamlit_app.py video_screenshot_advanced.py video_downloader.py updater.py app_update.py windows_launcher.py measure_package_size.py validate_release_manifest.py timeline_utils.py tests/test_queue_retry_cancel.py tests/test_cache_checkpoint.py tests/test_app_update_channels.py
+          python -m py_compile streamlit_app.py video_screenshot_advanced.py video_downloader.py updater.py app_update.py windows_launcher.py measure_package_size.py validate_release_manifest.py timeline_utils.py persistent_queue.py benchmarks/benchmark_frame_extraction.py tests/test_queue_retry_cancel.py tests/test_cache_checkpoint.py tests/test_app_update_channels.py tests/test_persistent_queue.py
+
       - name: Install test dependencies
         shell: bash
         run: python -m pip install -r requirements.txt
       - name: Run queue retry and cancel tests
         shell: bash
         run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Run extraction benchmark
+        shell: bash
+        run: python benchmarks/benchmark_frame_extraction.py --frames 24 --workers 1,2 --output benchmark_results.json
+      - name: Upload benchmark artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: frameforge-benchmark
+          path: |
+            benchmark_results.json
+            benchmark_results.csv
+          if-no-files-found: error
+          retention-days: 14
 
   windows-build:
     if: github.event_name != 'pull_request'
@@ -135,6 +148,8 @@ jobs:
           }
       - name: Run queue retry and cancel tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Run extraction benchmark
+        run: python benchmarks/benchmark_frame_extraction.py --frames 60 --workers 1,2,4 --output benchmark_results.json
       - name: Validate packaged build outputs
         run: |
           $versionFile = (Get-Content frameforge_version.txt -Raw).Trim()
@@ -296,6 +311,8 @@ jobs:
           path: |
             installer/FrameForge-Setup-*.exe
             build_size_report.json
+            benchmark_results.json
+            benchmark_results.csv
             SHA256SUMS.txt
             latest.json
             latest-beta.json

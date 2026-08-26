@@ -31,6 +31,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image
+from persistent_queue import PersistentQueueStore
 
 VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".flv", ".wmv", ".ts", ".mts"
@@ -156,7 +157,7 @@ def processing_signature(args: argparse.Namespace) -> str:
     values = {
         key: str(value)
         for key, value in vars(args).items()
-        if key not in {"workers", "retries", "retry_delay", "resume", "checkpoint_path", "cache_root", "duplicate_root"}
+        if key not in {"workers", "retries", "retry_delay", "resume", "checkpoint_path", "cache_root", "duplicate_root", "queue_db"}
     }
     encoded = json.dumps(values, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -1152,6 +1153,15 @@ def process_videos(
     if not isinstance(completed_checkpoint, dict):
         completed_checkpoint = {}
     save_checkpoint(checkpoint_file, run_signature, completed_checkpoint)
+    queue_store: PersistentQueueStore | None = None
+    queue_job_id: str | None = None
+    queue_db_value = getattr(args, "queue_db", None)
+    if queue_db_value:
+        queue_store = PersistentQueueStore(Path(queue_db_value))
+        queue_job_id = queue_store.open_job(videos, run_signature, resume=bool(getattr(args, "resume", False)))
+        if getattr(args, "resume", False):
+            completed_checkpoint.update(queue_store.completed_reports(queue_job_id))
+            save_checkpoint(checkpoint_file, run_signature, completed_checkpoint)
 
     def run_item(index: int, video: Path) -> dict[str, object]:
         last_error: Exception | None = None
@@ -1164,16 +1174,22 @@ def process_videos(
                 else f"Bắt đầu xử lý {video.name}"
             )
             emit_progress(on_progress, video, phase, 0.0, message)
+            if queue_store is not None and queue_job_id is not None:
+                queue_store.mark_running(queue_job_id, index, attempt + 1)
             try:
                 report = process_one_video(video, output_root, source_root, args, on_progress, cancel_event)
                 report["attempts"] = attempt + 1
                 return report
             except ProcessingCancelled:
+                if queue_store is not None and queue_job_id is not None:
+                    queue_store.mark_cancelled(queue_job_id, index)
                 raise
             except (RuntimeError, ValueError, OSError) as exc:
                 last_error = exc
                 if attempt >= retry_count:
                     break
+                if queue_store is not None and queue_job_id is not None:
+                    queue_store.mark_retrying(queue_job_id, index, attempt + 1, str(exc))
                 emit_progress(
                     on_progress,
                     video,
@@ -1189,12 +1205,23 @@ def process_videos(
         results[index] = report
         completed_checkpoint[str(video.resolve())] = report
         save_checkpoint(checkpoint_file, run_signature, completed_checkpoint)
+        if queue_store is not None and queue_job_id is not None:
+            if "error" in report:
+                queue_store.mark_failed(queue_job_id, index, int(report.get("attempts", retry_count + 1)), str(report.get("error")), report)
+            else:
+                queue_store.mark_completed(queue_job_id, index, report)
         if on_complete is not None:
             on_complete(video, report)
 
     if worker_count == 1:
         for index, video in enumerate(videos):
-            check_cancelled(cancel_event)
+            try:
+                check_cancelled(cancel_event)
+            except ProcessingCancelled:
+                if queue_store is not None and queue_job_id is not None:
+                    queue_store.mark_cancelled(queue_job_id)
+                    queue_store.close()
+                raise
             checkpoint_key = str(video.resolve())
             if checkpoint_key in completed_checkpoint:
                 report = completed_checkpoint[checkpoint_key]
@@ -1209,6 +1236,9 @@ def process_videos(
                 report = {"video": str(video), "error": str(exc), "attempts": retry_count + 1}
                 print(f"Bỏ qua {video}: {exc}", file=sys.stderr)
             collect(index, video, report)
+        if queue_store is not None and queue_job_id is not None:
+            queue_store.mark_completed_job(queue_job_id)
+            queue_store.close()
         return [results[index] for index in range(len(videos))]
 
     print(f"Chạy song song {worker_count} worker cho {len(videos)} video")
@@ -1232,17 +1262,29 @@ def process_videos(
             for index, video in pending_videos
         }
         for future in as_completed(future_map):
-            check_cancelled(cancel_event)
+            try:
+                check_cancelled(cancel_event)
+            except ProcessingCancelled:
+                if queue_store is not None and queue_job_id is not None:
+                    queue_store.mark_cancelled(queue_job_id)
+                    queue_store.close()
+                raise
             index, video = future_map[future]
             try:
                 report = future.result()
             except ProcessingCancelled:
+                if queue_store is not None and queue_job_id is not None:
+                    queue_store.mark_cancelled(queue_job_id)
+                    queue_store.close()
                 raise
             except (RuntimeError, ValueError, OSError) as exc:
                 report = {"video": str(video), "error": str(exc), "attempts": retry_count + 1}
                 print(f"Bỏ qua {video}: {exc}", file=sys.stderr)
             collect(index, video, report)
 
+    if queue_store is not None and queue_job_id is not None:
+        queue_store.mark_completed_job(queue_job_id)
+        queue_store.close()
     return [results[index] for index in range(len(videos))]
 
 
@@ -1300,6 +1342,7 @@ def parse_args() -> argparse.Namespace:
         help="Số process trích frame fixed/count; 0 = tự chọn tối đa 4, 1 = tuần tự.",
     )
     parser.add_argument("--report", type=Path, default=None, help="Ghi báo cáo JSON.")
+    parser.add_argument("--queue-db", type=Path, default=None, help="SQLite queue bền vững; mặc định: <output>/.frameforge_queue.sqlite3.")
     args = parser.parse_args()
     if args.best_frame_per_scene:
         args.scene_detection = True
@@ -1314,6 +1357,7 @@ def main() -> int:
     args.cache_root = args.cache_dir
     args.duplicate_root = args.duplicate_index_dir
     args.checkpoint_path = args.checkpoint
+    args.queue_db = args.queue_db or args.output / ".frameforge_queue.sqlite3"
     args.cross_run_duplicate_threshold = args.duplicate_threshold
     args.extract_workers = recommended_extract_workers() if args.extract_workers == 0 else max(1, args.extract_workers)
     args.extract_min_targets = 8
