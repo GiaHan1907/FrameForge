@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 from dataclasses import dataclass
@@ -220,9 +221,10 @@ def _download_batch(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     health = ffmpeg_health()
+    base_template = "%(extractor)s_%(id)s_%(title).120s.%(ext)s"
     options: dict[str, object] = {
         "format": QUALITY_FORMATS[quality],
-        "outtmpl": str(output_dir / "%(extractor)s_%(id)s_%(title).120s.%(ext)s"),
+        "outtmpl": str(output_dir / base_template),
         "noplaylist": False,
         "restrictfilenames": True,
         "quiet": True,
@@ -242,15 +244,20 @@ def _download_batch(
         validate_public_url(url)
         last_error: Exception | None = None
         for attempt in range(retry_limit + 1):
-            before = _file_snapshot(output_dir)
+            # Dùng staging riêng cho từng URL/lần thử. Nếu file cùng ID đã tồn tại ở
+            # output_dir, yt-dlp có thể coi đó là download hoàn tất và không tạo file
+            # mới; khi đó cách snapshot cũ dễ báo lỗi giả "không tạo được output".
+            staging_dir = Path(tempfile.mkdtemp(prefix=".frameforge_download_", dir=str(output_dir)))
+            attempt_options = dict(options)
+            attempt_options["outtmpl"] = str(staging_dir / base_template)
             try:
-                with yt_dlp.YoutubeDL(options) as downloader:
+                with yt_dlp.YoutubeDL(attempt_options) as downloader:
                     info = downloader.extract_info(url, download=True)
                     raw_entries = info.get("entries") if isinstance(info, dict) else None
                     entries = [item for item in (raw_entries or []) if isinstance(item, dict)] if raw_entries else [info]
-                    new_files = _new_video_files(output_dir, before)
+                    new_files = _new_video_files(staging_dir, {})
                     if not new_files:
-                        raise FileNotFoundError("yt-dlp không tạo được file video đầu ra.")
+                        raise FileNotFoundError("yt-dlp không tạo được file video đầu ra trong staging.")
                     matched_entries = [_entry_for_path(path, entries) for path in new_files]
                     downloaded_at = datetime.now().strftime("%Y%m%d_%H%M%S")
                     new_files = _rename_downloaded_files(new_files, output_dir, downloaded_at)
@@ -273,6 +280,8 @@ def _download_batch(
                 last_error = exc
                 if attempt < retry_limit:
                     time.sleep(max(0.0, float(retry_delay_seconds)))
+            finally:
+                shutil.rmtree(staging_dir, ignore_errors=True)
         if last_error is not None:
             message = str(last_error)
             if not health["ffmpeg_path"] and ("Requested format is not available" in message or "merging" in message.lower()):

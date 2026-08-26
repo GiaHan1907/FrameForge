@@ -1,5 +1,13 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.16
+
+## Sửa lỗi Facebook Reel không nhận diện file output
+
+Downloader hiện dùng thư mục staging riêng cho từng URL và từng lần retry, với tên `.frameforge_download_*`. File chỉ được chuyển sang thư mục video đích sau khi yt-dlp hoàn tất; staging luôn được dọn trong cả nhánh thành công, lỗi và retry. Điều này tránh lỗi giả khi thư mục đích đã có file cùng video hoặc yt-dlp bỏ qua file cũ nên snapshot output không thấy file mới.
+
+Đã kiểm thử trực tiếp với Reel công khai `https://www.facebook.com/reel/1629014048842189`: yt-dlp stable `2026.08.19` nhận diện được format và FrameForge tạo file MP4 timestamp khoảng 17.8 MB. Facebook vẫn có thể từ chối hoặc không cung cấp format cho một số Reel theo trạng thái URL, khu vực, mạng hoặc thay đổi extractor; bản vá không dùng cookie, đăng nhập, DRM bypass hay cơ chế truy cập riêng tư.
+
 # FrameForge v0.1.15
 
 ## Preset, telemetry và adaptive extraction theo thời lượng

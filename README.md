@@ -8,6 +8,12 @@ Bản desktop xóa file input tạm sau từng video hoàn tất và dọn work 
 
 Khu vực tải video công khai dùng panel responsive hai tầng: vùng URL rộng ở phía trên, quality ở cột bên cạnh, và playlist limit/retry/action ở hàng dưới. Preview video dùng khung 16:9 tối đa 560px, tự co theo màn hình. Theme chính được đồng bộ dark mode cho canvas, card, input, select, timeline và cảnh báo. Screenshot mới có tên dạng `HH-MM-SS.mmm.jpg`; video tải xuống có tên dạng `video_YYYYMMDD_HHMMSS.ext` với hậu tố collision khi cần.
 
+## Ghi chú v0.1.16
+
+Bản vá downloader cô lập từng URL và từng lần retry vào thư mục staging riêng `.frameforge_download_*`, sau đó chỉ chuyển file hoàn tất sang thư mục video đích. Cách này tránh trường hợp yt-dlp thấy file cùng ID đã tồn tại, bỏ qua download và khiến FrameForge hiểu nhầm là không có file output mới. Staging được dọn cả khi thành công, lỗi hoặc retry.
+
+Nếu một Reel cụ thể vẫn không tải được sau bản vá, nguyên nhân có thể nằm ở trạng thái URL, giới hạn/biến động của Facebook hoặc extractor yt-dlp; không được khắc phục bằng cookie, đăng nhập hay vượt DRM. Hãy thử `Tốt nhất`, kiểm tra URL còn mở công khai trong trình duyệt cùng mạng, và cập nhật FrameForge/yt-dlp lên bản mới nhất.
+
 ## Ghi chú v0.1.15
 
 Bản này bổ sung **Preset cấu hình** trong sidebar gồm `Nhanh`, `Cân bằng`, `Chất lượng cao` và `Video dọc / TikTok`. Preset chỉ là điểm khởi đầu có thể chỉnh tiếp; khi đổi preset, các trường scene, phân tích, output, retry, cache và extraction được cập nhật đồng bộ mà không ghi trực tiếp vào widget directory.
@@ -30,6 +36,7 @@ Adaptive extraction worker nay xét đồng thời **số timestamp yêu cầu, 
 | Cleanup tạm tự động | Xóa file input tạm sau video hoàn tất và dọn work directory an toàn theo trạng thái job. |
 | Desktop lifecycle | Browser đóng sẽ hủy job, đóng executor và dừng server ở bản EXE desktop. |
 | Dark responsive downloader | Khu vực tải video công khai cân bằng theo grid hai tầng, phù hợp dark mode và màn hình hẹp. |
+| Download staging an toàn | Mỗi URL/retry tải vào staging riêng, tránh output cũ làm yt-dlp bỏ qua file mới và được dọn tự động. |
 | Preset cấu hình | Bốn preset cho tốc độ, cân bằng, chất lượng cao và video dọc; mọi giá trị vẫn có thể tinh chỉnh thủ công. |
 | Live telemetry | Hiển thị FPS, ETA và RSS RAM trong lúc xử lý; ETA chỉ xuất hiện khi đã có đơn vị tiến độ hợp lệ. |
 | Adaptive worker theo duration | Cấp extraction worker dựa trên thời lượng cùng số timestamp, ngoài CPU/RAM và số video worker. |
