@@ -107,6 +107,7 @@ python video_screenshot_advanced.py ./videos \
   --retry-delay 1 \
   --disk-reserve-mb 512 \
   --temp-cleanup-hours 24 \
+  --extract-workers 0 \
   --cache-dir ./frameforge_cache \
   --duplicate-index-dir ./frameforge_duplicate_index
 ```
@@ -129,6 +130,7 @@ Các tùy chọn chính:
 | `--retry-delay N` | Số giây chờ giữa các lần retry. |
 | `--disk-reserve-mb N` | Vùng đệm dung lượng trống tối thiểu trước khi xử lý. |
 | `--temp-cleanup-hours N` | Dọn work directory tạm cũ hơn N giờ khi khởi động CLI. |
+| `--extract-workers N` | Số process trích frame cho fixed/count mode; `0` tự chọn tối đa 4, `1` chạy tuần tự. Multiprocessing tự kích hoạt từ 8 timestamp. |
 | `--resume` | Tiếp tục queue từ checkpoint của output run hiện tại. |
 | `--checkpoint FILE` | Đường dẫn checkpoint JSON tùy chỉnh. |
 | `--cache-dir DIR` | Cache timestamp scene để dùng lại giữa các lần chạy. |
@@ -199,7 +201,7 @@ Worker chỉ song song giữa các video độc lập. Số worker không nên v
 
 Chế độ `Auto` dùng quy tắc thận trọng dựa trên CPU, RAM và số lượng video. Đây là điểm bắt đầu an toàn, không phải con số tối đa tuyệt đối. Nếu máy bị đầy RAM, quạt chạy liên tục hoặc tốc độ giảm, giảm worker. Nếu CPU còn rảnh, RAM ổn định và có nhiều video chờ, tăng từng bước một rồi đo lại.
 
-Trong thực tế, worker thường có lợi nhất khi có ít nhất hai video. Với một video duy nhất, pipeline vẫn đọc video một lần và chế độ đa luồng không thể chia nhỏ việc đọc cùng video thành nhiều worker độc lập.
+Trong thực tế, worker thường có lợi nhất khi có ít nhất hai video. Với một video duy nhất, pipeline vẫn đọc video một lần và chế độ đa luồng không thể chia nhỏ việc đọc cùng video thành nhiều worker độc lập. Với chế độ `Mỗi N giây` hoặc `Đúng N frame` có ít nhất 8 timestamp, `--extract-workers` có thể mở nhiều process để seek/extract theo chunk; process chính vẫn giữ thứ tự timestamp, áp dụng lọc dHash và là nơi duy nhất ghi screenshot. Scene mode tiếp tục decode tuần tự để giữ scene cache và checkpoint nhất quán.
 
 ## 13. Chạy benchmark
 

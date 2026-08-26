@@ -48,6 +48,15 @@ class AppUpdateChannelTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             app_update._validate_manifest({**self.manifest, "signature_status": "signed", "signer_subject": ""}, "stable")
 
+    def test_stable_beta_channel_switch_persists(self) -> None:
+        channel_file_root = self.root / "channel-data"
+        with patch.dict("os.environ", {}, clear=True), patch.object(app_update, "app_data_dir", return_value=channel_file_root):
+            self.assertEqual(app_update.set_update_channel("beta"), "beta")
+            self.assertEqual(app_update.get_update_channel(), "beta")
+            self.assertEqual(app_update.set_update_channel("stable"), "stable")
+            self.assertEqual(app_update.get_update_channel(), "stable")
+            self.assertEqual(app_update.set_update_channel("unknown"), "stable")
+
     def test_maybe_update_preserves_release_notes_and_channel(self) -> None:
         state_path = self.root / "state.json"
         update_root = self.root / "updates"
@@ -64,6 +73,38 @@ class AppUpdateChannelTests(unittest.TestCase):
         saved = json.loads(state_path.read_text(encoding="utf-8"))
         self.assertEqual(saved["channel"], "stable")
         self.assertEqual(saved["release_notes_url"], self.manifest["release_notes_url"])
+
+    def test_rollback_download_creates_verified_pending(self) -> None:
+        state_path = self.root / "state.json"
+        update_root = self.root / "updates"
+        rollback_payload = b"rollback installer payload"
+        rollback_sha = hashlib.sha256(rollback_payload).hexdigest()
+        manifest = {**self.manifest, "rollback": {
+            "version": "0.1.5",
+            "sha256": rollback_sha,
+            "installer_url": "https://github.com/GiaHan1907/FrameForge/releases/download/v0.1.5/FrameForge-Setup-0.1.5.exe",
+            "signature_status": "unsigned",
+        }}
+
+        def fake_download(url, expected_sha256, destination, timeout=60.0):
+            self.assertTrue(url.startswith("https://"))
+            self.assertEqual(expected_sha256, rollback_sha)
+            destination.write_bytes(rollback_payload)
+
+        with patch.dict("os.environ", {"FRAMEFORGE_APP_VERSION": "0.1.6", "FRAMEFORGE_UPDATE_CHANNEL": "stable"}, clear=False), patch.object(
+            app_update, "_fetch_json", return_value=manifest
+        ), patch.object(app_update, "_download_verified", side_effect=fake_download), patch.object(
+            app_update, "_state_path", return_value=state_path
+        ), patch.object(app_update, "_update_root", return_value=update_root), patch.object(
+            app_update, "app_data_dir", return_value=self.root
+        ):
+            status = app_update.rollback_app_now(timeout=1.0)
+            self.assertTrue(status.downloaded)
+            pending = app_update._read_rollback_pending()
+
+        self.assertIsNotNone(pending)
+        self.assertEqual(pending["version"], "0.1.5")
+        self.assertEqual(pending["sha256"], rollback_sha)
 
     def test_rollback_pending_rejects_path_escape_and_tampering(self) -> None:
         update_root = self.root / "updates"

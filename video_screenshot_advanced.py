@@ -17,6 +17,7 @@ import copy
 import hashlib
 import json
 import math
+import multiprocessing as mp
 import os
 import shutil
 import sys
@@ -596,6 +597,108 @@ def accept_and_save(
     return "saved", candidate.hash_value
 
 
+def recommended_extract_workers() -> int:
+    cpu_count = os.cpu_count() or 1
+    return max(1, min(4, max(1, cpu_count // 2)))
+
+
+def _extract_frame_chunk(task: tuple[str, list[tuple[int, float]], str]) -> list[tuple[int, float, str | None, str | None]]:
+    video_path, targets, temp_dir = task
+    capture = cv2.VideoCapture(video_path)
+    result: list[tuple[int, float, str | None, str | None]] = []
+    if not capture.isOpened():
+        return [(index, timestamp, None, "Không mở được video trong extraction worker") for index, timestamp in targets]
+    try:
+        for index, timestamp in targets:
+            capture.set(cv2.CAP_PROP_POS_MSEC, timestamp * 1000.0)
+            ok, frame = capture.read()
+            if not ok:
+                result.append((index, timestamp, None, "Không đọc được frame tại timestamp"))
+                continue
+            output = Path(temp_dir) / f"frame_{index:08d}.jpg"
+            if not cv2.imwrite(str(output), frame, [cv2.IMWRITE_JPEG_QUALITY, 95]):
+                result.append((index, timestamp, None, "Không ghi được frame tạm"))
+                continue
+            result.append((index, timestamp, str(output), None))
+    finally:
+        capture.release()
+    return result
+
+
+def process_fixed_mode_multiprocess(
+    video: Path,
+    output_dir: Path,
+    targets: list[float],
+    args: argparse.Namespace,
+    on_progress: ProgressCallback | None = None,
+    cancel_event=None,
+    existing_hashes: set[int] | None = None,
+) -> dict[str, object]:
+    reports: dict[str, object] = {
+        "selection_mode": "fixed_interval" if args.count is None else "count",
+        "requested": len(targets),
+        "saved": 0,
+        "rejected_blurry": 0,
+        "rejected_motion_blur": 0,
+        "rejected_duplicate": 0,
+        "rejected_duplicate_cross_run": 0,
+        "skipped_existing": 0,
+        "capture_errors": 0,
+        "scene_times": [],
+        "extraction_mode": "multiprocessing",
+        "extraction_workers": int(getattr(args, "extract_workers", 1)),
+    }
+    temp_dir = Path(tempfile.mkdtemp(prefix="frameforge_extract_", dir=str(output_dir)))
+    worker_count = min(max(2, int(getattr(args, "extract_workers", 2))), len(targets))
+    chunk_size = max(1, math.ceil(len(targets) / worker_count))
+    chunks = [
+        [(index, timestamp) for index, timestamp in enumerate(targets[start:start + chunk_size], start=start)]
+        for start in range(0, len(targets), chunk_size)
+    ]
+    previous_hash: int | None = None
+    buffered: dict[int, tuple[int, float, str | None, str | None]] = {}
+    next_index = 0
+    pool = mp.get_context("spawn").Pool(processes=worker_count)
+    try:
+        tasks = [(str(video), chunk, str(temp_dir)) for chunk in chunks]
+        for chunk_result in pool.imap_unordered(_extract_frame_chunk, tasks):
+            check_cancelled(cancel_event)
+            for item in chunk_result:
+                buffered[item[0]] = item
+            while next_index in buffered:
+                index, timestamp, frame_path, error = buffered.pop(next_index)
+                if error or not frame_path:
+                    reports["capture_errors"] = int(reports["capture_errors"]) + 1
+                else:
+                    frame = cv2.imread(frame_path)
+                    if frame is None:
+                        reports["capture_errors"] = int(reports["capture_errors"]) + 1
+                    else:
+                        candidate = frame_candidate(frame, timestamp, args.analysis_width)
+                        status, previous_hash = accept_and_save(
+                            candidate, output_dir, video.stem, index + 1, args, previous_hash, existing_hashes
+                        )
+                        reports[status_key(status)] = int(reports[status_key(status)]) + 1
+                next_index += 1
+                emit_progress(
+                    on_progress,
+                    video,
+                    "extracting",
+                    next_index / max(len(targets), 1),
+                    f"Multiprocessing trích frame {next_index}/{len(targets)}",
+                )
+        pool.close()
+        pool.join()
+    except BaseException:
+        pool.terminate()
+        pool.join()
+        raise
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    emit_progress(on_progress, video, "saving", 1.0, "Đã hoàn tất trích frame song song và ghi screenshot")
+    return reports
+
+
 def process_fixed_mode(
     capture: cv2.VideoCapture,
     video: Path,
@@ -636,7 +739,13 @@ def process_fixed_mode(
         "skipped_existing": 0,
         "capture_errors": 0,
         "scene_times": [],
+        "extraction_mode": "sequential",
+        "extraction_workers": 1,
     }
+    if int(getattr(args, "extract_workers", 1)) > 1 and len(targets) >= int(getattr(args, "extract_min_targets", 8)):
+        return process_fixed_mode_multiprocess(
+            video, output_dir, targets, args, on_progress, cancel_event, existing_hashes
+        )
     target_index = 0
     frame_index = 0
     previous_hash: int | None = None
@@ -1184,6 +1293,12 @@ def parse_args() -> argparse.Namespace:
         default=default_workers,
         help=f"Số worker hoặc auto theo CPU/RAM; mặc định: {default_workers}.",
     )
+    parser.add_argument(
+        "--extract-workers",
+        type=non_negative_int,
+        default=0,
+        help="Số process trích frame fixed/count; 0 = tự chọn tối đa 4, 1 = tuần tự.",
+    )
     parser.add_argument("--report", type=Path, default=None, help="Ghi báo cáo JSON.")
     args = parser.parse_args()
     if args.best_frame_per_scene:
@@ -1192,6 +1307,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    mp.freeze_support()
     args = parse_args()
     cleanup_frameforge_temp_dirs(older_than_seconds=int(args.temp_cleanup_hours) * 60 * 60)
     args.disk_reserve_bytes = int(args.disk_reserve_mb) * 1024**2
@@ -1199,6 +1315,8 @@ def main() -> int:
     args.duplicate_root = args.duplicate_index_dir
     args.checkpoint_path = args.checkpoint
     args.cross_run_duplicate_threshold = args.duplicate_threshold
+    args.extract_workers = recommended_extract_workers() if args.extract_workers == 0 else max(1, args.extract_workers)
+    args.extract_min_targets = 8
     if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
         print("Cảnh báo: không tìm thấy FFmpeg/ffprobe; pipeline hiện dùng OpenCV nhưng FFmpeg vẫn cần cho môi trường đầy đủ.", file=sys.stderr)
     try:

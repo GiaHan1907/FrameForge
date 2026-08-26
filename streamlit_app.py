@@ -6,6 +6,7 @@ from datetime import datetime
 import html
 import json
 import mimetypes
+import multiprocessing as mp
 import os
 import sys
 import shutil
@@ -17,6 +18,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import streamlit as st
+
+mp.freeze_support()
 
 from updater import initialize_yt_dlp
 from app_config import load_output_dirs, save_output_dirs
@@ -43,6 +46,7 @@ from video_screenshot_advanced import (
     format_bytes,
     process_videos,
     recommend_workers,
+    recommended_extract_workers,
     timestamp_label,
 )
 from timeline_utils import build_timeline_entries, filter_timeline_entries
@@ -1033,6 +1037,12 @@ with st.sidebar:
             step=1.0,
             help="Giảm FPS để tăng tốc; tăng FPS nếu cảnh thay đổi rất nhanh.",
         )
+        extract_worker_choice = st.selectbox(
+            "Process trích frame fixed/count",
+            ["Auto (khuyến nghị)", 1, 2, 3, 4],
+            index=0,
+            help="Chỉ áp dụng cho Mỗi N giây/Đúng N frame khi có từ 8 timestamp. Scene mode vẫn decode tuần tự để giữ cache scene chính xác.",
+        )
 
     min_sharpness = st.number_input(
         "Ngưỡng độ nét tối thiểu",
@@ -1123,6 +1133,8 @@ def build_args() -> SimpleNamespace:
         scene_confirmations=int(scene_confirmations),
         analysis_width=int(analysis_width),
         analysis_fps=float(analysis_fps),
+        extract_workers=(recommended_extract_workers() if extract_worker_choice == "Auto (khuyến nghị)" else int(extract_worker_choice)),
+        extract_min_targets=8,
         min_sharpness=float(min_sharpness),
         motion_blur_threshold=float(motion_blur_threshold),
         duplicate_threshold=int(duplicate_threshold),

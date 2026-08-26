@@ -451,6 +451,7 @@ def rollback_app_now(timeout: float = 10.0) -> AppUpdateStatus:
             status.channel, status.release_notes, status.release_notes_url, version, True,
         )
     update_root = _update_root()
+    update_root.mkdir(parents=True, exist_ok=True)
     target = update_root / f"FrameForge-Setup-{version}.exe"
     temporary_path: Path | None = None
     try:

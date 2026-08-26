@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import tempfile
 import unittest
 from pathlib import Path
@@ -87,6 +88,25 @@ class CacheCheckpointTests(unittest.TestCase):
         self.assertEqual(len(alpha), 2)
         late = filter_timeline_entries(entries, query="scene 2", min_seconds=4.0, max_seconds=6.0)
         self.assertEqual([(item["video"], item["scene"]) for item in late], [("alpha.mp4", 2)])
+
+    def test_fixed_mode_multiprocessing_extraction(self) -> None:
+        args = copy.copy(self.args)
+        args.scene_detection = False
+        args.best_frame_per_scene = False
+        args.count = 8
+        args.every = None
+        args.extract_workers = 2
+        args.extract_min_targets = 1
+        args.duplicate_threshold = 0
+        args.cross_run_duplicates = False
+        args.cross_run_duplicate_threshold = 0
+        output = self.root / "multiprocess"
+        report = engine.process_video(self.video, output, None, args)
+        self.assertEqual(report["extraction_mode"], "multiprocessing")
+        self.assertEqual(report["extraction_workers"], 2)
+        self.assertEqual(int(report["requested"]), 8)
+        self.assertGreaterEqual(int(report["saved"]), 1)
+        self.assertEqual(len(list(output.rglob("*.jpg"))), int(report["saved"]))
 
     def test_checkpoint_resume_skips_completed_video(self) -> None:
         videos = [self.root / "one.mp4", self.root / "two.mp4"]
