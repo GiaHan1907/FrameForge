@@ -41,6 +41,7 @@ app_update_status = initialize_app_update()
 from video_screenshot_advanced import (
     InsufficientDiskSpace,
     ProcessingCancelled,
+    cleanup_frameforge_cache,
     cleanup_frameforge_temp_dirs,
     ensure_free_disk_space,
     format_bytes,
@@ -59,7 +60,7 @@ from video_downloader import (
 )
 
 
-cleanup_frameforge_temp_dirs(older_than_seconds=24 * 60 * 60)
+cleanup_frameforge_temp_dirs(older_than_seconds=24 * 60 * 60, max_total_bytes=2 * 1024**3)
 
 st.set_page_config(
     page_title="FrameForge · Video Screenshot",
@@ -1467,6 +1468,7 @@ if run_clicked:
             st.session_state.get("screenshot_dir", ""),
             Path.home() / "Videos" / "FrameForge" / "screenshots",
         )
+        cleanup_frameforge_cache(screenshot_root / ".frameforge_scene_cache", max_total_bytes=1 * 1024**3)
         free_bytes = ensure_free_disk_space(
             screenshot_root,
             required_bytes=0,

@@ -130,6 +130,8 @@ Các tùy chọn chính:
 | `--retry-delay N` | Số giây chờ giữa các lần retry. |
 | `--disk-reserve-mb N` | Vùng đệm dung lượng trống tối thiểu trước khi xử lý. |
 | `--temp-cleanup-hours N` | Dọn work directory tạm cũ hơn N giờ khi khởi động CLI. |
+| `--temp-quota-mb N` | Giới hạn tổng work directory tạm cũ; mặc định 2048 MB, `0` để tắt quota. |
+| `--cache-quota-mb N` | Giới hạn scene cache cũ; mặc định 1024 MB, `0` để tắt quota. |
 | `--extract-workers N` | Số process trích frame cho fixed/count mode; `0` tự chọn tối đa 4, `1` chạy tuần tự. Multiprocessing tự kích hoạt từ 8 timestamp nếu adaptive budget theo số video worker, CPU và RAM cho phép. |
 | `--resume` | Tiếp tục queue từ checkpoint của output run hiện tại. |
 | `--checkpoint FILE` | Đường dẫn checkpoint JSON tùy chỉnh. |
@@ -158,7 +160,9 @@ Report sau khi hoàn tất có thêm `video_workers`, `configured_extract_worker
 
 Từ v0.1.7, queue còn được lưu bền vững trong SQLite tại `<output>/.frameforge_queue.sqlite3`. Database ghi trạng thái từng video (`queued`, `running`, `retrying`, `completed`, `failed`, `cancelled`), số lần thử, lỗi cuối cùng và report JSON. JSON checkpoint vẫn được giữ để tương thích ngược và làm file resume dễ kiểm tra. CLI có thể đổi vị trí bằng `--queue-db FILE`; Streamlit tự dùng database trong thư mục output. Khi ứng dụng bị đóng sau khi một video hoàn tất, lần resume sau sẽ đọc cả SQLite và checkpoint để bỏ qua video đó.
 
-DHash index trong `--duplicate-index-dir` giúp loại frame gần giống đã lưu ở những lần chạy trước. Đặt `--duplicate-threshold 0` hoặc dùng `--no-cross-run-duplicates` nếu muốn mỗi lần chạy luôn tạo output độc lập.
+DHash index trong `--duplicate-index-dir` giúp loại frame gần giống đã lưu ở những lần chạy trước. Từ v0.1.10, index ghi thêm bucket theo từng byte dHash để giảm số phép so sánh khi threshold không vượt quá 6. Index cũ v1 chỉ có trường `hashes` vẫn được đọc và tự nâng cấp khi ghi lại; vì vậy người dùng không cần xóa index cũ. Đặt `--duplicate-threshold 0` hoặc dùng `--no-cross-run-duplicates` nếu muốn mỗi lần chạy luôn tạo output độc lập.
+
+CLI xóa work directory tạm cũ nhất khi vượt `--temp-quota-mb`, sau khi đã áp dụng `--temp-cleanup-hours`. Scene cache chỉ xóa file JSON cũ hơn 7 ngày khi vượt `--cache-quota-mb`; cache đang mới sẽ được giữ lại để tránh làm mất lợi ích resume nhanh.
 
 ## 9. Timeline tương tác
 

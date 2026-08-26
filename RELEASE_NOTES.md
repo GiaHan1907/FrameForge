@@ -1,5 +1,13 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.10
+
+## Tối ưu dHash index và quản lý dung lượng tạm
+
+DHash index được nâng từ định dạng v1 chỉ chứa danh sách hash sang định dạng v2 có thêm bucket theo từng byte. Với threshold phổ biến không vượt quá 6, FrameForge chỉ cần kiểm tra các hash trong bucket liên quan thay vì quét toàn bộ index. Index v1 vẫn được đọc tương thích và tự chuyển sang v2 khi ghi lại.
+
+CLI bổ sung quota cho work directory tạm và scene cache. Work directory cũ nhất được dọn khi vượt quota; scene cache chỉ xóa JSON cũ hơn 7 ngày, giúp bảo vệ cache mới và tránh làm mất lợi ích resume nhanh. Streamlit áp dụng cùng quota mặc định cho thư mục cache/temp của người dùng.
+
 # FrameForge v0.1.9
 
 ## Tối ưu adaptive worker và queue bền vững

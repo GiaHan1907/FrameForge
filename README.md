@@ -92,6 +92,8 @@ Một số tùy chọn hiệu năng:
 | `--flash-brightness-threshold 0.18` | Giới hạn thay đổi độ sáng khi xác nhận flash. |
 | `--extract-workers N` | Số process trích frame cho fixed/count mode. `0` tự chọn tối đa 4, `1` chạy tuần tự; từ 8 timestamp sẽ tự kích hoạt nếu adaptive budget cho phép. Budget thực tế còn bị giới hạn theo số video worker, CPU và RAM. |
 | `--queue-db FILE` | SQLite queue bền vững; mặc định là `<output>/.frameforge_queue.sqlite3`. |
+| `--temp-quota-mb N` | Quota work directory tạm cũ; mặc định 2048 MB, `0` để tắt quota. |
+| `--cache-quota-mb N` | Quota scene cache cũ; mặc định 1024 MB, `0` để tắt. |
 
 ## Scene detection thông thường
 
@@ -109,6 +111,8 @@ Pipeline vẫn đọc video một lần. Chế độ này giữ frame đầu c�
 Từ v0.1.7, queue xử lý screenshot được lưu bền vững bằng SQLite tại `<output>/.frameforge_queue.sqlite3`. Database giữ trạng thái từng video, attempts, lỗi cuối và report để resume sau khi app bị đóng; JSON checkpoint vẫn được giữ để tương thích ngược. Khi hủy ở single-worker mode, các item còn lại được đánh dấu `cancelled` và database được đóng sạch.
 
 Từ v0.1.9, report bổ sung `video_workers`, `configured_extract_workers` và `adaptive_extract_workers`. Khi chạy nhiều video cùng lúc, FrameForge tự hạ số process extraction trên mỗi video để tránh dùng CPU/RAM quá mức; Streamlit cũng hiển thị các giá trị thực tế sau khi hoàn tất.
+
+Từ v0.1.10, dHash index được ghi theo bucket byte ở định dạng v2 để giảm số hash phải so sánh khi threshold không vượt quá 6. Index định dạng v1 chỉ có mảng `hashes` vẫn được đọc bình thường và tự nâng cấp ở lần ghi kế tiếp. CLI dọn work directory tạm cũ theo tuổi và quota, đồng thời dọn scene cache cũ nhất khi vượt quota.
 
 Benchmark CI nằm tại `benchmarks/benchmark_frame_extraction.py` và đo elapsed time, throughput, RSS memory cho các mức `--workers`. Kết quả được lưu thành artifact trên pull request và Windows release, không áp dụng speedup cố định vì còn phụ thuộc codec, CPU và ổ đĩa.
 

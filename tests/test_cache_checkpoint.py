@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -107,6 +108,25 @@ class CacheCheckpointTests(unittest.TestCase):
         self.assertEqual(int(report["requested"]), 8)
         self.assertGreaterEqual(int(report["saved"]), 1)
         self.assertEqual(len(list(output.rglob("*.jpg"))), int(report["saved"]))
+
+    def test_duplicate_bucket_index_is_backward_compatible(self) -> None:
+        index_path = self.root / "duplicate.json"
+        original = 0x0123456789ABCDEF
+        near = original ^ 1
+        index_path.write_text(json.dumps({"version": 1, "hashes": [original]}), encoding="utf-8")
+        hashes, buckets = engine.load_duplicate_index(index_path)
+        self.assertEqual(hashes, {original})
+        self.assertTrue(set(engine._dhash_bucket_keys(original)).intersection(engine._dhash_bucket_keys(near)))
+        engine.save_duplicate_hashes(index_path, hashes, buckets)
+        stored = json.loads(index_path.read_text(encoding="utf-8"))
+        self.assertEqual(stored["version"], 2)
+        self.assertIn(str(original), {str(item) for item in stored["hashes"]})
+        self.assertTrue(stored["buckets"])
+        stored["buckets"] = {}
+        index_path.write_text(json.dumps(stored), encoding="utf-8")
+        rebuilt_hashes, rebuilt_buckets = engine.load_duplicate_index(index_path)
+        self.assertEqual(rebuilt_hashes, {original})
+        self.assertTrue(rebuilt_buckets)
 
     def test_checkpoint_resume_skips_completed_video(self) -> None:
         videos = [self.root / "one.mp4", self.root / "two.mp4"]

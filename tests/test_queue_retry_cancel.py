@@ -163,6 +163,33 @@ class QueueRetryCancelTests(unittest.TestCase):
         self.assertEqual(engine.cleanup_frameforge_temp_dirs(self.root, older_than_seconds=60), 1)
         self.assertFalse(stale.exists())
 
+        old_one = self.root / "video_screenshot_web_old_one"
+        old_two = self.root / "video_screenshot_web_old_two"
+        old_one.mkdir()
+        old_two.mkdir()
+        (old_one / "payload.bin").write_bytes(b"12345678")
+        (old_two / "payload.bin").write_bytes(b"abcdefgh")
+        old_timestamp = time.time() - 3600
+        os.utime(old_one, (old_timestamp - 10, old_timestamp - 10))
+        os.utime(old_two, (old_timestamp, old_timestamp))
+        removed = engine.cleanup_frameforge_temp_dirs(self.root, older_than_seconds=60, max_total_bytes=8)
+        self.assertEqual(removed, 1)
+        self.assertFalse(old_one.exists())
+        self.assertTrue(old_two.exists())
+
+        cache = self.root / "cache"
+        cache.mkdir()
+        old_cache = cache / "old.scene-cache.json"
+        new_cache = cache / "new.scene-cache.json"
+        old_cache.write_bytes(b"old-cache")
+        new_cache.write_bytes(b"new-cache")
+        os.utime(old_cache, (old_timestamp - 10, old_timestamp - 10))
+        os.utime(new_cache, None)
+        removed_cache = engine.cleanup_frameforge_cache(cache, max_total_bytes=8, older_than_seconds=60)
+        self.assertEqual(removed_cache, 1)
+        self.assertFalse(old_cache.exists())
+        self.assertTrue(new_cache.exists())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

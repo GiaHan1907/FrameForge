@@ -210,16 +210,62 @@ def save_scene_cache(path: Path, key: str, video: Path, selected_times: list[flo
     )
 
 
-def load_duplicate_hashes(path: Path) -> set[int]:
+def _dhash_bucket_keys(hash_value: int) -> tuple[str, ...]:
+    """Tạo 8 bucket theo từng byte của dHash 64-bit.
+
+    Hai hash có khoảng cách Hamming <= 6 phải cùng ít nhất một bucket byte,
+    nên cách tra cứu này vẫn đầy đủ cho threshold mặc định mà không quét toàn
+    bộ index. Index v1 chỉ có mảng hash vẫn được nạp và tự nâng cấp khi ghi.
+    """
+    value = int(hash_value) & ((1 << 64) - 1)
+    return tuple(f"{offset}:{(value >> (offset * 8)) & 0xFF:02x}" for offset in range(8))
+
+
+def _build_duplicate_buckets(hashes: set[int]) -> dict[str, set[int]]:
+    buckets: dict[str, set[int]] = {}
+    for hash_value in hashes:
+        for key in _dhash_bucket_keys(hash_value):
+            buckets.setdefault(key, set()).add(int(hash_value))
+    return buckets
+
+
+def load_duplicate_index(path: Path) -> tuple[set[int], dict[str, set[int]]]:
     value = _read_json(path)
     raw = value.get("hashes", []) if value else []
-    if not isinstance(raw, list):
-        return set()
-    return {int(item) for item in raw if isinstance(item, (int, str)) and str(item).isdigit()}
+    hashes = {int(item) for item in raw if isinstance(item, (int, str)) and str(item).isdigit()} if isinstance(raw, list) else set()
+    raw_buckets = value.get("buckets") if value else None
+    buckets: dict[str, set[int]] = {}
+    if isinstance(raw_buckets, dict):
+        for key, raw_values in raw_buckets.items():
+            if not isinstance(key, str) or not isinstance(raw_values, list):
+                continue
+            values = {int(item) for item in raw_values if isinstance(item, (int, str)) and str(item).isdigit()}
+            values.intersection_update(hashes)
+            if values:
+                buckets[key] = values
+    indexed_hashes: set[int] = set()
+    for values in buckets.values():
+        indexed_hashes.update(values)
+    if indexed_hashes != hashes:
+        buckets = _build_duplicate_buckets(hashes) if hashes else {}
+    return hashes, buckets
 
 
-def save_duplicate_hashes(path: Path, hashes: set[int]) -> None:
-    _atomic_write_json(path, {"version": 1, "updated_at": time.time(), "hashes": sorted(int(item) for item in hashes)})
+def load_duplicate_hashes(path: Path) -> set[int]:
+    return load_duplicate_index(path)[0]
+
+
+def save_duplicate_hashes(path: Path, hashes: set[int], buckets: dict[str, set[int]] | None = None) -> None:
+    index = buckets if buckets is not None else _build_duplicate_buckets(hashes)
+    _atomic_write_json(
+        path,
+        {
+            "version": 2,
+            "updated_at": time.time(),
+            "hashes": sorted(int(item) for item in hashes),
+            "buckets": {key: sorted(int(item) for item in values) for key, values in sorted(index.items()) if values},
+        },
+    )
 
 
 def checkpoint_path(output_root: Path, args: argparse.Namespace) -> Path:
@@ -244,26 +290,97 @@ def save_checkpoint(path: Path, run_signature: str, completed: dict[str, object]
     )
 
 
+def _path_size_bytes(path: Path) -> int:
+    if path.is_file():
+        try:
+            return int(path.stat().st_size)
+        except OSError:
+            return 0
+    total = 0
+    try:
+        for child in path.rglob("*"):
+            if child.is_file():
+                try:
+                    total += int(child.stat().st_size)
+                except OSError:
+                    continue
+    except OSError:
+        return total
+    return total
+
+
 def cleanup_frameforge_temp_dirs(
     temp_root: Path | None = None,
     prefix: str = "video_screenshot_web_",
     older_than_seconds: int = 24 * 60 * 60,
+    max_total_bytes: int | None = None,
 ) -> int:
-    """Dọn work directory cũ của FrameForge, không đụng tới thư mục đang dùng."""
+    """Dọn work directory cũ theo tuổi và quota, không đụng thư mục đang dùng."""
     root = temp_root or Path(tempfile.gettempdir())
     cutoff = time.time() - max(0, older_than_seconds)
-    removed = 0
+    candidates: list[tuple[Path, float, int]] = []
     try:
-        candidates = list(root.glob(f"{prefix}*"))
+        paths = list(root.glob(f"{prefix}*"))
     except OSError:
         return 0
-    for candidate in candidates:
+    for candidate in paths:
         try:
-            if not candidate.is_dir() or candidate.stat().st_mtime >= cutoff:
-                continue
+            stat = candidate.stat()
+            if candidate.is_dir() and stat.st_mtime < cutoff:
+                candidates.append((candidate, float(stat.st_mtime), _path_size_bytes(candidate)))
+        except OSError:
+            continue
+    candidates.sort(key=lambda item: item[1])
+    removed = 0
+    total = sum(item[2] for item in candidates)
+    quota = int(max_total_bytes or 0)
+    for candidate, _mtime, size in candidates:
+        if quota > 0 and total <= quota:
+            break
+        try:
             shutil.rmtree(candidate, ignore_errors=True)
             if not candidate.exists():
                 removed += 1
+                total = max(0, total - size)
+        except OSError:
+            continue
+    return removed
+
+
+def cleanup_frameforge_cache(
+    cache_root: Path,
+    max_total_bytes: int = 0,
+    older_than_seconds: int = 7 * 24 * 60 * 60,
+) -> int:
+    """Xóa cache scene cũ nhất khi vượt quota; quota 0 nghĩa là không xóa."""
+    quota = max(0, int(max_total_bytes))
+    if quota <= 0 or not cache_root.exists():
+        return 0
+    cutoff = time.time() - max(0, int(older_than_seconds))
+    try:
+        files = [path for path in cache_root.glob("*.json") if path.is_file()]
+    except OSError:
+        return 0
+    entries: list[tuple[Path, float, int]] = []
+    total = 0
+    for path in files:
+        try:
+            stat = path.stat()
+            size = int(stat.st_size)
+            total += size
+            if stat.st_mtime < cutoff:
+                entries.append((path, float(stat.st_mtime), size))
+        except OSError:
+            continue
+    entries.sort(key=lambda item: item[1])
+    removed = 0
+    for path, _mtime, size in entries:
+        if total <= quota:
+            break
+        try:
+            path.unlink()
+            removed += 1
+            total = max(0, total - size)
         except OSError:
             continue
     return removed
@@ -566,6 +683,7 @@ def accept_and_save(
     args: argparse.Namespace,
     previous_hash: int | None,
     existing_hashes: set[int] | None = None,
+    duplicate_buckets: dict[str, set[int]] | None = None,
 ) -> tuple[str, int | None]:
     if args.min_sharpness > 0 and candidate.sharpness < args.min_sharpness:
         return "blurry", previous_hash
@@ -579,11 +697,16 @@ def accept_and_save(
     ):
         return "duplicate", previous_hash
     cross_run_threshold = int(getattr(args, "cross_run_duplicate_threshold", args.duplicate_threshold))
+    comparison_hashes = existing_hashes
+    if duplicate_buckets is not None and cross_run_threshold <= 6:
+        comparison_hashes = set()
+        for bucket_key in _dhash_bucket_keys(candidate.hash_value):
+            comparison_hashes.update(duplicate_buckets.get(bucket_key, set()))
     if (
         getattr(args, "cross_run_duplicates", True)
         and cross_run_threshold > 0
-        and existing_hashes
-        and any(hamming_distance(candidate.hash_value, item) <= cross_run_threshold for item in existing_hashes)
+        and comparison_hashes
+        and any(hamming_distance(candidate.hash_value, item) <= cross_run_threshold for item in comparison_hashes)
     ):
         return "duplicate_cross_run", previous_hash
 
@@ -594,6 +717,9 @@ def accept_and_save(
     save_image(candidate.frame, output, args.format, args.quality, args.width)
     if existing_hashes is not None:
         existing_hashes.add(candidate.hash_value)
+    if duplicate_buckets is not None:
+        for bucket_key in _dhash_bucket_keys(candidate.hash_value):
+            duplicate_buckets.setdefault(bucket_key, set()).add(candidate.hash_value)
     print(f"  lưu — {output.name} sharpness={candidate.sharpness:.1f}")
     return "saved", candidate.hash_value
 
@@ -670,6 +796,7 @@ def process_fixed_mode_multiprocess(
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
     existing_hashes: set[int] | None = None,
+    duplicate_buckets: dict[str, set[int]] | None = None,
 ) -> dict[str, object]:
     reports: dict[str, object] = {
         "selection_mode": "fixed_interval" if args.count is None else "count",
@@ -713,7 +840,7 @@ def process_fixed_mode_multiprocess(
                     else:
                         candidate = frame_candidate(frame, timestamp, args.analysis_width)
                         status, previous_hash = accept_and_save(
-                            candidate, output_dir, video.stem, index + 1, args, previous_hash, existing_hashes
+                            candidate, output_dir, video.stem, index + 1, args, previous_hash, existing_hashes, duplicate_buckets
                         )
                         reports[status_key(status)] = int(reports[status_key(status)]) + 1
                 next_index += 1
@@ -745,6 +872,7 @@ def process_fixed_mode(
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
     existing_hashes: set[int] | None = None,
+    duplicate_buckets: dict[str, set[int]] | None = None,
 ) -> dict[str, object]:
     actual_start = min(args.start, duration)
     actual_end = duration if args.end is None else min(args.end, duration)
@@ -781,7 +909,7 @@ def process_fixed_mode(
     }
     if int(getattr(args, "extract_workers", 1)) > 1 and len(targets) >= int(getattr(args, "extract_min_targets", 8)):
         return process_fixed_mode_multiprocess(
-            video, output_dir, targets, args, on_progress, cancel_event, existing_hashes
+            video, output_dir, targets, args, on_progress, cancel_event, existing_hashes, duplicate_buckets
         )
     target_index = 0
     frame_index = 0
@@ -806,7 +934,7 @@ def process_fixed_mode(
             break
         candidate = frame_candidate(frame, timestamp, args.analysis_width)
         status, previous_hash = accept_and_save(
-            candidate, output_dir, video.stem, target_index + 1, args, previous_hash, existing_hashes
+            candidate, output_dir, video.stem, target_index + 1, args, previous_hash, existing_hashes, duplicate_buckets
         )
         reports[status_key(status)] = int(reports[status_key(status)]) + 1
         emit_progress(
@@ -848,6 +976,7 @@ def process_scene_mode(
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
     existing_hashes: set[int] | None = None,
+    duplicate_buckets: dict[str, set[int]] | None = None,
 ) -> dict[str, object]:
     actual_start = min(args.start, duration)
     actual_end = duration if args.end is None else min(args.end, duration)
@@ -888,7 +1017,7 @@ def process_scene_mode(
             return previous
         reports["requested"] = int(reports["requested"]) + 1
         selected_times.append(round(float(candidate.timestamp), 3))
-        status, updated_hash = accept_and_save(candidate, output_dir, video.stem, index, args, previous, existing_hashes)
+        status, updated_hash = accept_and_save(candidate, output_dir, video.stem, index, args, previous, existing_hashes, duplicate_buckets)
         reports[status_key(status)] = int(reports[status_key(status)]) + 1
         return updated_hash
 
@@ -1025,6 +1154,7 @@ def process_cached_scene_mode(
     args: argparse.Namespace,
     cached: dict[str, object],
     existing_hashes: set[int],
+    duplicate_buckets: dict[str, set[int]] | None = None,
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
 ) -> dict[str, object]:
@@ -1056,7 +1186,7 @@ def process_cached_scene_mode(
             continue
         candidate = frame_candidate(frame, timestamp, args.analysis_width)
         status, previous_hash = accept_and_save(
-            candidate, output_dir, video.stem, index, args, previous_hash, existing_hashes
+            candidate, output_dir, video.stem, index, args, previous_hash, existing_hashes, duplicate_buckets
         )
         reports[status_key(status)] = int(reports[status_key(status)]) + 1
         emit_progress(
@@ -1092,7 +1222,7 @@ def process_video(
     duplicate_root = Path(duplicate_root_value) if duplicate_root_value else output_root / ".frameforge_hashes"
     duplicate_root.mkdir(parents=True, exist_ok=True)
     duplicate_path = duplicate_index_path(video, duplicate_root)
-    existing_hashes = load_duplicate_hashes(duplicate_path)
+    existing_hashes, duplicate_buckets = load_duplicate_index(duplicate_path)
     cache_root_value = getattr(args, "cache_root", None)
     cache_root = Path(cache_root_value) if cache_root_value else output_root / ".frameforge_cache"
     cache_path: Path | None = None
@@ -1113,14 +1243,14 @@ def process_video(
         raise RuntimeError(f"Không mở được video: {video}")
     try:
         if args.scene_detection and cached:
-            reports = process_cached_scene_mode(capture, video, output_dir, args, cached, existing_hashes, on_progress, cancel_event)
+            reports = process_cached_scene_mode(capture, video, output_dir, args, cached, existing_hashes, duplicate_buckets, on_progress, cancel_event)
         elif args.scene_detection:
-            reports = process_scene_mode(capture, video, output_dir, duration, args, on_progress, cancel_event, existing_hashes)
+            reports = process_scene_mode(capture, video, output_dir, duration, args, on_progress, cancel_event, existing_hashes, duplicate_buckets)
         else:
-            reports = process_fixed_mode(capture, video, output_dir, duration, args, on_progress, cancel_event, existing_hashes)
+            reports = process_fixed_mode(capture, video, output_dir, duration, args, on_progress, cancel_event, existing_hashes, duplicate_buckets)
     finally:
         capture.release()
-    save_duplicate_hashes(duplicate_path, existing_hashes)
+    save_duplicate_hashes(duplicate_path, existing_hashes, duplicate_buckets)
     if args.scene_detection and not cached and cache_path is not None and cache_key is not None:
         save_scene_cache(
             cache_path,
@@ -1364,6 +1494,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--retry-delay", type=non_negative_float, default=1.0, help="Số giây chờ giữa các lần retry.")
     parser.add_argument("--disk-reserve-mb", type=non_negative_int, default=512, help="Dung lượng trống tối thiểu để giữ làm vùng đệm.")
     parser.add_argument("--temp-cleanup-hours", type=non_negative_int, default=24, help="Dọn work directory tạm cũ hơn số giờ này.")
+    parser.add_argument("--temp-quota-mb", type=non_negative_int, default=2048, help="Quota work directory tạm cũ; 0 để tắt quota.")
+    parser.add_argument("--cache-quota-mb", type=non_negative_int, default=1024, help="Quota scene cache; chỉ xóa cache cũ hơn 7 ngày khi vượt quota, 0 để tắt.")
     parser.add_argument("--resume", action="store_true", help="Tiếp tục từ checkpoint của output run hiện tại.")
     parser.add_argument("--checkpoint", type=Path, default=None, help="Đường dẫn checkpoint JSON; mặc định nằm trong output.")
     parser.add_argument("--cache-dir", type=Path, default=None, help="Thư mục cache scene dùng lại giữa các lần chạy.")
@@ -1399,7 +1531,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     mp.freeze_support()
     args = parse_args()
-    cleanup_frameforge_temp_dirs(older_than_seconds=int(args.temp_cleanup_hours) * 60 * 60)
+    cleanup_frameforge_temp_dirs(
+        older_than_seconds=int(args.temp_cleanup_hours) * 60 * 60,
+        max_total_bytes=int(args.temp_quota_mb) * 1024**2,
+    )
+    cleanup_frameforge_cache(
+        args.cache_dir or args.output / ".frameforge_cache",
+        max_total_bytes=int(args.cache_quota_mb) * 1024**2,
+    )
     args.disk_reserve_bytes = int(args.disk_reserve_mb) * 1024**2
     args.cache_root = args.cache_dir
     args.duplicate_root = args.duplicate_index_dir
