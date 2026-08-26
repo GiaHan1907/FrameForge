@@ -177,6 +177,10 @@ def maybe_update_app(force: bool = False, timeout: float = 10.0, download: bool 
         return AppUpdateStatus(current, None, False, False, False, None, "Chưa cấu hình update feed công khai cho ứng dụng.")
     try:
         manifest = _fetch_json(manifest_url, timeout=timeout)
+        if manifest.get("schema") not in (None, 1):
+            raise ValueError("Manifest có schema không được hỗ trợ.")
+        if manifest.get("app") not in (None, "FrameForge"):
+            raise ValueError("Manifest không thuộc ứng dụng FrameForge.")
         latest = str(manifest.get("version") or "")
         installer_url = str(manifest.get("installer_url") or "")
         sha256 = str(manifest.get("sha256") or "")
@@ -185,6 +189,10 @@ def maybe_update_app(force: bool = False, timeout: float = 10.0, download: bool 
             raise ValueError("Manifest có version không hợp lệ.")
         if not installer_name.lower().endswith(".exe"):
             raise ValueError("Manifest không trỏ tới installer .exe.")
+        if not installer_url.lower().startswith("https://"):
+            raise ValueError("Manifest có installer URL không dùng HTTPS.")
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
+            raise ValueError("Manifest có SHA-256 không hợp lệ.")
         available = _version_key(latest) > _version_key(current)
         state = {
             "checked_at": time.time(),
