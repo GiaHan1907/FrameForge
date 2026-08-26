@@ -106,7 +106,9 @@ Mở `http://localhost:8501`. Dockerfile tự cài FFmpeg và dependency Python.
 
 ## Báo cáo
 
-CLI có thể ghi báo cáo bằng `--report report.json`. Với scene mode, trường `scene_times` chứa các mốc timestamp phát hiện được. Các trường `saved`, `rejected_blurry`, `rejected_duplicate` và `capture_errors` giúp đánh giá chất lượng xử lý.
+CLI có thể ghi báo cáo bằng `--report report.json`. Với scene mode, trường `scene_times` chứa các mốc timestamp phát hiện được và `selected_times` chứa frame đại diện đã chọn. Các trường `saved`, `rejected_blurry`, `rejected_duplicate`, `rejected_duplicate_cross_run`, `cache_hit` và `capture_errors` giúp đánh giá chất lượng xử lý.
+
+FrameForge lưu scene cache JSON theo fingerprint của video và cấu hình phân tích. Có thể dùng lại cache bằng `--cache-dir`, tiếp tục queue bằng `--resume --checkpoint FILE`, và dùng `--duplicate-index-dir` để loại các frame gần trùng với những lần chạy trước. Trong Streamlit, phần **Timeline tương tác** cho phép chọn marker, điều chỉnh timestamp và xem preview frame gần nhất.
 
 ## Tham khảo
 

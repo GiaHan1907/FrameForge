@@ -36,6 +36,7 @@ from video_screenshot_advanced import (
     format_bytes,
     process_videos,
     recommend_workers,
+    timestamp_label,
 )
 from video_downloader import (
     QUALITY_FORMATS,
@@ -528,11 +529,13 @@ def make_download_zip(paths: list[Path]) -> bytes:
     return buffer.getvalue()
 
 
-def show_scene_timeline(reports: list[dict[str, object]]) -> None:
+def show_scene_timeline(reports: list[dict[str, object]], output_dir: Path | None = None) -> None:
     rows = []
     for report in reports:
         video_name = Path(str(report.get("video", "video"))).name
         scene_times = report.get("scene_times", [])
+        if not isinstance(scene_times, list) or not scene_times:
+            scene_times = report.get("selected_times", [])
         if isinstance(scene_times, list):
             for scene_number, timestamp in enumerate(scene_times, start=1):
                 rows.append(
@@ -547,7 +550,12 @@ def show_scene_timeline(reports: list[dict[str, object]]) -> None:
         return
 
     st.markdown('<div class="section-heading"><span>◈</span> Scene timeline</div>', unsafe_allow_html=True)
-    max_time = max(float(row["time_seconds"]) for row in rows) or 1.0
+    all_selected_times = [
+        float(timestamp)
+        for report in reports
+        for timestamp in (report.get("selected_times", []) if isinstance(report.get("selected_times", []), list) else [])
+    ]
+    max_time = max([float(row["time_seconds"]) for row in rows] + all_selected_times + [1.0])
     timeline_rows = []
     for row in rows:
         video_label = html.escape(str(row["video"]))
@@ -584,6 +592,42 @@ def show_scene_timeline(reports: list[dict[str, object]]) -> None:
         "<tbody>" + "".join(table_rows) + "</tbody></table></div>",
         unsafe_allow_html=True,
     )
+
+    st.markdown("**Timeline tương tác**")
+    interactive_options = []
+    for report in reports:
+        video_name = Path(str(report.get("video", "video"))).name
+        selected = report.get("selected_times", [])
+        if not isinstance(selected, list):
+            selected = []
+        for scene_number, timestamp in enumerate(selected, start=1):
+            interactive_options.append((f"{video_name} · Scene {scene_number} · {float(timestamp):.3f}s", video_name, float(timestamp)))
+    if interactive_options:
+        labels = [item[0] for item in interactive_options]
+        selected_label = st.selectbox("Chọn scene/frame", labels, key="interactive_scene_choice")
+        _, selected_video, selected_timestamp = next(item for item in interactive_options if item[0] == selected_label)
+        adjusted_timestamp = st.slider(
+            "Mốc preview (giây)",
+            min_value=0.0,
+            max_value=float(max_time),
+            value=min(float(max_time), max(0.0, selected_timestamp)),
+            step=0.001,
+            format="%.3f s",
+            key="interactive_scene_timestamp",
+        )
+        st.caption(f"Đã chọn **{selected_video}** tại **{adjusted_timestamp:.3f}s**. Mốc gần nhất được dùng để preview.")
+        if output_dir is not None:
+            selected_report = next(
+                report for report in reports if Path(str(report.get("video", "video"))).name == selected_video
+            )
+            candidates = [float(item) for item in selected_report.get("selected_times", [])]
+            nearest = min(candidates, key=lambda item: abs(item - adjusted_timestamp)) if candidates else selected_timestamp
+            pattern = f"*_{timestamp_label(nearest)}.*"
+            preview_candidates = sorted(output_dir.rglob(pattern))
+            if preview_candidates:
+                st.image(str(preview_candidates[0]), caption=f"Preview gần nhất · {nearest:.3f}s", use_container_width=True)
+            else:
+                st.info("Chưa tìm thấy file ảnh tương ứng trong output run này.")
 
 
 # Header
@@ -974,6 +1018,16 @@ with st.sidebar:
         step=128,
         help="Không bắt đầu hoặc tiếp tục ghi khi dung lượng trống thấp hơn vùng đệm này.",
     )
+    use_scene_cache = st.checkbox(
+        "Dùng cache phân tích scene",
+        value=True,
+        help="Lần chạy sau sẽ seek tới các timestamp đã chọn thay vì phân tích lại toàn bộ video.",
+    )
+    cross_run_duplicates = st.checkbox(
+        "Loại duplicate giữa các lần chạy",
+        value=True,
+        help="Dùng dHash index trong thư mục screenshot để tránh lưu lại frame gần giống đã xuất trước đó.",
+    )
 
 
 def build_args() -> SimpleNamespace:
@@ -1002,6 +1056,13 @@ def build_args() -> SimpleNamespace:
         retries=int(retry_count),
         retry_delay=float(retry_delay),
         disk_reserve_bytes=int(disk_reserve_mb) * 1024**2,
+        use_scene_cache=bool(use_scene_cache),
+        cross_run_duplicates=bool(cross_run_duplicates),
+        cross_run_duplicate_threshold=int(duplicate_threshold),
+        resume=False,
+        checkpoint_path=None,
+        cache_root=None,
+        duplicate_root=None,
     )
 
 
@@ -1044,18 +1105,22 @@ def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output
         "input_paths": input_paths,
         "output_dir": output_dir,
         "work_dir": work_dir,
+        "args": args,
         "reports": None,
         "error": None,
         "cleaned": False,
     }
 
 
-def _finish_processing_job(job: dict[str, object]) -> None:
-    if job.get("cleaned"):
+def _finish_processing_job(job: dict[str, object], keep_work_dir: bool = False) -> None:
+    if job.get("cleaned") and not keep_work_dir:
         return
     work_dir = Path(str(job["work_dir"]))
-    shutil.rmtree(work_dir, ignore_errors=True)
-    job["cleaned"] = True
+    if not keep_work_dir:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        job["cleaned"] = True
+    else:
+        job["resumable"] = work_dir.exists()
     executor = job.get("executor")
     if executor is not None:
         executor.shutdown(wait=False, cancel_futures=True)
@@ -1081,7 +1146,7 @@ def _poll_processing_job() -> dict[str, object] | None:
     except ProcessingCancelled as exc:
         job["status"] = "cancelled"
         job["error"] = str(exc)
-        job["message"] = "Đã hủy xử lý; các screenshot đã ghi trước đó vẫn được giữ lại."
+        job["message"] = "Đã hủy xử lý; checkpoint và các screenshot đã ghi trước đó vẫn được giữ lại để tiếp tục."
     except InsufficientDiskSpace as exc:
         job["status"] = "error"
         job["error"] = str(exc)
@@ -1090,7 +1155,7 @@ def _poll_processing_job() -> dict[str, object] | None:
         job["status"] = "error"
         job["error"] = str(exc)
         job["message"] = f"Không thể xử lý queue: {exc}"
-    _finish_processing_job(job)
+    _finish_processing_job(job, keep_work_dir=str(job.get("status")) == "cancelled")
     return job
 
 
@@ -1126,6 +1191,19 @@ def _render_processing_job() -> None:
 
     if status == "cancelled":
         st.warning(str(job.get("message", "Đã hủy xử lý.")))
+        work_dir = Path(str(job.get("work_dir", "")))
+        if job.get("resumable") and work_dir.exists():
+            if st.button("Tiếp tục từ checkpoint", key="resume_processing", type="primary"):
+                args = job.get("args")
+                if args is not None:
+                    args.resume = True
+                    _start_processing_job(
+                        args,
+                        list(job.get("input_paths", [])),
+                        Path(str(job["output_dir"])),
+                        work_dir,
+                    )
+                    st.rerun()
         return
     if status == "error":
         st.error(str(job.get("message", "Có lỗi khi xử lý queue.")))
@@ -1170,7 +1248,7 @@ def _render_processing_job() -> None:
             use_container_width=True,
             key="processing_report_download",
         )
-    show_scene_timeline(reports)
+    show_scene_timeline(reports, output_dir)
     image_files = sorted(output_dir.rglob("*.jpg")) + sorted(output_dir.rglob("*.png")) + sorted(output_dir.rglob("*.webp"))
     if image_files:
         st.markdown(
@@ -1298,6 +1376,10 @@ if run_clicked:
         work_dir = Path(tempfile.mkdtemp(prefix="video_screenshot_web_"))
         input_dir = work_dir / "input"
         output_dir = screenshot_root / f"FrameForge_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        args.cache_root = screenshot_root / ".frameforge_scene_cache"
+        args.duplicate_root = screenshot_root / ".frameforge_duplicate_index"
+        args.checkpoint_path = output_dir / ".frameforge_checkpoint.json"
+        args.resume = False
         input_dir.mkdir(parents=True)
         output_dir.mkdir(parents=True)
         input_paths = list(downloaded_paths)

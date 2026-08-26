@@ -106,7 +106,9 @@ python video_screenshot_advanced.py ./videos \
   --retries 2 \
   --retry-delay 1 \
   --disk-reserve-mb 512 \
-  --temp-cleanup-hours 24
+  --temp-cleanup-hours 24 \
+  --cache-dir ./frameforge_cache \
+  --duplicate-index-dir ./frameforge_duplicate_index
 ```
 
 Các tùy chọn chính:
@@ -127,14 +129,42 @@ Các tùy chọn chính:
 | `--retry-delay N` | Số giây chờ giữa các lần retry. |
 | `--disk-reserve-mb N` | Vùng đệm dung lượng trống tối thiểu trước khi xử lý. |
 | `--temp-cleanup-hours N` | Dọn work directory tạm cũ hơn N giờ khi khởi động CLI. |
+| `--resume` | Tiếp tục queue từ checkpoint của output run hiện tại. |
+| `--checkpoint FILE` | Đường dẫn checkpoint JSON tùy chỉnh. |
+| `--cache-dir DIR` | Cache timestamp scene để dùng lại giữa các lần chạy. |
+| `--no-scene-cache` | Tắt việc đọc/ghi scene cache. |
+| `--duplicate-index-dir DIR` | Nơi lưu dHash index dùng phát hiện duplicate giữa các lần chạy. |
+| `--no-cross-run-duplicates` | Tắt lọc duplicate với các lần chạy trước. |
 
-## 8. Kết quả và báo cáo
+## 8. Cache, checkpoint và duplicate giữa các lần chạy
+
+Khi chạy scene detection, FrameForge lưu cache JSON theo **đường dẫn, kích thước, thời gian sửa đổi và cấu hình phân tích** của video. Nếu video hoặc các tham số scene thay đổi, cache cũ sẽ tự bị bỏ qua. Cache chỉ lưu timestamp đã chọn và scene marker, không lưu toàn bộ frame nên có kích thước nhỏ.
+
+Để tiếp tục một queue bị hủy, giữ nguyên thư mục output run và chạy lại với `--resume` cùng `--checkpoint` cũ:
+
+```bash
+python video_screenshot_advanced.py ./videos \
+  --best-frame-per-scene \
+  --output ./screenshots_filtered \
+  --checkpoint ./screenshots_filtered/.frameforge_checkpoint.json \
+  --resume
+```
+
+Checkpoint được ghi atomically sau mỗi video hoàn tất. Khi resume, FrameForge chỉ bỏ qua video đã hoàn tất với cùng processing signature; nếu thay đổi cấu hình xử lý, checkpoint sẽ được coi là không tương thích và queue sẽ chạy lại an toàn.
+
+DHash index trong `--duplicate-index-dir` giúp loại frame gần giống đã lưu ở những lần chạy trước. Đặt `--duplicate-threshold 0` hoặc dùng `--no-cross-run-duplicates` nếu muốn mỗi lần chạy luôn tạo output độc lập.
+
+## 9. Timeline tương tác
+
+Sau khi queue hoàn tất, Web UI hiển thị scene markers và bảng timestamp. Khu vực **Timeline tương tác** cho phép chọn một video/scene, điều chỉnh mốc preview bằng slider và xem frame gần nhất trong thư mục output. Với video chỉ có một scene, frame đại diện vẫn được hiển thị như một marker.
+
+## 10. Kết quả và báo cáo
 
 Ảnh được lưu trong thư mục output theo từng video. Báo cáo JSON gồm số frame yêu cầu, số frame đã lưu, số frame bị loại vì mờ/trùng, lỗi đọc frame, metadata video và danh sách timestamp của scene.
 
 Trong Web UI, nút tải ZIP chứa toàn bộ ảnh và `report.json`. Có thể tải report JSON riêng để xử lý tiếp bằng chương trình khác.
 
-## 9. Khắc phục sự cố
+## 11. Khắc phục sự cố
 
 Nếu chạy EXE mà không thấy giao diện, trước hết kiểm tra:
 
@@ -156,7 +186,7 @@ taskkill /IM VideoScreenshotFilter.exe /F
 
 Nếu browser không phát được preview, hãy đổi video sang MP4/H.264. Đây là giới hạn codec của trình duyệt, không phải lỗi cắt screenshot.
 
-## 10. Chọn số worker theo phần cứng
+## 12. Chọn số worker theo phần cứng
 
 Worker chỉ song song giữa các video độc lập. Số worker không nên vượt quá số video cần xử lý, số lõi CPU hiệu dụng hoặc mức RAM có thể dành cho ứng dụng.
 
@@ -171,7 +201,7 @@ Chế độ `Auto` dùng quy tắc thận trọng dựa trên CPU, RAM và số 
 
 Trong thực tế, worker thường có lợi nhất khi có ít nhất hai video. Với một video duy nhất, pipeline vẫn đọc video một lần và chế độ đa luồng không thể chia nhỏ việc đọc cùng video thành nhiều worker độc lập.
 
-## 11. Chạy benchmark
+## 13. Chạy benchmark
 
 Dùng thư mục có ít nhất hai video để so sánh công bằng:
 
@@ -202,7 +232,7 @@ Các chỉ số quan trọng là `single_seconds_avg`, `multi_seconds_avg`, `spe
 
 Để kết quả đáng tin cậy, đóng các ứng dụng nặng, dùng cùng `analysis-width`, `analysis-fps`, bộ lọc và số lần lặp. Lần chạy đầu có thể bị ảnh hưởng bởi cache codec và khởi tạo thư viện, vì vậy nên dùng `--repetitions 3` hoặc cao hơn.
 
-## 12. Scene detection thông minh
+## 14. Scene detection thông minh
 
 Scene detection mới kết hợp sai khác pixel với histogram màu, thay vì chỉ dựa trên một phép đo. Một thay đổi chỉ được xem là scene thật khi khác biệt vượt ngưỡng, frame đủ sắc nét, khoảng cách với scene trước đạt minimum gap và thay đổi được xác nhận qua nhiều frame liên tiếp.
 
@@ -219,7 +249,7 @@ Các ngưỡng nên điều chỉnh theo nội dung:
 | Video hành động | 0.35–0.55 | 1–2 | 0.2–0.5 giây |
 | Video nhiều flash/hiệu ứng | 0.35–0.60 | 3–4 | 0.8–1.5 giây |
 
-## 13. Lọc motion blur
+## 15. Lọc motion blur
 
 Bộ lọc motion blur phân tích frame thu nhỏ bằng hai tín hiệu: mức tập trung gradient theo một hướng và lượng chi tiết cao tần đo bằng Laplacian so với gradient. Điểm nằm trong khoảng 0–1; điểm càng cao càng có nguy cơ nhòe chuyển động.
 
@@ -238,7 +268,7 @@ python video_screenshot_advanced.py video.mp4 \
 
 Báo cáo có trường `rejected_motion_blur` để biết bao nhiêu frame bị loại riêng vì motion blur. Detector là heuristic nhanh, không phải bộ ước lượng chuyển động tuyệt đối; nên benchmark và xem preview trên loại video thực tế trước khi chọn threshold cố định.
 
-## 14. Tải queue nhiều video và playlist
+## 16. Tải queue nhiều video và playlist
 
 Trong khu vực **Tải video công khai**, nhập mỗi URL trên một dòng. Có thể trộn URL video đơn và URL playlist trong cùng một queue. Trường **Tối đa mỗi playlist** giới hạn số mục lấy từ từng playlist; tổng số URL trong một lần gọi được giới hạn ở mức an toàn 100 URL.
 
@@ -254,7 +284,7 @@ https://pin.it/...
 
 URL phải là URL công khai thuộc Facebook, TikTok hoặc Pinterest. Ứng dụng không hỗ trợ URL riêng tư, nội dung yêu cầu đăng nhập, DRM hoặc kỹ thuật vượt cơ chế bảo vệ.
 
-## 15. Health check FFmpeg
+## 17. Health check FFmpeg
 
 Khi chạy source, ứng dụng kiểm tra `ffmpeg` trong `PATH`. Khi chạy bản Windows được build bằng `build_windows.bat`, ứng dụng ưu tiên `vendor\ffmpeg\ffmpeg.exe` và `ffprobe.exe` đã nhúng; người dùng cuối không phải cài FFmpeg riêng. Nếu cả embedded và PATH đều thiếu, giao diện hiện cảnh báo. Điều này không nhất thiết ngăn tải format đã ghép sẵn, nhưng có thể khiến yt-dlp không ghép được video-only và audio-only thành một file chất lượng cao.
 
@@ -267,11 +297,11 @@ where ffmpeg
 
 Nếu chạy source và không tìm thấy, cài FFmpeg rồi thêm thư mục chứa `ffmpeg.exe` vào biến môi trường `PATH`. Bản EXE onedir/installer đã có FFmpeg nhúng nên không cần bước này. Sau đó đóng và mở lại ứng dụng để health check nhận cấu hình mới.
 
-## 16. Hidden imports của PyInstaller
+## 18. Hidden imports của PyInstaller
 
 File `video_screenshot_filter.spec` thu thập `yt_dlp` bằng cả `collect_all` và `collect_submodules`. Khi build EXE trên Windows, cấu hình này giúp nhúng các extractor động. Nếu yt-dlp được nâng cấp, hãy xóa thư mục `build` và `dist`, sau đó chạy lại `build_windows.bat` để tránh dùng cache cũ.
 
-## 17. Auto-updater yt-dlp
+## 19. Auto-updater yt-dlp
 
 Khi mở ứng dụng, FrameForge kiểm tra phiên bản yt-dlp tối đa một lần trong 24 giờ. Nếu có phiên bản mới, updater tải wheel chính thức từ PyPI qua HTTPS, kiểm tra SHA-256 theo metadata PyPI và kiểm tra package có cấu trúc hợp lệ. Bản mới được lưu trong thư mục dữ liệu người dùng và chỉ được kích hoạt khi mở ứng dụng lần kế tiếp.
 
@@ -294,7 +324,7 @@ Log cập nhật:
 
 > Auto-updater chỉ cập nhật package yt-dlp. Không nên cho updater tự tải và thực thi một EXE mới nếu chưa có manifest tin cậy, checksum/chữ ký số và cơ chế rollback.
 
-## 18. Đo kích thước EXE và giảm dung lượng
+## 20. Đo kích thước EXE và giảm dung lượng
 
 Sau khi chạy `build_windows.bat`, file `build_size_report.json` được tạo tự động. Có thể chạy lại thủ công:
 
@@ -315,7 +345,7 @@ Hãy chú ý các dòng `vendor_ffmpeg` và `pyinstaller_dist`. FFmpeg static th
 Không nên dùng UPX lên FFmpeg hoặc xóa DLL/codec tùy tiện. Mỗi thay đổi phải được kiểm tra lại bằng health check, `ffprobe`, tải format cần dùng và pipeline screenshot.
 
 
-## 19. Profile minimal
+## 21. Profile minimal
 
 Profile minimal giữ các chức năng cốt lõi gồm giao diện Streamlit, preview, downloader công khai bằng yt-dlp, scene detection, motion blur, dHash, Best frame per scene và xử lý nhiều video. Timeline dùng HTML/CSS thuần thay vì `st.table`, còn spec loại Pandas, PyArrow, PyDeck, Altair, Matplotlib, Plotly, Boto3 và Botocore khỏi bundle khi các thành phần này không được ứng dụng sử dụng.
 
@@ -339,7 +369,7 @@ build_windows.bat
 
 Số đo Linux tham khảo trước FFmpeg Windows là **622.06 MiB** cho full profile và **324.10 MiB** cho minimal profile. Cặp `ffmpeg.exe`/`ffprobe.exe` static đã chọn khoảng **218.01 MiB**, vì vậy không thể cam kết installed size dưới 200 MB nếu vẫn giữ Streamlit, OpenCV và FFmpeg offline đầy đủ. Installer nén có thể nhỏ hơn dung lượng cài đặt, nhưng hai số đo này không được đánh đồng.
 
-## 20. Tạo installer Setup
+## 22. Tạo installer Setup
 
 Cài **Inno Setup 6** trên Windows. Sau khi build xong thư mục `dist\VideoScreenshotFilter`, chạy:
 
@@ -358,12 +388,12 @@ build_installer.bat
 
 Không chỉ copy riêng `VideoScreenshotFilter.exe` ra ngoài thư mục onedir. PyInstaller cần `_internal` và các binary vendor đi kèm. Khi gỡ cài đặt, uninstaller xóa chương trình; dữ liệu updater trong `%LOCALAPPDATA%\VideoScreenshotFilter` cũng được dọn theo cấu hình installer, nhưng nên kiểm tra lại nếu muốn giữ cache yt-dlp.
 
-## 21. Checklist phát hành Windows
+## 23. Checklist phát hành Windows
 
 Trước khi phát hành, hãy build trên Windows trong thư mục sạch, kiểm tra `build_size_report.json`, cài thử Setup trên user không có Python/FFmpeg, mở ứng dụng và xác nhận trình duyệt truy cập `http://127.0.0.1:8501`. Sau đó kiểm tra health check báo FFmpeg `source=embedded`, thử một URL công khai hợp lệ, format cần ghép audio/video và pipeline Best frame per scene. Cuối cùng kiểm tra cả kích thước thư mục cài đặt lẫn kích thước file Setup; file Setup nhỏ hơn không có nghĩa là ứng dụng sau cài chiếm dưới 200 MB.
 
 
-## 22. Tự động build và tạo Setup bằng GitHub Actions
+## 24. Tự động build và tạo Setup bằng GitHub Actions
 
 Workflow `.github/workflows/windows-release.yml` chạy trên Windows runner của GitHub. Nó tự cài Python 3.12, build PyInstaller onedir, cài Inno Setup, chạy `build_installer.bat`, đo kích thước, tạo `SHA256SUMS.txt` và upload file Setup cùng báo cáo build.
 
@@ -374,7 +404,7 @@ Sau khi workflow hoàn tất, file có thể lấy ở **Actions → workflow ru
 Workflow hiện cấp quyền `contents: write` cho `GITHUB_TOKEN` để tạo Release. Repository cần bật GitHub Actions và cho phép workflow tạo/cập nhật Release. Không đặt Personal Access Token trực tiếp trong YAML. Script FFmpeg hiện vẫn dùng URL mặc định trong `prepare_ffmpeg_windows.ps1`; trước khi phát hành chính thức nên thay alias `latest` bằng asset/version đã ghim hoặc truyền URL qua Repository Variable/Secret để build có thể tái lập.
 
 
-## 23. Auto-update ứng dụng Windows
+## 25. Auto-update ứng dụng Windows
 
 Updater hiện có hai phần độc lập. Phần cũ cập nhật package yt-dlp; phần mới trong `app_update.py` kiểm tra manifest HTTPS và so sánh phiên bản ở mỗi lần khởi động, sau đó chỉ tải `FrameForge-Setup-*.exe`, xác minh SHA-256 và mở Setup khi người dùng bấm **Cập nhật ngay**. Ứng dụng không tự ghi đè file EXE đang chạy. Có thể tắt riêng kiểm tra startup bằng `FRAMEFORGE_APP_UPDATE_STARTUP=0`.
 
@@ -395,7 +425,7 @@ set FRAMEFORGE_APP_UPDATE=0
 Biến `FRAMEFORGE_AUTO_UPDATE=0` chỉ tắt updater yt-dlp, không phải updater EXE.
 
 
-## 24. Chọn nơi lưu video và screenshot
+## 26. Chọn nơi lưu video và screenshot
 
 Ngay khi mở ứng dụng, mở phần **Nơi lưu file** ở khu vực chính. Nhập đường dẫn local hoặc bấm **Chọn thư mục video** để chọn nơi lưu video tải xuống, và bấm **Chọn thư mục screenshot** để chọn thư mục gốc cho ảnh đầu ra.
 

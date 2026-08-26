@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import math
 import os
@@ -123,6 +124,122 @@ def ensure_free_disk_space(path: Path, required_bytes: int = 0, reserve_bytes: i
             f"cần tối thiểu {format_bytes(needed)} (gồm vùng đệm an toàn)."
         )
     return free
+
+
+def _atomic_write_json(path: Path, value: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+
+
+def _read_json(path: Path) -> dict[str, object] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def scene_cache_path(video: Path, cache_root: Path) -> Path:
+    identity = hashlib.sha1(str(video.resolve()).encode("utf-8")).hexdigest()[:16]
+    return cache_root / f"{video.stem}.{identity}.scene-cache.json"
+
+
+def duplicate_index_path(video: Path, duplicate_root: Path) -> Path:
+    identity = hashlib.sha1(str(video.resolve()).encode("utf-8")).hexdigest()[:16]
+    return duplicate_root / f"{video.stem}.{identity}.hashes.json"
+
+
+def processing_signature(args: argparse.Namespace) -> str:
+    values = {
+        key: str(value)
+        for key, value in vars(args).items()
+        if key not in {"workers", "retries", "retry_delay", "resume", "checkpoint_path", "cache_root", "duplicate_root"}
+    }
+    encoded = json.dumps(values, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def scene_cache_key(video: Path, metadata: dict[str, float | int], args: argparse.Namespace) -> str:
+    payload = {
+        "cache_version": 1,
+        "video": str(video.resolve()),
+        "size": video.stat().st_size,
+        "mtime_ns": video.stat().st_mtime_ns,
+        "metadata": metadata,
+        "scene_threshold": float(args.scene_threshold),
+        "min_scene_gap": float(args.min_scene_gap),
+        "flash_return_ratio": float(args.flash_return_ratio),
+        "flash_brightness_threshold": float(args.flash_brightness_threshold),
+        "scene_confirmations": int(args.scene_confirmations),
+        "analysis_width": int(args.analysis_width),
+        "analysis_fps": float(args.analysis_fps),
+        "best_frame_per_scene": bool(args.best_frame_per_scene),
+        "min_sharpness": float(args.min_sharpness),
+        "motion_blur_threshold": float(getattr(args, "motion_blur_threshold", 0.0)),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def load_scene_cache(path: Path, key: str) -> dict[str, object] | None:
+    value = _read_json(path)
+    if not value or value.get("cache_version") != 1 or value.get("cache_key") != key:
+        return None
+    selected = value.get("selected_times")
+    scene_times = value.get("scene_times")
+    if not isinstance(selected, list) or not isinstance(scene_times, list):
+        return None
+    return value
+
+
+def save_scene_cache(path: Path, key: str, video: Path, selected_times: list[float], scene_times: list[float]) -> None:
+    _atomic_write_json(
+        path,
+        {
+            "cache_version": 1,
+            "cache_key": key,
+            "video": str(video),
+            "created_at": time.time(),
+            "selected_times": [round(float(item), 3) for item in selected_times],
+            "scene_times": [round(float(item), 3) for item in scene_times],
+        },
+    )
+
+
+def load_duplicate_hashes(path: Path) -> set[int]:
+    value = _read_json(path)
+    raw = value.get("hashes", []) if value else []
+    if not isinstance(raw, list):
+        return set()
+    return {int(item) for item in raw if isinstance(item, (int, str)) and str(item).isdigit()}
+
+
+def save_duplicate_hashes(path: Path, hashes: set[int]) -> None:
+    _atomic_write_json(path, {"version": 1, "updated_at": time.time(), "hashes": sorted(int(item) for item in hashes)})
+
+
+def checkpoint_path(output_root: Path, args: argparse.Namespace) -> Path:
+    configured = getattr(args, "checkpoint_path", None)
+    return Path(configured) if configured else output_root / ".frameforge_checkpoint.json"
+
+
+def load_checkpoint(path: Path) -> dict[str, object]:
+    value = _read_json(path)
+    return value if value and value.get("version") == 1 else {"version": 1, "completed": {}}
+
+
+def save_checkpoint(path: Path, run_signature: str, completed: dict[str, object]) -> None:
+    _atomic_write_json(
+        path,
+        {
+            "version": 1,
+            "updated_at": time.time(),
+            "run_signature": run_signature,
+            "completed": completed,
+        },
+    )
 
 
 def cleanup_frameforge_temp_dirs(
@@ -446,6 +563,7 @@ def accept_and_save(
     index: int,
     args: argparse.Namespace,
     previous_hash: int | None,
+    existing_hashes: set[int] | None = None,
 ) -> tuple[str, int | None]:
     if args.min_sharpness > 0 and candidate.sharpness < args.min_sharpness:
         return "blurry", previous_hash
@@ -458,12 +576,22 @@ def accept_and_save(
         and hamming_distance(candidate.hash_value, previous_hash) <= args.duplicate_threshold
     ):
         return "duplicate", previous_hash
+    cross_run_threshold = int(getattr(args, "cross_run_duplicate_threshold", args.duplicate_threshold))
+    if (
+        getattr(args, "cross_run_duplicates", True)
+        and cross_run_threshold > 0
+        and existing_hashes
+        and any(hamming_distance(candidate.hash_value, item) <= cross_run_threshold for item in existing_hashes)
+    ):
+        return "duplicate_cross_run", previous_hash
 
     filename = f"{video_stem}_{index:05d}_{timestamp_label(candidate.timestamp)}.{args.format}"
     output = output_dir / filename
     if output.exists() and not args.overwrite:
         return "existing", candidate.hash_value
     save_image(candidate.frame, output, args.format, args.quality, args.width)
+    if existing_hashes is not None:
+        existing_hashes.add(candidate.hash_value)
     print(f"  lưu — {output.name} sharpness={candidate.sharpness:.1f}")
     return "saved", candidate.hash_value
 
@@ -476,6 +604,7 @@ def process_fixed_mode(
     args: argparse.Namespace,
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
+    existing_hashes: set[int] | None = None,
 ) -> dict[str, object]:
     actual_start = min(args.start, duration)
     actual_end = duration if args.end is None else min(args.end, duration)
@@ -503,6 +632,7 @@ def process_fixed_mode(
         "rejected_blurry": 0,
         "rejected_motion_blur": 0,
         "rejected_duplicate": 0,
+        "rejected_duplicate_cross_run": 0,
         "skipped_existing": 0,
         "capture_errors": 0,
         "scene_times": [],
@@ -530,7 +660,7 @@ def process_fixed_mode(
             break
         candidate = frame_candidate(frame, timestamp, args.analysis_width)
         status, previous_hash = accept_and_save(
-            candidate, output_dir, video.stem, target_index + 1, args, previous_hash
+            candidate, output_dir, video.stem, target_index + 1, args, previous_hash, existing_hashes
         )
         reports[status_key(status)] = int(reports[status_key(status)]) + 1
         emit_progress(
@@ -558,6 +688,7 @@ def status_key(status: str) -> str:
         "blurry": "rejected_blurry",
         "duplicate": "rejected_duplicate",
         "motion_blur": "rejected_motion_blur",
+        "duplicate_cross_run": "rejected_duplicate_cross_run",
         "existing": "skipped_existing",
     }.get(status, "capture_errors")
 
@@ -570,6 +701,7 @@ def process_scene_mode(
     args: argparse.Namespace,
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
+    existing_hashes: set[int] | None = None,
 ) -> dict[str, object]:
     actual_start = min(args.start, duration)
     actual_end = duration if args.end is None else min(args.end, duration)
@@ -583,12 +715,15 @@ def process_scene_mode(
         "rejected_blurry": 0,
         "rejected_motion_blur": 0,
         "rejected_duplicate": 0,
+        "rejected_duplicate_cross_run": 0,
         "skipped_existing": 0,
         "capture_errors": 0,
         "scene_times": [],
+        "selected_times": [],
         "scene_confirmations": args.scene_confirmations,
         "smart_scene_detection": True,
     }
+    selected_times: list[float] = []
     previous_gray: np.ndarray | None = None
     previous_histogram: np.ndarray | None = None
     previous_brightness: float | None = None
@@ -606,7 +741,8 @@ def process_scene_mode(
         if candidate is None:
             return previous
         reports["requested"] = int(reports["requested"]) + 1
-        status, updated_hash = accept_and_save(candidate, output_dir, video.stem, index, args, previous)
+        selected_times.append(round(float(candidate.timestamp), 3))
+        status, updated_hash = accept_and_save(candidate, output_dir, video.stem, index, args, previous, existing_hashes)
         reports[status_key(status)] = int(reports[status_key(status)]) + 1
         return updated_hash
 
@@ -731,7 +867,60 @@ def process_scene_mode(
                 getattr(args, "motion_blur_threshold", 0.0),
             )
     flush(current_best, scene_index + 1, previous_hash)
+    reports["selected_times"] = selected_times
     emit_progress(on_progress, video, "saving", 1.0, "Đã hoàn tất ghi screenshot")
+    return reports
+
+
+def process_cached_scene_mode(
+    capture: cv2.VideoCapture,
+    video: Path,
+    output_dir: Path,
+    args: argparse.Namespace,
+    cached: dict[str, object],
+    existing_hashes: set[int],
+    on_progress: ProgressCallback | None = None,
+    cancel_event=None,
+) -> dict[str, object]:
+    selected_times = [float(item) for item in cached.get("selected_times", [])]
+    scene_times = [float(item) for item in cached.get("scene_times", [])]
+    reports: dict[str, object] = {
+        "selection_mode": "best_frame_per_scene" if args.best_frame_per_scene else "scene_detection",
+        "requested": len(selected_times),
+        "saved": 0,
+        "rejected_blurry": 0,
+        "rejected_motion_blur": 0,
+        "rejected_duplicate": 0,
+        "rejected_duplicate_cross_run": 0,
+        "skipped_existing": 0,
+        "capture_errors": 0,
+        "scene_times": scene_times,
+        "selected_times": selected_times,
+        "scene_confirmations": args.scene_confirmations,
+        "smart_scene_detection": True,
+        "cache_hit": True,
+    }
+    previous_hash: int | None = None
+    for index, timestamp in enumerate(selected_times, start=1):
+        check_cancelled(cancel_event)
+        capture.set(cv2.CAP_PROP_POS_MSEC, timestamp * 1000.0)
+        ok, frame = capture.read()
+        if not ok:
+            reports["capture_errors"] = int(reports["capture_errors"]) + 1
+            continue
+        candidate = frame_candidate(frame, timestamp, args.analysis_width)
+        status, previous_hash = accept_and_save(
+            candidate, output_dir, video.stem, index, args, previous_hash, existing_hashes
+        )
+        reports[status_key(status)] = int(reports[status_key(status)]) + 1
+        emit_progress(
+            on_progress,
+            video,
+            "selecting",
+            index / max(len(selected_times), 1),
+            f"Dùng cache scene {index}/{len(selected_times)} tại {timestamp:.1f}s",
+        )
+    emit_progress(on_progress, video, "saving", 1.0, "Đã hoàn tất từ cache scene")
     return reports
 
 
@@ -753,19 +942,49 @@ def process_video(
         output_dir = output_root / video.stem
     output_dir.mkdir(parents=True, exist_ok=True)
     ensure_free_disk_space(output_dir, required_bytes=0, reserve_bytes=int(getattr(args, "disk_reserve_bytes", 512 * 1024**2)))
-    emit_progress(on_progress, video, "preparing", 0.0, "Đã mở video và kiểm tra dung lượng")
+    duplicate_root_value = getattr(args, "duplicate_root", None)
+    duplicate_root = Path(duplicate_root_value) if duplicate_root_value else output_root / ".frameforge_hashes"
+    duplicate_root.mkdir(parents=True, exist_ok=True)
+    duplicate_path = duplicate_index_path(video, duplicate_root)
+    existing_hashes = load_duplicate_hashes(duplicate_path)
+    cache_root_value = getattr(args, "cache_root", None)
+    cache_root = Path(cache_root_value) if cache_root_value else output_root / ".frameforge_cache"
+    cache_path: Path | None = None
+    cache_key: str | None = None
+    cached: dict[str, object] | None = None
+    if args.scene_detection:
+        cache_root.mkdir(parents=True, exist_ok=True)
+        cache_path = scene_cache_path(video, cache_root)
+        cache_key = scene_cache_key(video, metadata, args)
+        if getattr(args, "use_scene_cache", True):
+            cached = load_scene_cache(cache_path, cache_key)
+    cache_message = "cache scene hợp lệ" if cached else ("cần phân tích scene mới" if args.scene_detection else "không dùng scene cache")
+    emit_progress(on_progress, video, "preparing", 0.0, f"Đã mở video, kiểm tra disk, nạp {len(existing_hashes)} hash cũ; {cache_message}")
 
     args.source_fps = float(metadata["fps"])
     capture = cv2.VideoCapture(str(video))
     if not capture.isOpened():
         raise RuntimeError(f"Không mở được video: {video}")
     try:
-        if args.scene_detection:
-            reports = process_scene_mode(capture, video, output_dir, duration, args, on_progress, cancel_event)
+        if args.scene_detection and cached:
+            reports = process_cached_scene_mode(capture, video, output_dir, args, cached, existing_hashes, on_progress, cancel_event)
+        elif args.scene_detection:
+            reports = process_scene_mode(capture, video, output_dir, duration, args, on_progress, cancel_event, existing_hashes)
         else:
-            reports = process_fixed_mode(capture, video, output_dir, duration, args, on_progress, cancel_event)
+            reports = process_fixed_mode(capture, video, output_dir, duration, args, on_progress, cancel_event, existing_hashes)
     finally:
         capture.release()
+    save_duplicate_hashes(duplicate_path, existing_hashes)
+    if args.scene_detection and not cached and cache_path is not None and cache_key is not None:
+        save_scene_cache(
+            cache_path,
+            cache_key,
+            video,
+            [float(item) for item in reports.get("selected_times", [])],
+            [float(item) for item in reports.get("scene_times", [])],
+        )
+    reports["cache_hit"] = bool(cached)
+    reports["scene_cache_path"] = str(cache_path) if args.scene_detection and cache_path is not None else None
 
     reports.update({
         "video": str(video),
@@ -817,6 +1036,13 @@ def process_videos(
     worker_count = min(max(1, int(requested_workers)), len(videos))
     retry_count = max(0, int(max_retries))
     results: dict[int, dict[str, object]] = {}
+    checkpoint_file = checkpoint_path(output_root, args)
+    run_signature = processing_signature(args)
+    checkpoint = load_checkpoint(checkpoint_file)
+    completed_checkpoint = checkpoint.get("completed", {}) if getattr(args, "resume", False) and checkpoint.get("run_signature") == run_signature else {}
+    if not isinstance(completed_checkpoint, dict):
+        completed_checkpoint = {}
+    save_checkpoint(checkpoint_file, run_signature, completed_checkpoint)
 
     def run_item(index: int, video: Path) -> dict[str, object]:
         last_error: Exception | None = None
@@ -852,12 +1078,20 @@ def process_videos(
 
     def collect(index: int, video: Path, report: dict[str, object]) -> None:
         results[index] = report
+        completed_checkpoint[str(video.resolve())] = report
+        save_checkpoint(checkpoint_file, run_signature, completed_checkpoint)
         if on_complete is not None:
             on_complete(video, report)
 
     if worker_count == 1:
         for index, video in enumerate(videos):
             check_cancelled(cancel_event)
+            checkpoint_key = str(video.resolve())
+            if checkpoint_key in completed_checkpoint:
+                report = completed_checkpoint[checkpoint_key]
+                emit_progress(on_progress, video, "completed", 1.0, "Bỏ qua video đã hoàn tất từ checkpoint")
+                collect(index, video, report)
+                continue
             try:
                 report = run_item(index, video)
             except ProcessingCancelled:
@@ -869,13 +1103,24 @@ def process_videos(
         return [results[index] for index in range(len(videos))]
 
     print(f"Chạy song song {worker_count} worker cho {len(videos)} video")
+    pending_videos: list[tuple[int, Path]] = []
+    for index, video in enumerate(videos):
+        checkpoint_key = str(video.resolve())
+        if checkpoint_key in completed_checkpoint:
+            results[index] = completed_checkpoint[checkpoint_key]
+            emit_progress(on_progress, video, "completed", 1.0, "Bỏ qua video đã hoàn tất từ checkpoint")
+            if on_complete is not None:
+                on_complete(video, results[index])
+        else:
+            pending_videos.append((index, video))
+
     with ThreadPoolExecutor(
         max_workers=worker_count,
         thread_name_prefix="video-worker",
     ) as executor:
         future_map = {
             executor.submit(run_item, index, video): (index, video)
-            for index, video in enumerate(videos)
+            for index, video in pending_videos
         }
         for future in as_completed(future_map):
             check_cancelled(cancel_event)
@@ -921,6 +1166,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--retry-delay", type=non_negative_float, default=1.0, help="Số giây chờ giữa các lần retry.")
     parser.add_argument("--disk-reserve-mb", type=non_negative_int, default=512, help="Dung lượng trống tối thiểu để giữ làm vùng đệm.")
     parser.add_argument("--temp-cleanup-hours", type=non_negative_int, default=24, help="Dọn work directory tạm cũ hơn số giờ này.")
+    parser.add_argument("--resume", action="store_true", help="Tiếp tục từ checkpoint của output run hiện tại.")
+    parser.add_argument("--checkpoint", type=Path, default=None, help="Đường dẫn checkpoint JSON; mặc định nằm trong output.")
+    parser.add_argument("--cache-dir", type=Path, default=None, help="Thư mục cache scene dùng lại giữa các lần chạy.")
+    parser.add_argument("--duplicate-index-dir", type=Path, default=None, help="Thư mục index dHash dùng phát hiện trùng giữa các lần chạy.")
+    parser.add_argument("--no-scene-cache", action="store_false", dest="use_scene_cache", help="Tắt cache scene.")
+    parser.set_defaults(use_scene_cache=True)
+    parser.add_argument("--no-cross-run-duplicates", action="store_false", dest="cross_run_duplicates", help="Tắt lọc trùng với các lần chạy trước.")
+    parser.set_defaults(cross_run_duplicates=True)
     parser.add_argument("--min-sharpness", type=non_negative_float, default=100.0, help="Ngưỡng độ nét đã chuẩn hóa về chiều rộng tham chiếu 640 px; 0 để tắt.")
     parser.add_argument("--motion-blur-threshold", type=threshold_01, default=0.30, help="Ngưỡng motion blur 0–1; điểm cao hơn bị loại. Đặt 0 để tắt.")
     parser.add_argument("--duplicate-threshold", type=non_negative_int, default=6, help="Khoảng cách dHash tối đa để xem là trùng; 0 để tắt.")
@@ -942,6 +1195,10 @@ def main() -> int:
     args = parse_args()
     cleanup_frameforge_temp_dirs(older_than_seconds=int(args.temp_cleanup_hours) * 60 * 60)
     args.disk_reserve_bytes = int(args.disk_reserve_mb) * 1024**2
+    args.cache_root = args.cache_dir
+    args.duplicate_root = args.duplicate_index_dir
+    args.checkpoint_path = args.checkpoint
+    args.cross_run_duplicate_threshold = args.duplicate_threshold
     if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
         print("Cảnh báo: không tìm thấy FFmpeg/ffprobe; pipeline hiện dùng OpenCV nhưng FFmpeg vẫn cần cho môi trường đầy đủ.", file=sys.stderr)
     try:
