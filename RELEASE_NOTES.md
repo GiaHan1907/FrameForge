@@ -1,5 +1,13 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.13
+
+## Dọn dẹp và giao diện desktop
+
+Work directory tạm giờ được dọn ngay sau khi từng video hoàn tất và tiếp tục được dọn ở cuối job. Dữ liệu của job bị hủy vẫn được giữ lại để resume checkpoint. Bản desktop bật watchdog theo session; khi browser đóng và không còn session hoạt động, job đang chạy được hủy, executor được đóng, work directory được dọn và Streamlit runtime được dừng. Chạy `streamlit run` thủ công không bật hành vi auto-shutdown này.
+
+Khu vực tải video công khai được chuyển sang layout responsive hai tầng với chiều rộng URL lớn hơn, các control giới hạn playlist/retry đồng đều và nút tải queue cùng baseline. Theme chính được đồng bộ dark mode cho canvas, card, input, select, bảng timeline, cảnh báo và nút thao tác.
+
 # FrameForge v0.1.12
 
 ## Sửa lỗi chọn thư mục trong Streamlit

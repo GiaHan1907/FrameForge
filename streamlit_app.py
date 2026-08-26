@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import atexit
 import contextlib
 import io
 from datetime import datetime
+
 import html
 import json
 import mimetypes
@@ -12,6 +14,7 @@ import sys
 import shutil
 import tempfile
 import threading
+import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -75,22 +78,38 @@ st.markdown(
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
     :root {
-        --ink: #172033;
-        --muted: #667085;
-        --line: #e6eaf0;
-        --surface: #ffffff;
-        --canvas: #f5f7fb;
-        --blue: #3867f2;
-        --violet: #7447e8;
-        --green: #159570;
+        --ink: #f4f7ff;
+        --muted: #9aa8bd;
+        --line: #2a3852;
+        --surface: #151d2d;
+        --surface-2: #1b263b;
+        --canvas: #0b1220;
+        --input: #202b41;
+        --input-border: #3a4a68;
+        --blue: #5d86ff;
+        --violet: #9a72ff;
+        --green: #43d6a3;
     }
 
     html, body, [class*="css"] {
         font-family: 'DM Sans', sans-serif;
     }
 
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+        background: var(--canvas) !important;
+        color: var(--ink);
+    }
+
     [data-testid="stAppViewContainer"] {
-        background: var(--canvas);
+        min-height: 100vh;
+    }
+
+    [data-testid="stMarkdownContainer"],
+    [data-testid="stText"],
+    label,
+    p,
+    span {
+        color: inherit;
     }
 
     [data-testid="stHeader"] {
@@ -135,10 +154,44 @@ st.markdown(
         padding-bottom: 3rem;
     }
 
-    h1, h2, h3 {
+    h1, h2, h3, h4, h5, h6 {
         font-family: 'Space Grotesk', sans-serif !important;
-        color: var(--ink);
+        color: var(--ink) !important;
         letter-spacing: -0.03em;
+    }
+
+    .stCaption,
+    [data-testid="stCaptionContainer"],
+    .muted-note {
+        color: var(--muted) !important;
+    }
+
+    .stTextInput input,
+    .stTextArea textarea,
+    .stNumberInput input,
+    [data-baseweb="select"] > div,
+    [data-baseweb="input"] > div,
+    [data-testid="stDateInput"] input {
+        color: var(--ink) !important;
+        background: var(--input) !important;
+        border-color: var(--input-border) !important;
+        border-radius: 11px !important;
+    }
+
+    .stTextInput input::placeholder,
+    .stTextArea textarea::placeholder {
+        color: #8796ad !important;
+    }
+
+    [data-baseweb="select"] svg,
+    [data-baseweb="input"] svg {
+        fill: var(--muted) !important;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-color: var(--line) !important;
+        background: var(--surface) !important;
+        border-radius: 16px !important;
     }
 
     .hero {
@@ -259,8 +312,8 @@ st.markdown(
         align-items: center;
         justify-content: center;
         border-radius: 8px;
-        color: #315bd9;
-        background: #e9efff;
+        color: #a9c0ff;
+        background: #1d2b4a;
         font-size: .85rem;
     }
 
@@ -293,12 +346,71 @@ st.markdown(
         font-size: .72rem;
     }
 
+    .download-panel {
+        padding: .35rem;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--surface);
+    }
+
+    .download-panel-title {
+        margin: .15rem .2rem .65rem;
+        color: var(--ink);
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: .9rem;
+        font-weight: 700;
+    }
+
+    .download-action-spacer {
+        height: 1.55rem;
+    }
+
+    .download-panel [data-testid="stHorizontalBlock"] {
+        align-items: stretch;
+    }
+
+    .download-panel [data-testid="stButton"] > button,
+    .download-panel [data-baseweb="select"] > div,
+    .download-panel [data-testid="stNumberInput"] input {
+        min-height: 2.85rem;
+    }
+
+    .download-panel [data-testid="stTextArea"] textarea {
+        min-height: 8rem;
+    }
+
+    .download-panel [data-testid="stButton"] > button {
+        width: 100%;
+        border-radius: 11px;
+        border: 1px solid var(--input-border);
+        color: var(--ink);
+        background: #202b41;
+        font-weight: 700;
+    }
+
+    .download-panel [data-testid="stButton"] > button:hover {
+        border-color: var(--blue);
+        color: #ffffff;
+        background: #2a3b5b;
+    }
+
+    .download-panel [data-testid="stButton"] > button[kind="primary"] {
+        border: 0;
+        color: #ffffff;
+        background: linear-gradient(110deg, #3867f2, #7547e9);
+    }
+
+    @media (max-width: 900px) {
+        .block-container { padding-left: 1rem; padding-right: 1rem; }
+        .download-panel [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+    }
+
     .step-card {
         min-height: 126px;
         padding: 1.05rem;
         border: 1px solid var(--line);
         border-radius: 16px;
-        background: white;
+        background: var(--surface);
     }
 
     .step-num {
@@ -333,7 +445,7 @@ st.markdown(
         padding: 1rem 1.1rem;
         border: 1px solid var(--line);
         border-radius: 16px;
-        background: white;
+        background: var(--surface);
         box-shadow: 0 5px 16px rgba(29, 42, 68, .04);
     }
 
@@ -374,7 +486,7 @@ st.markdown(
         border: 1px solid #bce9d8;
         border-radius: 14px;
         color: #12694f;
-        background: #effbf6;
+        background: var(--surface);
         font-weight: 600;
     }
 
@@ -388,7 +500,7 @@ st.markdown(
         padding: 1rem 1.1rem;
         border: 1px solid var(--line);
         border-radius: 16px;
-        background: #ffffff;
+        background: var(--surface);
         box-shadow: 0 8px 24px rgba(23, 32, 51, .05);
     }
 
@@ -415,7 +527,7 @@ st.markdown(
 
     .timeline-row {
         padding: .5rem 0;
-        border-top: 1px solid #f0f2f6;
+        border-top: 1px solid var(--line);
     }
 
     .timeline-name,
@@ -430,7 +542,7 @@ st.markdown(
         position: relative;
         height: 8px;
         border-radius: 999px;
-        background: linear-gradient(90deg, #e9edff, #f0eaff);
+        background: linear-gradient(90deg, #1f3158, #332653);
     }
 
     .timeline-dot {
@@ -438,7 +550,7 @@ st.markdown(
         top: 50%;
         width: 14px;
         height: 14px;
-        border: 3px solid #ffffff;
+        border: 3px solid var(--surface);
         border-radius: 50%;
         background: linear-gradient(135deg, var(--blue), var(--violet));
         box-shadow: 0 2px 8px rgba(56, 103, 242, .35);
@@ -452,13 +564,13 @@ st.markdown(
         overflow: hidden;
         border: 1px solid var(--line);
         border-radius: 12px;
-        background: #ffffff;
+        background: var(--surface);
         color: var(--ink);
         font-size: .82rem;
     }
     .scene-table th,
-    .scene-table td { padding: .55rem .7rem; border-bottom: 1px solid #f0f2f6; text-align: left; }
-    .scene-table th { color: var(--muted); background: #fafbff; font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; }
+    .scene-table td { padding: .55rem .7rem; border-bottom: 1px solid var(--line); text-align: left; }
+    .scene-table th { color: var(--muted); background: var(--surface-2); font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; }
     .scene-table tr:last-child td { border-bottom: 0; }
     .scene-table td:nth-child(2),
     .scene-table td:nth-child(3) { font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -468,7 +580,7 @@ st.markdown(
         max-width: 720px;
         margin: .35rem auto 0;
         padding: .55rem;
-        border: 1px solid #dfe5f0;
+        border: 1px solid var(--line);
         border-radius: 16px;
         background: #111827;
         box-shadow: 0 8px 24px rgba(23, 32, 51, .10);
@@ -486,7 +598,7 @@ st.markdown(
         border: 1px solid var(--line);
         border-radius: 14px;
         color: var(--muted);
-        background: #ffffff;
+        background: var(--surface);
         font-size: .82rem;
         line-height: 1.55;
     }
@@ -828,41 +940,46 @@ if download_health["ready_for_merge"]:
     st.caption(f"✓ FFmpeg sẵn sàng ({health_source}) · {download_health.get('version') or 'version không rõ'}")
 else:
     st.warning("Chưa tìm thấy FFmpeg nhúng hoặc trong PATH. Một số format video/audio riêng có thể không ghép được.")
-download_col, quality_col, limit_col, retry_col, action_col = st.columns([2.1, 1.05, 0.75, 0.7, 0.9])
-with download_col:
-    download_urls_text = st.text_area(
-        "Queue URL",
-        placeholder="Mỗi dòng một URL video hoặc playlist...",
-        height=76,
-        label_visibility="collapsed",
-    )
-with quality_col:
-    download_quality = st.selectbox(
-        "Chất lượng",
-        list(QUALITY_FORMATS),
-        index=0,
-        label_visibility="collapsed",
-    )
-with limit_col:
-    playlist_max_items = st.number_input(
-        "Tối đa mỗi playlist",
-        min_value=1,
-        max_value=500,
-        value=50,
-        step=1,
-        help="Giới hạn số video lấy từ mỗi playlist.",
-    )
-with retry_col:
-    download_retry_count = st.number_input(
-        "Retry tải",
-        min_value=0,
-        max_value=5,
-        value=2,
-        step=1,
-        help="Số lần thử lại mỗi URL khi mạng hoặc nguồn tạm thời lỗi.",
-    )
-with action_col:
-    download_clicked = st.button("⇩ Tải queue", use_container_width=True)
+with st.container(border=True):
+    st.markdown('<div class="download-panel-title">Danh sách tải</div>', unsafe_allow_html=True)
+    download_input_col, quality_col = st.columns([2.35, 1.0], gap="large")
+    with download_input_col:
+        download_urls_text = st.text_area(
+            "URL video hoặc playlist",
+            placeholder="Mỗi dòng một URL video hoặc playlist...",
+            height=116,
+            help="Dán URL công khai; mỗi dòng là một video hoặc một playlist.",
+        )
+    with quality_col:
+        download_quality = st.selectbox(
+            "Chất lượng tải",
+            list(QUALITY_FORMATS),
+            index=0,
+        )
+        st.caption("Nguồn công khai được hỗ trợ bởi yt-dlp.")
+
+    limit_col, retry_col, action_col = st.columns([1.0, 1.0, 1.35], gap="medium")
+    with limit_col:
+        playlist_max_items = st.number_input(
+            "Tối đa mỗi playlist",
+            min_value=1,
+            max_value=500,
+            value=50,
+            step=1,
+            help="Giới hạn số video lấy từ mỗi playlist.",
+        )
+    with retry_col:
+        download_retry_count = st.number_input(
+            "Số lần retry",
+            min_value=0,
+            max_value=5,
+            value=2,
+            step=1,
+            help="Số lần thử lại mỗi URL khi mạng hoặc nguồn tạm thời lỗi.",
+        )
+    with action_col:
+        st.markdown('<div class="download-action-spacer"></div>', unsafe_allow_html=True)
+        download_clicked = st.button("⇩  Tải queue", key="download_public_queue", type="primary", use_container_width=True)
 
 if download_clicked:
     download_urls = [line.strip() for line in download_urls_text.splitlines() if line.strip()]
@@ -1182,6 +1299,14 @@ def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output
 
     def on_complete(video: Path, report: dict[str, object]) -> None:
         completed["count"] += 1
+        if "error" not in report:
+            try:
+                input_root = work_dir.resolve() / "input"
+                resolved_video = video.resolve()
+                if resolved_video.is_relative_to(input_root):
+                    resolved_video.unlink(missing_ok=True)
+            except OSError:
+                pass
         progress_state[str(video)] = {
             "phase": "completed" if "error" not in report else "error",
             "fraction": 1.0,
@@ -1200,7 +1325,7 @@ def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output
         args.retries,
         args.retry_delay,
     )
-    st.session_state["processing_job"] = {
+    job = {
         "status": "running",
         "future": future,
         "executor": executor,
@@ -1215,9 +1340,98 @@ def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output
         "error": None,
         "cleaned": False,
     }
+    st.session_state["processing_job"] = job
+    shutdown_state = st.session_state.get("_frameforge_shutdown_state")
+    if isinstance(shutdown_state, dict):
+        shutdown_state["job"] = job
 
 
-def _finish_processing_job(job: dict[str, object], keep_work_dir: bool = False) -> None:
+
+def _shutdown_processing_job(job: dict[str, object]) -> None:
+    """Hủy job nền và dọn work directory khi desktop session bị đóng."""
+    cancel_event = job.get("cancel_event")
+    if cancel_event is not None:
+        cancel_event.set()
+    future = job.get("future")
+    if future is not None and not future.done():
+        try:
+            future.result(timeout=45.0)
+        except Exception:
+            # Shutdown phải tiếp tục kể cả khi job đang ở giữa một lỗi/cancel.
+            pass
+    _finish_processing_job(job, keep_work_dir=False, wait=True)
+
+
+def _desktop_session_watchdog(session_id: str, state: dict[str, object]) -> None:
+    """Dừng packaged Streamlit khi không còn browser session hoạt động."""
+    try:
+        from streamlit.runtime import get_instance
+
+        runtime = get_instance()
+    except Exception:
+        return
+    was_active = False
+    while True:
+        try:
+            active = runtime.is_active_session(session_id)
+        except Exception:
+            return
+        if active:
+            was_active = True
+        elif was_active:
+            # Cho phép reconnect ngắn trước khi coi browser đã thực sự đóng.
+            time.sleep(3.0)
+            try:
+                if runtime.is_active_session(session_id):
+                    continue
+            except Exception:
+                return
+            state["shutdown_requested"] = True
+            job = state.get("job")
+            if isinstance(job, dict):
+                _shutdown_processing_job(job)
+            try:
+                runtime.stop()
+            except Exception:
+                pass
+            return
+        time.sleep(2.0)
+
+
+def _start_desktop_session_watchdog() -> None:
+    """Bật auto-shutdown chỉ cho launcher desktop, không ảnh hưởng `streamlit run`."""
+    if os.environ.get("FRAMEFORGE_DESKTOP_LIFECYCLE", "0").lower() not in {"1", "true", "yes", "on"}:
+        return
+    if st.session_state.get("_frameforge_watchdog_started"):
+        return
+    try:
+        from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
+
+        context = get_script_run_ctx(suppress_warning=True)
+        session_id = context.session_id if context is not None else None
+    except Exception:
+        session_id = None
+    if not session_id:
+        return
+    state: dict[str, object] = {"job": None, "shutdown_requested": False}
+    st.session_state["_frameforge_watchdog_started"] = True
+    st.session_state["_frameforge_shutdown_state"] = state
+
+    def cleanup_at_exit() -> None:
+        job = state.get("job")
+        if isinstance(job, dict) and job.get("status") == "running":
+            _shutdown_processing_job(job)
+
+    atexit.register(cleanup_at_exit)
+    threading.Thread(
+        target=_desktop_session_watchdog,
+        args=(session_id, state),
+        name="frameforge-session-watchdog",
+        daemon=True,
+    ).start()
+
+
+def _finish_processing_job(job: dict[str, object], keep_work_dir: bool = False, wait: bool = False) -> None:
     if job.get("cleaned") and not keep_work_dir:
         return
     work_dir = Path(str(job["work_dir"]))
@@ -1228,7 +1442,7 @@ def _finish_processing_job(job: dict[str, object], keep_work_dir: bool = False) 
         job["resumable"] = work_dir.exists()
     executor = job.get("executor")
     if executor is not None:
-        executor.shutdown(wait=False, cancel_futures=True)
+        executor.shutdown(wait=wait, cancel_futures=True)
         job["executor"] = None
 
 
@@ -1262,6 +1476,9 @@ def _poll_processing_job() -> dict[str, object] | None:
         job["message"] = f"Không thể xử lý queue: {exc}"
     _finish_processing_job(job, keep_work_dir=str(job.get("status")) == "cancelled")
     return job
+
+
+_start_desktop_session_watchdog()
 
 
 @st.fragment(run_every=1.0)

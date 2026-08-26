@@ -34,6 +34,28 @@ class StreamlitDirectoryStateTests(unittest.TestCase):
             self.assertIn("on_click", keyword_names)
             self.assertIn("args", keyword_names)
 
+    def test_downloader_uses_dark_responsive_panel(self) -> None:
+        self.assertIn("with st.container(border=True):", self.source)
+        self.assertIn("download_input_col, quality_col = st.columns([2.35, 1.0], gap=\"large\")", self.source)
+        self.assertIn("limit_col, retry_col, action_col = st.columns([1.0, 1.0, 1.35], gap=\"medium\")", self.source)
+        self.assertIn("--canvas: #0b1220", self.source)
+        self.assertIn("--surface: #151d2d", self.source)
+        self.assertIn(".download-action-spacer", self.source)
+
+    def test_desktop_lifecycle_shutdown_is_guarded(self) -> None:
+        launcher = (ROOT / "windows_launcher.py").read_text(encoding="utf-8")
+        self.assertIn('FRAMEFORGE_DESKTOP_LIFECYCLE', launcher)
+        self.assertIn('FRAMEFORGE_NO_BROWSER', launcher)
+        self.assertIn('FRAMEFORGE_DESKTOP_LIFECYCLE', self.source)
+        self.assertIn('runtime.stop()', self.source)
+        self.assertIn('atexit.register(cleanup_at_exit)', self.source)
+
+    def test_completed_video_temp_input_is_removed(self) -> None:
+        self.assertIn('input_root = work_dir.resolve() / "input"', self.source)
+        self.assertIn('resolved_video.is_relative_to(input_root)', self.source)
+        self.assertIn('resolved_video.unlink(missing_ok=True)', self.source)
+        self.assertIn('if "error" not in report:', self.source)
+
     def test_widget_keys_are_not_assigned_directly(self) -> None:
         forbidden = {"video_dir_text", "screenshot_dir_text"}
         for node in ast.walk(self.tree):

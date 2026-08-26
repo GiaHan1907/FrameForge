@@ -2,6 +2,12 @@
 
 Gói này chứa ứng dụng Streamlit và CLI tối ưu để cắt screenshot từ video. Pipeline mới đọc video **tuần tự một lần**, phân tích frame ở độ phân giải thấp hơn và chỉ mã hóa các frame được chọn ở độ phân giải đầu ra.
 
+## Ghi chú v0.1.13
+
+Bản desktop xóa file input tạm sau từng video hoàn tất và dọn work directory ở cuối job. Job bị hủy vẫn giữ checkpoint/work directory để resume. Khi browser đóng trên bản EXE, session watchdog sẽ hủy job đang chạy, đóng executor, dọn dữ liệu tạm và dừng Streamlit; lệnh `streamlit run` thủ công không bật auto-shutdown.
+
+Khu vực tải video công khai dùng panel responsive hai tầng: vùng URL rộng ở phía trên, quality ở cột bên cạnh, và playlist limit/retry/action ở hàng dưới. Theme chính được đồng bộ dark mode cho canvas, card, input, select, timeline và cảnh báo.
+
 ## Tính năng
 
 | Tính năng | Mô tả |
@@ -13,6 +19,9 @@ Gói này chứa ứng dụng Streamlit và CLI tối ưu để cắt screenshot
 | Phân tích nhanh | `analysis-width` và `analysis-fps` giảm chi phí CPU/RAM. |
 | Lọc trùng | dHash 64-bit loại frame gần như giống nhau. |
 | Scene timeline | Giao diện HTML/CSS thuần hiển thị mốc scene và bảng timestamp, không cần Pandas/Arrow. |
+| Cleanup tạm tự động | Xóa file input tạm sau video hoàn tất và dọn work directory an toàn theo trạng thái job. |
+| Desktop lifecycle | Browser đóng sẽ hủy job, đóng executor và dừng server ở bản EXE desktop. |
+| Dark responsive downloader | Khu vực tải video công khai cân bằng theo grid hai tầng, phù hợp dark mode và màn hình hẹp. |
 
 ## Cấu trúc
 

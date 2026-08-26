@@ -54,7 +54,11 @@ Sau khi chọn cấu hình, bấm **Bắt đầu xử lý**. Ứng dụng tạo 
 
 Trong lúc xử lý, bấm **Hủy xử lý** để dừng an toàn. FrameForge kiểm tra yêu cầu hủy giữa các checkpoint, giải phóng `VideoCapture` và giữ lại các screenshot đã ghi trước đó. Job đang chạy sẽ khóa nút bắt đầu mới để tránh tạo hai queue cùng lúc.
 
+Sau khi từng video hoàn tất, file input tạm của video đó được xóa ngay; khi cả job hoàn tất hoặc gặp lỗi, work directory còn lại cũng được dọn. Nếu bạn bấm **Hủy xử lý**, work directory và checkpoint vẫn được giữ để có thể resume. Khi đóng browser trên bản EXE desktop, FrameForge chờ một khoảng reconnect ngắn, hủy job đang chạy, đóng executor, dọn work directory rồi dừng Streamlit. Chạy `streamlit run` thủ công không tự tắt server khi browser đóng.
+
 Trước khi chạy, ứng dụng kiểm tra dung lượng trống tại thư mục screenshot. Trường **Vùng đệm dung lượng tối thiểu** mặc định là 512 MB; nếu không đủ vùng đệm, job sẽ không bắt đầu. Các work directory tạm của phiên trước có tiền tố `video_screenshot_web_` và cũ hơn 24 giờ sẽ được dọn tự động. Report JSON được ghi trực tiếp trong thư mục run để không bị mất khi thư mục tạm được dọn.
+
+Khu vực **Tải video công khai** dùng layout hai tầng: URL ở vùng rộng phía trên, chất lượng ở cột bên cạnh, còn giới hạn playlist, số lần retry và nút **Tải queue** nằm trên cùng một hàng bên dưới. Toàn bộ giao diện dùng dark mode thống nhất cho nền, card, ô nhập, select, bảng timeline và nút thao tác.
 
 ## 4. Tinh chỉnh scene detection
 
