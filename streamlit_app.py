@@ -575,23 +575,31 @@ st.markdown(
     .scene-table td:nth-child(2),
     .scene-table td:nth-child(3) { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-    /* Compact, centered video preview. Streamlit's player is fluid by default. */
+    /* Compact Facebook-style video preview: 16:9, centered and capped. */
     div[data-testid="stVideo"] {
-        max-width: 720px;
+        width: min(100%, 560px) !important;
+        max-width: 560px !important;
         margin: .35rem auto 0;
-        padding: .55rem;
+        padding: .45rem;
         border: 1px solid var(--line);
-        border-radius: 16px;
+        border-radius: 14px;
         background: #111827;
         box-shadow: 0 8px 24px rgba(23, 32, 51, .10);
     }
     div[data-testid="stVideo"] video {
         display: block;
         width: 100% !important;
-        max-height: 420px !important;
-        border-radius: 10px;
+        aspect-ratio: 16 / 9;
+        max-height: 315px !important;
+        border-radius: 9px;
         background: #0b1220;
         object-fit: contain;
+    }
+    @media (max-width: 720px) {
+        div[data-testid="stVideo"] {
+            width: 100% !important;
+            max-width: 100% !important;
+        }
     }
     .preview-note {
         padding: .9rem 1rem;
@@ -790,7 +798,8 @@ def show_scene_timeline(reports: list[dict[str, object]], output_dir: Path | Non
     )
     if output_dir is not None:
         nearest = float(selected_entry["representative_seconds"])
-        pattern = f"*_{timestamp_label(nearest)}.*"
+        pattern = f"*{timestamp_label(nearest)}.*"
+
         preview_candidates = sorted(output_dir.rglob(pattern))
         if preview_candidates:
             st.image(str(preview_candidates[0]), caption=f"Preview gần nhất · {nearest:.3f}s", use_container_width=True)
@@ -1636,9 +1645,9 @@ if uploaded_files or downloaded_paths:
     preview_col, preview_note_col = st.columns([1.55, 0.85], gap="large")
     with preview_col:
         if preview_entry[1] == "upload":
-            st.video(preview_entry[2].getvalue(), format=preview_mime, subtitles=None, width=720)
+            st.video(preview_entry[2].getvalue(), format=preview_mime, subtitles=None, width=560)
         else:
-            st.video(str(preview_entry[2]), format=preview_mime, subtitles=None, width=720)
+            st.video(str(preview_entry[2]), format=preview_mime, subtitles=None, width=560)
     with preview_note_col:
         st.markdown(
             "<div class='preview-note'><strong>Preview gọn</strong><br>"

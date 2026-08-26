@@ -2,11 +2,11 @@
 
 Gói này chứa ứng dụng Streamlit và CLI tối ưu để cắt screenshot từ video. Pipeline mới đọc video **tuần tự một lần**, phân tích frame ở độ phân giải thấp hơn và chỉ mã hóa các frame được chọn ở độ phân giải đầu ra.
 
-## Ghi chú v0.1.13
+## Ghi chú v0.1.14
 
 Bản desktop xóa file input tạm sau từng video hoàn tất và dọn work directory ở cuối job. Job bị hủy vẫn giữ checkpoint/work directory để resume. Khi browser đóng trên bản EXE, session watchdog sẽ hủy job đang chạy, đóng executor, dọn dữ liệu tạm và dừng Streamlit; lệnh `streamlit run` thủ công không bật auto-shutdown.
 
-Khu vực tải video công khai dùng panel responsive hai tầng: vùng URL rộng ở phía trên, quality ở cột bên cạnh, và playlist limit/retry/action ở hàng dưới. Theme chính được đồng bộ dark mode cho canvas, card, input, select, timeline và cảnh báo.
+Khu vực tải video công khai dùng panel responsive hai tầng: vùng URL rộng ở phía trên, quality ở cột bên cạnh, và playlist limit/retry/action ở hàng dưới. Preview video dùng khung 16:9 tối đa 560px, tự co theo màn hình. Theme chính được đồng bộ dark mode cho canvas, card, input, select, timeline và cảnh báo. Screenshot mới có tên dạng `HH-MM-SS.mmm.jpg`; video tải xuống có tên dạng `video_YYYYMMDD_HHMMSS.ext` với hậu tố collision khi cần.
 
 ## Tính năng
 

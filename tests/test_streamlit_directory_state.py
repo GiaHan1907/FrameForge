@@ -42,6 +42,12 @@ class StreamlitDirectoryStateTests(unittest.TestCase):
         self.assertIn("--surface: #151d2d", self.source)
         self.assertIn(".download-action-spacer", self.source)
 
+    def test_video_preview_is_compact_and_timestamp_lookup_is_supported(self) -> None:
+        self.assertIn("max-width: 560px !important", self.source)
+        self.assertIn("aspect-ratio: 16 / 9", self.source)
+        self.assertIn("width=560", self.source)
+        self.assertIn('pattern = f"*{timestamp_label(nearest)}.*"', self.source)
+
     def test_desktop_lifecycle_shutdown_is_guarded(self) -> None:
         launcher = (ROOT / "windows_launcher.py").read_text(encoding="utf-8")
         self.assertIn('FRAMEFORGE_DESKTOP_LIFECYCLE', launcher)

@@ -1,5 +1,11 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.14
+
+## Preview gọn và tên file theo timestamp
+
+Preview video trong giao diện được giới hạn ở khung 16:9 tối đa 560px, tự co theo màn hình nhỏ để không lấn át phần điều khiển. Screenshot mới được đặt tên ngắn theo timestamp dạng `HH-MM-SS.mmm.jpg` hoặc `.webp`. Video tải từ queue được đổi tên dạng `video_YYYYMMDD_HHMMSS.ext`; nếu tải nhiều file cùng thời điểm hoặc tên bị trùng, hậu tố số được thêm tự động. Metadata title, URL và playlist index vẫn được lưu trong kết quả tải.
+
 # FrameForge v0.1.13
 
 ## Dọn dẹp và giao diện desktop

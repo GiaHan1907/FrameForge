@@ -170,7 +170,7 @@ CLI xóa work directory tạm cũ nhất khi vượt `--temp-quota-mb`, sau khi 
 
 ## 9. Timeline tương tác
 
-Sau khi queue hoàn tất, Web UI hiển thị scene markers và bảng timestamp. Khu vực **Timeline tương tác** cho phép chọn một video/scene, điều chỉnh mốc preview bằng slider và xem frame gần nhất trong thư mục output. Với video chỉ có một scene, frame đại diện vẫn được hiển thị như một marker.
+Sau khi queue hoàn tất, Web UI hiển thị scene markers và bảng timestamp. Khu vực **Timeline tương tác** cho phép chọn một video/scene, điều chỉnh mốc preview bằng slider và xem frame gần nhất trong thư mục output. Screenshot mới có tên dạng `HH-MM-SS.mmm.jpg` hoặc `.webp`; tên cũ có tiền tố video vẫn được tìm thấy nhờ pattern tương thích. Với video chỉ có một scene, frame đại diện vẫn được hiển thị như một marker.
 
 ## 10. Kết quả và báo cáo
 
@@ -299,9 +299,9 @@ Báo cáo có trường `rejected_motion_blur` để biết bao nhiêu frame b�
 
 ## 16. Tải queue nhiều video và playlist
 
-Trong khu vực **Tải video công khai**, nhập mỗi URL trên một dòng. Có thể trộn URL video đơn và URL playlist trong cùng một queue. Trường **Tối đa mỗi playlist** giới hạn số mục lấy từ từng playlist; tổng số URL trong một lần gọi được giới hạn ở mức an toàn 100 URL.
+Trong khu vực **Tải video công khai**, nhập mỗi URL trên một dòng. Có thể trộn URL video đơn và URL playlist trong cùng một queue. Trường **Tối đa mỗi playlist** giới hạn số mục lấy từ từng playlist; tổng số URL trong một lần gọi được giới hạn ở mức an toàn 100 URL. Preview video ở phần dưới dùng khung 16:9 tối đa 560px, tự co trên màn hình hẹp.
 
-Ứng dụng xử lý queue tuần tự, hiển thị progress tải theo file và tự retry từng URL theo trường **Retry tải**. Nếu một URL vẫn gặp lỗi sau các lần thử, thông báo sẽ ghi rõ URL và số lần đã thử; các video tải thành công trước đó vẫn được giữ lại để preview hoặc tải ZIP.
+Ứng dụng xử lý queue tuần tự, hiển thị progress tải theo file và tự retry từng URL theo trường **Retry tải**. Video tải thành công được đổi tên gọn theo timestamp dạng `video_YYYYMMDD_HHMMSS.ext`; nếu trùng thời điểm, hậu tố số được thêm tự động. Title, URL và playlist index vẫn nằm trong metadata kết quả. Nếu một URL vẫn gặp lỗi sau các lần thử, thông báo sẽ ghi rõ URL và số lần đã thử; các video tải thành công trước đó vẫn được giữ lại để preview hoặc tải ZIP.
 
 Ví dụ queue:
 

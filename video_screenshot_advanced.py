@@ -710,7 +710,7 @@ def accept_and_save(
     ):
         return "duplicate_cross_run", previous_hash
 
-    filename = f"{video_stem}_{index:05d}_{timestamp_label(candidate.timestamp)}.{args.format}"
+    filename = f"{timestamp_label(candidate.timestamp)}.{args.format}"
     output = output_dir / filename
     if output.exists() and not args.overwrite:
         return "existing", candidate.hash_value

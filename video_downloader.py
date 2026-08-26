@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -177,6 +178,30 @@ def _entry_for_path(path: Path, entries: list[dict[str, object]]) -> dict[str, o
     return entries[0] if entries else {}
 
 
+def _timestamped_video_path(output_dir: Path, stamp: str, sequence: int, suffix: str) -> Path:
+    """Create a compact timestamp filename without overwriting another download."""
+    normalized_suffix = suffix if suffix.startswith(".") else f".{suffix}"
+    stem = f"video_{stamp}" if sequence == 1 else f"video_{stamp}_{sequence:02d}"
+    candidate = output_dir / f"{stem}{normalized_suffix}"
+    collision = 1
+    while candidate.exists():
+        candidate = output_dir / f"{stem}_{collision:02d}{normalized_suffix}"
+        collision += 1
+    return candidate
+
+
+def _rename_downloaded_files(
+    paths: list[Path], output_dir: Path, downloaded_at: str
+) -> list[Path]:
+    renamed: list[Path] = []
+    for sequence, path in enumerate(paths, start=1):
+        target = _timestamped_video_path(output_dir, downloaded_at, sequence, path.suffix.lower())
+        if path.resolve() != target.resolve():
+            path.replace(target)
+        renamed.append(target)
+    return renamed
+
+
 def _download_batch(
     urls: list[str],
     output_dir: Path,
@@ -226,8 +251,10 @@ def _download_batch(
                     new_files = _new_video_files(output_dir, before)
                     if not new_files:
                         raise FileNotFoundError("yt-dlp không tạo được file video đầu ra.")
-                    for path in new_files:
-                        entry = _entry_for_path(path, entries)
+                    matched_entries = [_entry_for_path(path, entries) for path in new_files]
+                    downloaded_at = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    new_files = _rename_downloaded_files(new_files, output_dir, downloaded_at)
+                    for path, entry in zip(new_files, matched_entries):
                         all_results.append(
                             DownloadResult(
                                 path=path,
