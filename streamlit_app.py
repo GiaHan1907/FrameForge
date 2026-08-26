@@ -60,6 +60,7 @@ from video_screenshot_advanced import (
 from timeline_utils import build_timeline_entries, filter_timeline_entries
 from video_downloader import (
     QUALITY_FORMATS,
+    DownloadFailure,
     download_public_videos,
     ffmpeg_health,
     is_supported_public_url,
@@ -1154,13 +1155,24 @@ if download_clicked:
             st.warning("Chưa tìm thấy FFmpeg. Video/audio tách riêng có thể không ghép được ở chất lượng cao nhất.")
         try:
             download_progress = st.progress(0.0, text="Đang chuẩn bị queue tải...")
+            download_errors: list[DownloadFailure] = []
 
             def download_hook(data: dict[str, object]) -> None:
+                state = str(data.get("status") or "downloading")
+                if state == "retrying":
+                    code = str(data.get("error_code") or "unknown")
+                    next_attempt = int(data.get("next_attempt") or 0)
+                    total_attempts = int(data.get("total_attempts") or 0)
+                    delay = float(data.get("retry_delay") or 0.0)
+                    download_progress.progress(
+                        0.0,
+                        text=f"retrying · {code} · lần {next_attempt}/{total_attempts} · chờ {delay:.1f}s",
+                    )
+                    return
                 downloaded = int(data.get("downloaded_bytes") or 0)
                 total = int(data.get("total_bytes") or data.get("total_bytes_estimate") or 0)
                 fraction = downloaded / total if total > 0 else 0.0
                 filename = Path(str(data.get("filename") or "video")).name
-                state = str(data.get("status") or "downloading")
                 if state == "finished":
                     fraction = 1.0
                 download_progress.progress(
@@ -1168,7 +1180,11 @@ if download_clicked:
                     text=f"{state} · {filename} · {fraction:.0%}",
                 )
 
+            def download_error_hook(error: DownloadFailure) -> None:
+                download_errors.append(error)
+
             with st.spinner(f"Đang tải queue gồm {len(download_urls)} URL..."):
+
                 download_results = download_public_videos(
                     download_urls,
                     Path(st.session_state["download_dir"]),
@@ -1177,13 +1193,21 @@ if download_clicked:
                     max_retries=int(download_retry_count),
                     retry_delay_seconds=1.0,
                     progress_hook=download_hook,
+                    error_hook=download_error_hook,
                 )
             download_progress.progress(1.0, text=f"Đã tải xong {len(download_results)} video")
             for result in download_results:
                 if str(result.path) not in st.session_state["downloaded_paths"]:
                     st.session_state["downloaded_paths"].append(str(result.path))
             downloaded_paths = [Path(item) for item in st.session_state["downloaded_paths"]]
-            st.success(f"Đã tải {len(download_results)} video từ {len(download_urls)} URL.")
+            if download_results:
+                st.success(f"Đã tải {len(download_results)} video từ {len(download_urls)} URL.")
+            if download_errors:
+                st.warning(f"Có {len(download_errors)} URL không tải được; queue vẫn giữ các video thành công.")
+                for error in download_errors[:10]:
+                    st.error(f"[{error.code}] {error.label}\nURL: {error.url}\n{error.message}\nGợi ý: {error.suggestion}")
+                if len(download_errors) > 10:
+                    st.caption(f"... và {len(download_errors) - 10} lỗi khác trong queue.")
             for result in download_results[:10]:
                 st.caption(f"✓ {result_summary(result)}")
             if len(download_results) > 10:
@@ -1196,6 +1220,9 @@ if download_clicked:
                     mime="application/zip",
                     key="downloaded_video_zip_button",
                 )
+        except DownloadFailure as exc:
+            st.error(f"[{exc.code}] {exc.label}\nURL: {exc.url}\n{exc.message}\nGợi ý: {exc.suggestion}")
+            st.caption(f"Đã thử {exc.attempts} lần; lỗi này được phân loại là không thể retry tự động.")
         except Exception as exc:
             st.error(f"Không thể hoàn tất queue: {exc}")
             st.caption("Ứng dụng vẫn giữ các file đã tải thành công trước khi xảy ra lỗi.")

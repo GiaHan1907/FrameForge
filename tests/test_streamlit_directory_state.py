@@ -51,6 +51,13 @@ class StreamlitDirectoryStateTests(unittest.TestCase):
         self.assertIn("width=560", self.source)
         self.assertIn('pattern = f"*{timestamp_label(nearest)}.*"', self.source)
 
+    def test_downloader_error_categories_and_backoff_are_present(self) -> None:
+        self.assertIn('DownloadFailure', self.source)
+        self.assertIn('download_error_hook', self.source)
+        self.assertIn('state == "retrying"', self.source)
+        self.assertIn('retry_delay_seconds=1.0', self.source)
+        self.assertIn('error_code', self.source)
+
     def test_presets_and_progress_telemetry_are_present(self) -> None:
         self.assertIn('PRESET_CONFIGS = {', self.source)
         for name in ('Nhanh', 'Cân bằng', 'Chất lượng cao', 'Video dọc / TikTok'):
@@ -66,6 +73,9 @@ class StreamlitDirectoryStateTests(unittest.TestCase):
         self.assertIn('fps_col.metric("Tốc độ"', self.source)
         self.assertIn('eta_col.metric("ETA"', self.source)
         self.assertIn('ram_col.metric("RAM process"', self.source)
+        self.assertIn('DownloadFailure', self.source)
+        self.assertIn('download_error_hook', self.source)
+        self.assertIn('state == "retrying"', self.source)
 
     def test_progress_parser_and_telemetry_behavior(self) -> None:
         functions = [

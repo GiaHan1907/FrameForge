@@ -1,5 +1,15 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.18
+
+## Phân loại lỗi downloader và exponential backoff
+
+Downloader yt-dlp phân loại lỗi theo các mã `access_denied`, `rate_limited`, `ffmpeg_missing`, `format_unavailable`, `output_error`, `network_error` và `unknown`. Mỗi lỗi có nhãn tiếng Việt, thông tin retryable và gợi ý xử lý cụ thể.
+
+Lỗi mạng tạm thời và giới hạn tần suất được retry với exponential backoff theo chu kỳ `1s`, `2s`, `4s`... và giới hạn chờ tối đa 60 giây. Lỗi URL cần đăng nhập, không có format, thiếu FFmpeg hoặc không ghi được output sẽ dừng retry sớm vì thử lại không khắc phục được nguyên nhân. Progress hook phát sự kiện `retrying` gồm mã lỗi, lần thử kế tiếp và thời gian chờ.
+
+Queue hỗ trợ `error_hook` per-URL; một URL thất bại không làm mất các video đã tải thành công và cho phép tiếp tục xử lý các URL còn lại. Phạm vi downloader vẫn chỉ là nội dung công khai mà người dùng có quyền sử dụng, không dùng cookie, đăng nhập, bypass DRM hoặc truy cập riêng tư.
+
 # FrameForge v0.1.17
 
 ## Crop screenshot theo tỉ lệ

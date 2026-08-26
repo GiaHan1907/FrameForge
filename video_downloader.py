@@ -50,6 +50,123 @@ class DownloadResult:
     playlist_index: int | None = None
 
 
+@dataclass(frozen=True)
+class DownloadErrorInfo:
+    code: str
+    label: str
+    retryable: bool
+    suggestion: str
+
+
+@dataclass
+class DownloadFailure(RuntimeError):
+    url: str
+    code: str
+    label: str
+    retryable: bool
+    attempts: int
+    message: str
+    suggestion: str
+
+    def __post_init__(self) -> None:
+        RuntimeError.__init__(self, self.__str__())
+
+    def __str__(self) -> str:
+        detail = self.message.strip() or "Không có thông tin chi tiết từ yt-dlp."
+        return (
+            f"[{self.code}] {self.label}: {self.url}\\n"
+            f"Đã thử {self.attempts} lần. {detail}\\n"
+            f"Gợi ý: {self.suggestion}"
+        )
+
+
+_ERROR_RULES: tuple[tuple[str, tuple[str, ...], str, bool, str], ...] = (
+    (
+        "access_denied",
+        ("login required", "sign in", "private", "not available in your country", "http error 401", "http error 403", "forbidden"),
+        "URL yêu cầu đăng nhập hoặc không truy cập được",
+        False,
+        "Kiểm tra URL còn công khai và bạn có quyền sử dụng nội dung; FrameForge không hỗ trợ cookie hoặc bypass đăng nhập.",
+    ),
+    (
+        "rate_limited",
+        ("too many requests", "rate limit", "http error 429", "temporarily blocked", "captcha"),
+        "Nguồn đang giới hạn tần suất truy cập",
+        True,
+        "Chờ một lúc rồi thử lại với số URL nhỏ hơn; không tăng retry quá cao.",
+    ),
+    (
+        "ffmpeg_missing",
+        ("ffmpeg", "ffprobe", "merging", "postprocess"),
+        "Thiếu FFmpeg để ghép video/audio",
+        False,
+        "Cài bản FrameForge có FFmpeg nhúng hoặc thêm ffmpeg.exe vào PATH.",
+    ),
+    (
+        "format_unavailable",
+        ("requested format is not available", "no video formats found", "format not available", "unable to extract", "no suitable format"),
+        "Không tìm thấy format video phù hợp",
+        False,
+        "Thử chất lượng thấp hơn hoặc kiểm tra Reel còn công khai; một số nội dung không cung cấp format cho yt-dlp.",
+    ),
+    (
+        "output_error",
+        ("permission denied", "access is denied", "no space left", "disk full", "cannot create", "could not write", "không tạo được file video"),
+        "Không ghi được file đầu ra",
+        False,
+        "Kiểm tra thư mục lưu, quyền ghi và dung lượng ổ đĩa.",
+    ),
+    (
+        "network_error",
+        ("timed out", "timeout", "connection reset", "connection refused", "temporary failure", "unable to download", "http error 5", "network"),
+        "Lỗi mạng hoặc nguồn tạm thời không phản hồi",
+        True,
+        "Kiểm tra kết nối mạng; FrameForge sẽ tự retry với thời gian chờ tăng dần.",
+    ),
+)
+
+
+def classify_download_error(exc: BaseException, ffmpeg_available: bool = True) -> DownloadErrorInfo:
+    """Phân loại lỗi yt-dlp thành nhóm có thể retry hoặc cần người dùng xử lý."""
+    message = str(exc or "").lower()
+    if not ffmpeg_available and any(token in message for token in ("ffmpeg", "ffprobe", "merging", "postprocess")):
+        return DownloadErrorInfo(
+            "ffmpeg_missing",
+            "Thiếu FFmpeg để ghép video/audio",
+            False,
+            "Cài bản FrameForge có FFmpeg nhúng hoặc thêm ffmpeg.exe vào PATH.",
+        )
+    for code, tokens, label, retryable, suggestion in _ERROR_RULES:
+        if code == "ffmpeg_missing" and ffmpeg_available:
+            continue
+        if any(token in message for token in tokens):
+            return DownloadErrorInfo(code, label, retryable, suggestion)
+    return DownloadErrorInfo(
+        "unknown",
+        "Lỗi downloader chưa xác định",
+        True,
+        "Kiểm tra URL và kết nối mạng; xem chi tiết lỗi rồi thử lại nếu lỗi có tính tạm thời.",
+    )
+
+
+def _download_failure(
+    url: str,
+    exc: BaseException,
+    attempts: int,
+    ffmpeg_available: bool,
+) -> DownloadFailure:
+    info = classify_download_error(exc, ffmpeg_available=ffmpeg_available)
+    return DownloadFailure(
+        url=url,
+        code=info.code,
+        label=info.label,
+        retryable=info.retryable,
+        attempts=max(1, int(attempts)),
+        message=str(exc),
+        suggestion=info.suggestion,
+    )
+
+
 def _normalized_host(url: str) -> str:
     parsed = urlparse(url.strip())
     return (parsed.hostname or "").lower().removeprefix("www.")
@@ -211,6 +328,7 @@ def _download_batch(
     progress_hook=None,
     max_retries: int = 2,
     retry_delay_seconds: float = 1.0,
+    error_hook=None,
 ) -> list[DownloadResult]:
     if yt_dlp is None:
         raise RuntimeError("Chưa cài yt-dlp. Hãy chạy: python -m pip install yt-dlp") from _IMPORT_ERROR
@@ -240,9 +358,11 @@ def _download_batch(
 
     all_results: list[DownloadResult] = []
     retry_limit = max(0, int(max_retries))
+    base_retry_delay = max(0.0, float(retry_delay_seconds))
+    max_retry_delay = 60.0
     for url in urls:
         validate_public_url(url)
-        last_error: Exception | None = None
+        last_error: DownloadFailure | None = None
         for attempt in range(retry_limit + 1):
             # Dùng staging riêng cho từng URL/lần thử. Nếu file cùng ID đã tồn tại ở
             # output_dir, yt-dlp có thể coi đó là download hoàn tất và không tạo file
@@ -277,16 +397,37 @@ def _download_batch(
                 last_error = None
                 break
             except Exception as exc:
-                last_error = exc
-                if attempt < retry_limit:
-                    time.sleep(max(0.0, float(retry_delay_seconds)))
+                last_error = _download_failure(
+                    url,
+                    exc,
+                    attempts=attempt + 1,
+                    ffmpeg_available=bool(health["ffmpeg_path"]),
+                )
+                if attempt >= retry_limit or not last_error.retryable:
+                    break
+                delay = min(max_retry_delay, base_retry_delay * (2**attempt))
+                if progress_hook is not None:
+                    progress_hook(
+                        {
+                            "status": "retrying",
+                            "url": url,
+                            "attempt": attempt + 1,
+                            "next_attempt": attempt + 2,
+                            "total_attempts": retry_limit + 1,
+                            "retry_delay": delay,
+                            "error_code": last_error.code,
+                            "error": str(last_error),
+                        }
+                    )
+                if delay > 0:
+                    time.sleep(delay)
             finally:
                 shutil.rmtree(staging_dir, ignore_errors=True)
         if last_error is not None:
-            message = str(last_error)
-            if not health["ffmpeg_path"] and ("Requested format is not available" in message or "merging" in message.lower()):
-                message += "\nGợi ý: cài FFmpeg và thêm ffmpeg.exe vào PATH để ghép video/audio chất lượng cao."
-            raise RuntimeError(f"{url}\nĐã thử {retry_limit + 1} lần.\n{message}") from last_error
+            if error_hook is not None:
+                error_hook(last_error)
+                continue
+            raise last_error
     return all_results
 
 
@@ -312,6 +453,7 @@ def download_public_videos(
     progress_hook=None,
     max_retries: int = 2,
     retry_delay_seconds: float = 1.0,
+    error_hook=None,
 ) -> list[DownloadResult]:
     """Tải tuần tự queue URL; mỗi playlist bị giới hạn max_playlist_items mục."""
     clean_urls = [url.strip() for url in urls if url and url.strip()]
@@ -324,6 +466,7 @@ def download_public_videos(
         progress_hook=progress_hook,
         max_retries=max_retries,
         retry_delay_seconds=retry_delay_seconds,
+        error_hook=error_hook,
     )
 
 

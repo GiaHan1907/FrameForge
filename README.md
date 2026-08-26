@@ -8,6 +8,10 @@ Bản desktop xóa file input tạm sau từng video hoàn tất và dọn work 
 
 Khu vực tải video công khai dùng panel responsive hai tầng: vùng URL rộng ở phía trên, quality ở cột bên cạnh, và playlist limit/retry/action ở hàng dưới. Preview video dùng khung 16:9 tối đa 560px, tự co theo màn hình. Theme chính được đồng bộ dark mode cho canvas, card, input, select, timeline và cảnh báo. Screenshot mới có tên dạng `HH-MM-SS.mmm.jpg`; video tải xuống có tên dạng `video_YYYYMMDD_HHMMSS.ext` với hậu tố collision khi cần.
 
+## Ghi chú v0.1.18
+
+Downloader yt-dlp nay phân loại lỗi theo mã `access_denied`, `rate_limited`, `ffmpeg_missing`, `format_unavailable`, `output_error`, `network_error` hoặc `unknown`. Lỗi tạm thời được retry với exponential backoff theo chu kỳ `1s, 2s, 4s...`, giới hạn tối đa 60 giây; lỗi không thể tự khắc phục như URL riêng tư, thiếu format hoặc không có quyền ghi sẽ dừng ngay và hiển thị gợi ý cụ thể. Queue có thể tiếp tục các URL còn lại thông qua callback lỗi per-video.
+
 ## Ghi chú v0.1.17
 
 Bổ sung lựa chọn **tỉ lệ crop screenshot**: `Không crop`, `16:9`, `9:16`, `4:5` và `1:1`. Crop được thực hiện ở chính giữa khung hình, giữ nguyên tỉ lệ không kéo giãn, sau đó mới áp dụng chiều rộng đầu ra. Preset `Video dọc / TikTok` tự chọn `9:16`; các preset khác mặc định không crop nhưng người dùng có thể đổi thủ công.
@@ -41,6 +45,7 @@ Adaptive extraction worker nay xét đồng thời **số timestamp yêu cầu, 
 | Desktop lifecycle | Browser đóng sẽ hủy job, đóng executor và dừng server ở bản EXE desktop. |
 | Dark responsive downloader | Khu vực tải video công khai cân bằng theo grid hai tầng, phù hợp dark mode và màn hình hẹp. |
 | Download staging an toàn | Mỗi URL/retry tải vào staging riêng, tránh output cũ làm yt-dlp bỏ qua file mới và được dọn tự động. |
+| Chẩn đoán downloader | Phân loại lỗi theo nguyên nhân, retry exponential backoff cho lỗi tạm thời và giữ queue tiếp tục các URL còn lại. |
 | Preset cấu hình | Bốn preset cho tốc độ, cân bằng, chất lượng cao và video dọc; mọi giá trị vẫn có thể tinh chỉnh thủ công. |
 | Live telemetry | Hiển thị FPS, ETA và RSS RAM trong lúc xử lý; ETA chỉ xuất hiện khi đã có đơn vị tiến độ hợp lệ. |
 | Adaptive worker theo duration | Cấp extraction worker dựa trên thời lượng cùng số timestamp, ngoài CPU/RAM và số video worker. |

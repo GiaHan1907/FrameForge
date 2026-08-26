@@ -208,7 +208,15 @@ Nếu browser không phát được preview, hãy đổi video sang MP4/H.264. �
 
 Từ v0.1.16, mỗi URL và mỗi lần retry tải video vào staging riêng `.frameforge_download_*`, rồi mới chuyển file hoàn tất sang thư mục lưu video. Cách này tránh việc file cũ cùng video khiến yt-dlp bỏ qua download và FrameForge báo nhầm `yt-dlp không tạo được file video đầu ra`. Staging được dọn tự động sau cả thành công và lỗi.
 
-## 12. Chọn tỉ lệ crop screenshot
+## 12. Chẩn đoán lỗi tải video và retry
+
+Từ v0.1.18, FrameForge phân loại lỗi tải theo mã để dễ xử lý. `network_error` là lỗi mạng tạm thời và `rate_limited` là nguồn đang giới hạn tần suất; hai nhóm này có thể được retry tự động. `access_denied` là URL cần đăng nhập hoặc không truy cập được, `format_unavailable` là không có format phù hợp, `ffmpeg_missing` là thiếu FFmpeg để ghép video/audio, còn `output_error` là lỗi quyền ghi hoặc dung lượng. Các lỗi không thể tự khắc phục sẽ dừng retry sớm và hiển thị gợi ý.
+
+Retry dùng exponential backoff: với thời gian cơ sở 1 giây, các lần chờ lần lượt là `1s`, `2s`, `4s`, `8s` và tối đa `60s`. Nếu một URL lỗi, queue vẫn tiếp tục các URL còn lại; các video tải thành công trước đó vẫn được giữ trong thư mục đích. Progress bar hiển thị mã lỗi, lần thử tiếp theo và thời gian chờ khi đang backoff.
+
+Khi gặp lỗi, hãy ưu tiên đọc mã trong ngoặc vuông và làm theo gợi ý. Không nên tăng số retry quá cao cho lỗi `access_denied`, `format_unavailable`, `ffmpeg_missing` hoặc `output_error`, vì retry không làm thay đổi nguyên nhân. FrameForge chỉ hỗ trợ URL công khai mà người dùng có quyền sử dụng, không dùng cookie, đăng nhập, bypass DRM hoặc truy cập nội dung riêng tư.
+
+## 13. Chọn tỉ lệ crop screenshot
 
 Trong nhóm **Đầu ra**, trường `Tỉ lệ crop screenshot` có năm lựa chọn: `Không crop`, `16:9`, `9:16`, `4:5` và `1:1`. FrameForge crop chính giữa khung hình, không kéo giãn nội dung, rồi mới áp dụng `Chiều rộng đầu ra`. Vì vậy ảnh không bị méo; phần thừa ở hai bên hoặc phía trên/dưới sẽ được cắt đối xứng.
 
