@@ -1,5 +1,11 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.11
+
+## Sửa lỗi thiếu module trong Windows installer
+
+Bản vá bổ sung `persistent_queue.py` và `timeline_utils.py` vào cả ba PyInstaller spec: onedir, minimal và one-file. Workflow Windows hiện kiểm tra trực tiếp các module runtime trong thư mục package trước khi chạy packaged smoke test, tránh phát hành installer thiếu file Python cần thiết. Người dùng đang gặp `ModuleNotFoundError: No module named 'persistent_queue'` nên cài bản v0.1.11 thay cho v0.1.10.
+
 # FrameForge v0.1.10
 
 ## Tối ưu dHash index và quản lý dung lượng tạm

@@ -35,6 +35,8 @@ datas += [
     ("updater.py", "."),
     ("app_update.py", "."),
     ("app_config.py", "."),
+    ("persistent_queue.py", "."),
+    ("timeline_utils.py", "."),
     ("frameforge_version.txt", "."),
 ]
 

@@ -159,6 +159,13 @@ jobs:
           if (-not (Test-Path "dist\VideoScreenshotFilter\VideoScreenshotFilter.exe")) {
             throw "PyInstaller executable was not found"
           }
+          foreach ($requiredModule in @("persistent_queue.py", "timeline_utils.py", "video_screenshot_advanced.py", "streamlit_app.py")) {
+            $modulePath = Get-ChildItem -Path "dist\VideoScreenshotFilter" -Filter $requiredModule -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $modulePath) {
+              throw "Required runtime module was not packaged: $requiredModule"
+            }
+            Write-Host "Packaged runtime module: $($modulePath.FullName)"
+          }
           if (-not (Test-Path "vendor\ffmpeg\ffmpeg.exe")) {
             throw "Embedded ffmpeg.exe was not found"
           }
