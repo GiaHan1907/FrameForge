@@ -78,6 +78,48 @@ class CacheCheckpointTests(unittest.TestCase):
                 self.assertEqual(image.size, (56, 100))
                 self.assertAlmostEqual(image.size[0] / image.size[1], 9 / 16, delta=0.02)
 
+    def test_conditional_metrics_skip_disabled_work(self) -> None:
+        frame = np.full((80, 120, 3), 96, dtype=np.uint8)
+        requirements = engine.MetricRequirements(False, False, False, False)
+        candidate = engine.frame_candidate(frame, 0.0, 64, requirements)
+        self.assertEqual(candidate.sharpness, 0.0)
+        self.assertEqual(candidate.motion_blur_score, 0.0)
+        self.assertEqual(candidate.hash_value, 0)
+        self.assertEqual(candidate.brightness, 0.0)
+        self.assertEqual(candidate.gray.size, 0)
+        self.assertEqual(candidate.histogram.size, 0)
+
+        full = engine.frame_candidate(frame, 0.0, 64, engine.MetricRequirements(True, True, True, True))
+        self.assertGreater(full.gray.size, 0)
+        self.assertEqual(full.histogram.size, 128)
+
+    def test_encode_profiles_and_stage_timings(self) -> None:
+        frame = np.zeros((80, 120, 3), dtype=np.uint8)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fast = root / "fast.jpg"
+            high = root / "high.jpg"
+            engine.save_image(frame, fast, "jpg", 90, None, encode_profile="Nhanh")
+            engine.save_image(frame, high, "jpg", 90, None, encode_profile="Chất lượng cao")
+            self.assertTrue(fast.exists())
+            self.assertTrue(high.exists())
+            with self.assertRaises(ValueError):
+                engine.save_image(frame, root / "invalid.jpg", "jpg", 90, None, encode_profile="invalid")
+
+            args = copy.copy(self.args)
+            args.scene_detection = False
+            args.best_frame_per_scene = False
+            args.count = 1
+            args.every = None
+            args.encode_profile = "Nhanh"
+            args.stage_timings = engine.new_stage_timings()
+            report = engine.process_video(self.video, root / "timed", None, args)
+            self.assertGreaterEqual(report["stage_timings"]["decode_count"], 1)
+            self.assertEqual(report["stage_timings"]["analysis_count"], 1)
+            self.assertEqual(report["stage_timings"]["encode_count"], 1)
+            self.assertEqual(report["stage_timings"]["write_count"], 1)
+            self.assertGreaterEqual(report["stage_timings"]["decode_ms"], 0.0)
+
     def test_scene_cache_hit_and_cross_run_duplicate_rejection(self) -> None:
         first_output = self.root / "first"
         second_output = self.root / "second"

@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import io
 import json
 import math
 import multiprocessing as mp
@@ -46,6 +47,11 @@ CROP_RATIO_VALUES = {
     "4:5": 4 / 5,
     "1:1": 1.0,
 }
+ENCODE_PROFILE_LABELS = ("Nhanh", "Chất lượng cao")
+ENCODE_PROFILES = {
+    "Nhanh": {"jpeg_optimize": False, "webp_method": 3, "png_optimize": False},
+    "Chất lượng cao": {"jpeg_optimize": True, "webp_method": 6, "png_optimize": True},
+}
 
 
 @dataclass
@@ -58,6 +64,32 @@ class FrameCandidate:
     brightness: float
     gray: np.ndarray
     histogram: np.ndarray
+
+
+@dataclass(frozen=True)
+class MetricRequirements:
+    need_sharpness: bool
+    need_motion_blur: bool
+    need_hash: bool
+    need_histogram: bool
+
+
+def metric_requirements(args: argparse.Namespace) -> MetricRequirements:
+    scene_detection = bool(getattr(args, "scene_detection", False))
+    duplicate_threshold = int(getattr(args, "duplicate_threshold", 0) or 0)
+    cross_run_enabled = bool(getattr(args, "cross_run_duplicates", True))
+    cross_run_threshold = int(
+        getattr(args, "cross_run_duplicate_threshold", duplicate_threshold) or duplicate_threshold
+    )
+    return MetricRequirements(
+        need_sharpness=(
+            float(getattr(args, "min_sharpness", 0.0) or 0.0) > 0
+            or (scene_detection and bool(getattr(args, "best_frame_per_scene", False)))
+        ),
+        need_motion_blur=float(getattr(args, "motion_blur_threshold", 0.0) or 0.0) > 0,
+        need_hash=(duplicate_threshold > 0 or (cross_run_enabled and cross_run_threshold > 0)),
+        need_histogram=scene_detection,
+    )
 
 
 class ProcessingCancelled(RuntimeError):
@@ -633,21 +665,39 @@ def hamming_distance(left: int, right: int) -> int:
     return (left ^ right).bit_count()
 
 
-def frame_candidate(frame: np.ndarray, timestamp: float, analysis_width: int) -> FrameCandidate:
-    gray = resize_for_analysis(frame, analysis_width)
-    raw_sharpness = laplacian_variance(gray)
-    blur_score = motion_blur_score(gray)
-    histogram = color_histogram(frame, analysis_width)
+def frame_candidate(
+    frame: np.ndarray,
+    timestamp: float,
+    analysis_width: int,
+    requirements: MetricRequirements | None = None,
+) -> FrameCandidate:
+    requirements = requirements or MetricRequirements(True, True, True, True)
+    # Tạo ảnh nhỏ đúng một lần; mọi metric phân tích dùng chung buffer này.
+    small = resized_for_analysis(frame, analysis_width)
+    need_gray = (
+        requirements.need_sharpness
+        or requirements.need_motion_blur
+        or requirements.need_hash
+        or requirements.need_histogram
+    )
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if need_gray else np.empty((0, 0), dtype=np.uint8)
+    raw_sharpness = laplacian_variance(gray) if requirements.need_sharpness else 0.0
+    blur_score = motion_blur_score(gray) if requirements.need_motion_blur else 0.0
+    histogram = np.empty((0,), dtype=np.float32)
+    if requirements.need_histogram:
+        hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+        histogram = cv2.calcHist([hsv], [0, 1], None, [16, 8], [0, 180, 0, 256])
+        histogram = cv2.normalize(histogram, histogram).flatten().astype(np.float32)
     # Quy về cùng mốc 640 px để threshold ổn định hơn giữa các độ phân giải.
-    width_scale = (REFERENCE_ANALYSIS_WIDTH / max(gray.shape[1], 1)) ** 2
+    width_scale = (REFERENCE_ANALYSIS_WIDTH / max(gray.shape[1], 1)) ** 2 if need_gray else 1.0
     normalized_sharpness = raw_sharpness * width_scale
     return FrameCandidate(
         frame=frame.copy(),
         timestamp=timestamp,
         sharpness=normalized_sharpness,
         motion_blur_score=blur_score,
-        hash_value=dhash(gray),
-        brightness=float(np.mean(gray)) / 255.0,
+        hash_value=dhash(gray) if requirements.need_hash else 0,
+        brightness=float(np.mean(gray)) / 255.0 if need_gray else 0.0,
         gray=gray,
         histogram=histogram,
     )
@@ -709,6 +759,31 @@ def timestamp_label(seconds: float) -> str:
     return f"{hours:02d}-{minutes:02d}-{secs:02d}.{milliseconds:03d}"
 
 
+def new_stage_timings() -> dict[str, float | int]:
+    return {
+        "decode_ms": 0.0,
+        "analysis_ms": 0.0,
+        "encode_ms": 0.0,
+        "write_ms": 0.0,
+        "decode_count": 0,
+        "analysis_count": 0,
+        "encode_count": 0,
+        "write_count": 0,
+    }
+
+
+def record_stage_timing(
+    timings: dict[str, float | int] | None,
+    stage: str,
+    started_at: float,
+) -> None:
+    if timings is None:
+        return
+    elapsed_ms = max(0.0, (time.perf_counter() - started_at) * 1000.0)
+    timings[f"{stage}_ms"] = round(float(timings.get(f"{stage}_ms", 0.0)) + elapsed_ms, 3)
+    timings[f"{stage}_count"] = int(timings.get(f"{stage}_count", 0)) + 1
+
+
 def crop_to_aspect_ratio(frame: np.ndarray, crop_ratio: str | None) -> np.ndarray:
     """Crop chính giữa theo tỉ lệ khung hình, không kéo giãn nội dung."""
     if crop_ratio in (None, "", "Không crop", "none"):
@@ -737,19 +812,30 @@ def save_image(
     quality: int,
     width: int | None,
     crop_ratio: str | None = None,
+    encode_profile: str = "Chất lượng cao",
+    stage_timings: dict[str, float | int] | None = None,
 ) -> None:
+    profile = ENCODE_PROFILES.get(str(encode_profile))
+    if profile is None:
+        raise ValueError(f"Encode profile không hợp lệ: {encode_profile}")
     frame = crop_to_aspect_ratio(frame, crop_ratio)
     if width is not None and frame.shape[1] > width:
         target_height = max(1, round(frame.shape[0] * width / frame.shape[1]))
         frame = cv2.resize(frame, (width, target_height), interpolation=cv2.INTER_AREA)
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     image = Image.fromarray(rgb)
+    encoded = io.BytesIO()
+    encode_started = time.perf_counter()
     if image_format == "jpg":
-        image.save(output, format="JPEG", quality=quality, optimize=True)
+        image.save(encoded, format="JPEG", quality=quality, optimize=bool(profile["jpeg_optimize"]))
     elif image_format == "webp":
-        image.save(output, format="WEBP", quality=quality, method=6)
+        image.save(encoded, format="WEBP", quality=quality, method=int(profile["webp_method"]))
     else:
-        image.save(output, format="PNG", optimize=True)
+        image.save(encoded, format="PNG", optimize=bool(profile["png_optimize"]))
+    record_stage_timing(stage_timings, "encode", encode_started)
+    write_started = time.perf_counter()
+    output.write_bytes(encoded.getvalue())
+    record_stage_timing(stage_timings, "write", write_started)
 
 
 def accept_and_save(
@@ -798,6 +884,8 @@ def accept_and_save(
         args.quality,
         args.width,
         getattr(args, "crop_ratio", "Không crop"),
+        getattr(args, "encode_profile", "Chất lượng cao"),
+        getattr(args, "stage_timings", None),
     )
     if existing_hashes is not None:
         existing_hashes.add(candidate.hash_value)
@@ -911,6 +999,7 @@ def process_fixed_mode_multiprocess(
         "scene_times": [],
         "extraction_mode": "multiprocessing",
         "extraction_workers": int(getattr(args, "extract_workers", 1)),
+        "stage_timings": getattr(args, "stage_timings", None),
     }
     temp_dir = Path(tempfile.mkdtemp(prefix="frameforge_extract_", dir=str(output_dir)))
     worker_count = min(max(2, int(getattr(args, "extract_workers", 2))), len(targets))
@@ -920,6 +1009,7 @@ def process_fixed_mode_multiprocess(
         for start in range(0, len(targets), chunk_size)
     ]
     previous_hash: int | None = None
+    requirements = metric_requirements(args)
     buffered: dict[int, tuple[int, float, str | None, str | None]] = {}
     next_index = 0
     pool = mp.get_context("spawn").Pool(processes=worker_count)
@@ -934,11 +1024,15 @@ def process_fixed_mode_multiprocess(
                 if error or not frame_path:
                     reports["capture_errors"] = int(reports["capture_errors"]) + 1
                 else:
+                    decode_started = time.perf_counter()
                     frame = cv2.imread(frame_path)
+                    record_stage_timing(getattr(args, "stage_timings", None), "decode", decode_started)
                     if frame is None:
                         reports["capture_errors"] = int(reports["capture_errors"]) + 1
                     else:
-                        candidate = frame_candidate(frame, timestamp, args.analysis_width)
+                        analysis_started = time.perf_counter()
+                        candidate = frame_candidate(frame, timestamp, args.analysis_width, requirements)
+                        record_stage_timing(getattr(args, "stage_timings", None), "analysis", analysis_started)
                         status, previous_hash = accept_and_save(
                             candidate, output_dir, video.stem, index + 1, args, previous_hash, existing_hashes, duplicate_buckets
                         )
@@ -1012,6 +1106,7 @@ def process_fixed_mode(
         "scene_times": [],
         "extraction_mode": "sequential",
         "extraction_workers": effective_extract_workers,
+        "stage_timings": getattr(args, "stage_timings", None),
     }
     if effective_extract_workers > 1 and len(targets) >= int(getattr(args, "extract_min_targets", 8)):
         multiprocessing_args = copy.copy(args)
@@ -1021,11 +1116,14 @@ def process_fixed_mode(
         )
     target_index = 0
     frame_index = 0
+    requirements = metric_requirements(args)
     previous_hash: int | None = None
     estimated_frames = max(1, int(max(0.0, actual_end - actual_start) * max(args.source_fps, 1.0)))
     while target_index < len(targets):
         check_cancelled(cancel_event)
+        decode_started = time.perf_counter()
         ok, frame = capture.read()
+        record_stage_timing(getattr(args, "stage_timings", None), "decode", decode_started)
         if not ok:
             reports["capture_errors"] = int(reports["capture_errors"]) + (len(targets) - target_index)
             break
@@ -1046,7 +1144,9 @@ def process_fixed_mode(
             continue
         if timestamp > actual_end + 0.05:
             break
-        candidate = frame_candidate(frame, timestamp, args.analysis_width)
+        analysis_started = time.perf_counter()
+        candidate = frame_candidate(frame, timestamp, args.analysis_width, requirements)
+        record_stage_timing(getattr(args, "stage_timings", None), "analysis", analysis_started)
         status, previous_hash = accept_and_save(
             candidate, output_dir, video.stem, target_index + 1, args, previous_hash, existing_hashes, duplicate_buckets
         )
@@ -1122,6 +1222,7 @@ def process_scene_mode(
     current_best: FrameCandidate | None = None
     pending: PendingCut | None = None
     previous_hash: int | None = None
+    requirements = metric_requirements(args)
     scene_index = 0
     frame_index = 0
     estimated_frames = max(1, int(max(0.0, actual_end - actual_start) * max(args.source_fps, 1.0)))
@@ -1138,7 +1239,9 @@ def process_scene_mode(
 
     while True:
         check_cancelled(cancel_event)
+        decode_started = time.perf_counter()
         ok, frame = capture.read()
+        record_stage_timing(getattr(args, "stage_timings", None), "decode", decode_started)
         if not ok:
             break
         timestamp = capture.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
@@ -1161,7 +1264,9 @@ def process_scene_mode(
         if timestamp + 1e-6 < next_sample:
             continue
         next_sample = timestamp + sample_interval
-        candidate = frame_candidate(frame, timestamp, args.analysis_width)
+        analysis_started = time.perf_counter()
+        candidate = frame_candidate(frame, timestamp, args.analysis_width, requirements)
+        record_stage_timing(getattr(args, "stage_timings", None), "analysis", analysis_started)
         emit_progress(
             on_progress,
             video,
@@ -1296,16 +1401,22 @@ def process_cached_scene_mode(
         "scene_confirmations": args.scene_confirmations,
         "smart_scene_detection": True,
         "cache_hit": True,
+        "stage_timings": getattr(args, "stage_timings", None),
     }
     previous_hash: int | None = None
+    requirements = metric_requirements(args)
     for index, timestamp in enumerate(selected_times, start=1):
         check_cancelled(cancel_event)
         capture.set(cv2.CAP_PROP_POS_MSEC, timestamp * 1000.0)
+        decode_started = time.perf_counter()
         ok, frame = capture.read()
+        record_stage_timing(getattr(args, "stage_timings", None), "decode", decode_started)
         if not ok:
             reports["capture_errors"] = int(reports["capture_errors"]) + 1
             continue
-        candidate = frame_candidate(frame, timestamp, args.analysis_width)
+        analysis_started = time.perf_counter()
+        candidate = frame_candidate(frame, timestamp, args.analysis_width, requirements)
+        record_stage_timing(getattr(args, "stage_timings", None), "analysis", analysis_started)
         status, previous_hash = accept_and_save(
             candidate, output_dir, video.stem, index, args, previous_hash, existing_hashes, duplicate_buckets
         )
@@ -1608,6 +1719,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--analysis-width", type=positive_int, default=640, help="Chiều rộng phân tích; nhỏ hơn giúp chạy nhanh hơn.")
     parser.add_argument("--analysis-fps", type=positive_float, default=8.0, help="Số frame/giây dùng cho phân tích scene.")
     parser.add_argument("--format", choices=("jpg", "png", "webp"), default="jpg", help="Định dạng ảnh.")
+    parser.add_argument("--encode-profile", choices=ENCODE_PROFILE_LABELS, default="Chất lượng cao", help="Profile encode: Nhanh hoặc Chất lượng cao.")
     parser.add_argument("--quality", type=int, choices=range(1, 101), metavar="1-100", default=95, help="Chất lượng JPG/WebP.")
     parser.add_argument("--width", type=positive_int, default=None, help="Chiều rộng ảnh đầu ra; mặc định giữ kích thước nguồn.")
     parser.add_argument(

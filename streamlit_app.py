@@ -50,6 +50,7 @@ from video_screenshot_advanced import (
     cleanup_frameforge_temp_dirs,
     current_process_rss_bytes,
     CROP_RATIO_LABELS,
+    ENCODE_PROFILE_LABELS,
     ensure_free_disk_space,
     format_bytes,
     process_videos,
@@ -86,6 +87,7 @@ PRESET_CONFIGS = {
         "motion_blur_threshold": 0.35,
         "image_format": "jpg",
         "crop_ratio": "Không crop",
+        "encode_profile": "Nhanh",
         "quality": 85,
         "width": 1280,
         "retries": 1,
@@ -109,6 +111,7 @@ PRESET_CONFIGS = {
         "motion_blur_threshold": 0.30,
         "image_format": "jpg",
         "crop_ratio": "Không crop",
+        "encode_profile": "Chất lượng cao",
         "quality": 95,
         "width": 0,
         "retries": 2,
@@ -132,6 +135,7 @@ PRESET_CONFIGS = {
         "motion_blur_threshold": 0.25,
         "image_format": "jpg",
         "crop_ratio": "Không crop",
+        "encode_profile": "Chất lượng cao",
         "quality": 98,
         "width": 1920,
         "retries": 2,
@@ -155,6 +159,7 @@ PRESET_CONFIGS = {
         "motion_blur_threshold": 0.30,
         "image_format": "jpg",
         "crop_ratio": "9:16",
+        "encode_profile": "Nhanh",
         "quality": 92,
         "width": 1080,
         "retries": 2,
@@ -1406,8 +1411,16 @@ with st.sidebar:
     )
 
     st.markdown('<div class="eyebrow">04 · Đầu ra</div>', unsafe_allow_html=True)
+    encode_profile = st.selectbox(
+        "Profile encode",
+        list(ENCODE_PROFILE_LABELS),
+        index=list(ENCODE_PROFILE_LABELS).index(st.session_state.get("encode_profile", "Chất lượng cao")),
+        key="encode_profile",
+        help="Nhanh giảm chi phí encode; Chất lượng cao ưu tiên tối ưu kích thước/chất lượng file.",
+    )
     image_format = st.selectbox(
-        "Định dạng ảnh", ["jpg", "png", "webp"], index=0,
+        "Định dạng ảnh",
+ ["jpg", "png", "webp"], index=0,
         key="image_format",
     )
     crop_ratio = st.selectbox(
@@ -1500,6 +1513,7 @@ def build_args() -> SimpleNamespace:
         format=image_format,
         quality=int(quality),
         crop_ratio=crop_ratio,
+        encode_profile=encode_profile,
         width=int(width) if width else None,
         overwrite=bool(overwrite),
         workers=workers,

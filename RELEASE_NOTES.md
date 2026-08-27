@@ -1,5 +1,15 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.19
+
+## Tối ưu pipeline ảnh và benchmark theo công đoạn
+
+Pipeline tạo ảnh phân tích nhỏ một lần cho mỗi frame và dùng chung cho grayscale, sharpness, motion blur, dHash và histogram. Các metric không cần thiết được bỏ qua dựa trên cấu hình; job không lọc chất lượng, không duplicate và không scene detection sẽ tránh các phép tính tương ứng.
+
+Bổ sung hai encode profile: `Nhanh` giảm chi phí tối ưu encode cho JPEG/WebP/PNG, còn `Chất lượng cao` giữ tùy chọn tối ưu hiện tại. Profile có trong Streamlit, preset, CLI `--encode-profile` và benchmark.
+
+Benchmark xuất riêng thời gian và số lần thực hiện của `decode`, `analysis`, `encode` và `write` qua các trường `*_ms` và `*_count`. Với multiprocessing, decode được tính tại bước đọc frame tạm trong process cha.
+
 # FrameForge v0.1.18
 
 ## Phân loại lỗi downloader và exponential backoff

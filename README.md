@@ -8,6 +8,14 @@ Bản desktop xóa file input tạm sau từng video hoàn tất và dọn work 
 
 Khu vực tải video công khai dùng panel responsive hai tầng: vùng URL rộng ở phía trên, quality ở cột bên cạnh, và playlist limit/retry/action ở hàng dưới. Preview video dùng khung 16:9 tối đa 560px, tự co theo màn hình. Theme chính được đồng bộ dark mode cho canvas, card, input, select, timeline và cảnh báo. Screenshot mới có tên dạng `HH-MM-SS.mmm.jpg`; video tải xuống có tên dạng `video_YYYYMMDD_HHMMSS.ext` với hậu tố collision khi cần.
 
+## Ghi chú v0.1.19
+
+Pipeline ảnh nay tạo một ảnh phân tích nhỏ dùng chung cho grayscale, sharpness, motion blur, dHash và histogram. Các metric không cần thiết sẽ không được tính: job không lọc chất lượng hoặc duplicate có thể bỏ qua Laplacian, Scharr, dHash và histogram tương ứng. Điều này giảm xử lý CPU nhưng vẫn giữ đầy đủ metric khi scene detection, best-frame hoặc bộ lọc được bật.
+
+Bổ sung hai profile encode: `Nhanh` tắt các tối ưu encode tốn CPU để ưu tiên tốc độ, còn `Chất lượng cao` giữ JPEG/WebP/PNG tối ưu hóa để ưu tiên kích thước và chất lượng file. Streamlit, preset, CLI `--encode-profile` và benchmark đều hỗ trợ lựa chọn này.
+
+Benchmark giờ xuất `decode_ms`, `analysis_ms`, `encode_ms`, `write_ms` cùng số lần thực hiện tương ứng. Với multiprocessing, decode được đo ở bước đọc frame tạm trong process cha; vì vậy nên đọc các counters cùng `extraction_mode` khi so sánh.
+
 ## Ghi chú v0.1.18
 
 Downloader yt-dlp nay phân loại lỗi theo mã `access_denied`, `rate_limited`, `ffmpeg_missing`, `format_unavailable`, `output_error`, `network_error` hoặc `unknown`. Lỗi tạm thời được retry với exponential backoff theo chu kỳ `1s, 2s, 4s...`, giới hạn tối đa 60 giây; lỗi không thể tự khắc phục như URL riêng tư, thiếu format hoặc không có quyền ghi sẽ dừng ngay và hiển thị gợi ý cụ thể. Queue có thể tiếp tục các URL còn lại thông qua callback lỗi per-video.
@@ -50,6 +58,9 @@ Adaptive extraction worker nay xét đồng thời **số timestamp yêu cầu, 
 | Live telemetry | Hiển thị FPS, ETA và RSS RAM trong lúc xử lý; ETA chỉ xuất hiện khi đã có đơn vị tiến độ hợp lệ. |
 | Adaptive worker theo duration | Cấp extraction worker dựa trên thời lượng cùng số timestamp, ngoài CPU/RAM và số video worker. |
 | Crop tỉ lệ screenshot | Crop trung tâm theo `16:9`, `9:16`, `4:5`, `1:1` hoặc giữ nguyên; crop trước resize để không méo hình. |
+| Conditional image metrics | Chỉ tính sharpness, motion blur, dHash và histogram khi tính năng tương ứng cần dùng. |
+| Encode profiles | Chọn `Nhanh` hoặc `Chất lượng cao` cho JPEG/WebP/PNG. |
+| Stage timing benchmark | Đo riêng decode, analysis, encode và write theo ms/count. |
 
 ## Cấu trúc
 

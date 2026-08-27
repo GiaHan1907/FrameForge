@@ -208,7 +208,27 @@ Nếu browser không phát được preview, hãy đổi video sang MP4/H.264. �
 
 Từ v0.1.16, mỗi URL và mỗi lần retry tải video vào staging riêng `.frameforge_download_*`, rồi mới chuyển file hoàn tất sang thư mục lưu video. Cách này tránh việc file cũ cùng video khiến yt-dlp bỏ qua download và FrameForge báo nhầm `yt-dlp không tạo được file video đầu ra`. Staging được dọn tự động sau cả thành công và lỗi.
 
-## 12. Chẩn đoán lỗi tải video và retry
+## 12. Profile encode và benchmark hiệu suất ảnh
+
+Trong nhóm **Đầu ra**, trường `Profile encode` có hai lựa chọn. `Nhanh` giảm các bước tối ưu tốn CPU khi ghi JPEG/WebP/PNG, phù hợp khi cần tạo nhiều screenshot hoặc preview nhanh. `Chất lượng cao` dùng các tùy chọn tối ưu hiện tại, phù hợp khi ưu tiên chất lượng và kích thước file. Profile không thay đổi kích thước hoặc tỷ lệ ảnh; nó chỉ thay đổi cách encode file.
+
+CLI hỗ trợ:
+
+```bash
+python video_screenshot_advanced.py input.mp4 --count 20 --encode-profile Nhanh
+python video_screenshot_advanced.py input.mp4 --count 20 --encode-profile "Chất lượng cao"
+```
+
+Benchmark hỗ trợ cùng lựa chọn và xuất các cột `decode_ms`, `analysis_ms`, `encode_ms`, `write_ms` cùng `decode_count`, `analysis_count`, `encode_count`, `write_count`:
+
+```bash
+python benchmarks/benchmark_frame_extraction.py --frames 120 --workers 1,2,4 --encode-profile Nhanh --output benchmark_fast.json
+python benchmarks/benchmark_frame_extraction.py --frames 120 --workers 1,2,4 --encode-profile "Chất lượng cao" --output benchmark_high.json
+```
+
+`decode_ms` là thời gian đọc frame, `analysis_ms` là metric và quyết định frame, `encode_ms` là thời gian mã hóa JPEG/WebP/PNG, còn `write_ms` là thời gian ghi file. Với multiprocessing, decode được đo ở bước đọc frame tạm trong process cha; nên so sánh thêm cột `extraction_mode`, FPS và RSS thay vì chỉ nhìn một counter.
+
+## 13. Chẩn đoán lỗi tải video và retry
 
 Từ v0.1.18, FrameForge phân loại lỗi tải theo mã để dễ xử lý. `network_error` là lỗi mạng tạm thời và `rate_limited` là nguồn đang giới hạn tần suất; hai nhóm này có thể được retry tự động. `access_denied` là URL cần đăng nhập hoặc không truy cập được, `format_unavailable` là không có format phù hợp, `ffmpeg_missing` là thiếu FFmpeg để ghép video/audio, còn `output_error` là lỗi quyền ghi hoặc dung lượng. Các lỗi không thể tự khắc phục sẽ dừng retry sớm và hiển thị gợi ý.
 

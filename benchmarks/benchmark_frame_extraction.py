@@ -63,7 +63,7 @@ def make_synthetic_video(path: Path, frames: int, width: int, height: int, fps: 
         writer.release()
 
 
-def make_args(work: Path, workers: int, frames: int) -> SimpleNamespace:
+def make_args(work: Path, workers: int, frames: int, encode_profile: str) -> SimpleNamespace:
     return SimpleNamespace(
         start=0.0, end=None, every=None, count=frames,
         scene_detection=False, best_frame_per_scene=False,
@@ -74,6 +74,7 @@ def make_args(work: Path, workers: int, frames: int) -> SimpleNamespace:
         duplicate_threshold=0, cross_run_duplicate_threshold=0,
         cross_run_duplicates=False, format="jpg", quality=85,
         width=640, overwrite=True, workers=1, extract_workers=workers,
+        encode_profile=encode_profile, stage_timings=engine.new_stage_timings(),
         extract_min_targets=1, disk_reserve_bytes=0,
         use_scene_cache=False, cache_root=work / "cache",
         duplicate_root=work / "duplicates", checkpoint_path=None,
@@ -81,16 +82,17 @@ def make_args(work: Path, workers: int, frames: int) -> SimpleNamespace:
     )
 
 
-def run_case(video: Path, work: Path, workers: int, frames: int) -> dict[str, object]:
+def run_case(video: Path, work: Path, workers: int, frames: int, encode_profile: str) -> dict[str, object]:
     output = work / f"workers_{workers}"
     output.mkdir(parents=True, exist_ok=True)
-    args = make_args(work, workers, frames)
+    args = make_args(work, workers, frames, encode_profile)
     before = rss_bytes()
     started = time.perf_counter()
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         report = engine.process_video(video, output, None, args)
     elapsed = time.perf_counter() - started
     after = rss_bytes()
+    timings = report.get("stage_timings") or {}
     return {
         "workers": workers,
         "elapsed_seconds": round(elapsed, 6),
@@ -101,6 +103,15 @@ def run_case(video: Path, work: Path, workers: int, frames: int) -> dict[str, ob
         "rss_after_bytes": after,
         "rss_delta_bytes": max(0, after - before),
         "extraction_mode": report.get("extraction_mode", "sequential"),
+        "encode_profile": encode_profile,
+        "decode_ms": float(timings.get("decode_ms", 0.0)),
+        "analysis_ms": float(timings.get("analysis_ms", 0.0)),
+        "encode_ms": float(timings.get("encode_ms", 0.0)),
+        "write_ms": float(timings.get("write_ms", 0.0)),
+        "decode_count": int(timings.get("decode_count", 0)),
+        "analysis_count": int(timings.get("analysis_count", 0)),
+        "encode_count": int(timings.get("encode_count", 0)),
+        "write_count": int(timings.get("write_count", 0)),
     }
 
 
@@ -112,6 +123,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=Path("benchmark_results.json"))
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=360)
+    parser.add_argument("--encode-profile", choices=("Nhanh", "Chất lượng cao"), default="Chất lượng cao")
     args = parser.parse_args()
     if args.frames < 8:
         parser.error("--frames must be at least 8 to exercise multiprocessing")
@@ -128,7 +140,7 @@ def main() -> int:
         if not video.is_file():
             raise FileNotFoundError(video)
         work = root / "runs"
-        results = [run_case(video, work, workers, args.frames) for workers in worker_counts]
+        results = [run_case(video, work, workers, args.frames, args.encode_profile) for workers in worker_counts]
         baseline = next((item for item in results if item["workers"] == 1), results[0])
         baseline_time = float(baseline["elapsed_seconds"])
         for item in results:
@@ -139,6 +151,7 @@ def main() -> int:
             "frames": args.frames,
             "platform": sys.platform,
             "cpu_count": os.cpu_count(),
+            "encode_profile": args.encode_profile,
             "results": results,
         }
         args.output.parent.mkdir(parents=True, exist_ok=True)
