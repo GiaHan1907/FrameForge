@@ -51,7 +51,7 @@ jobs:
       - name: Compile Python sources
         shell: bash
         run: |
-          python -m py_compile streamlit_app.py video_screenshot_advanced.py video_downloader.py queue_per_video.py updater.py app_update.py windows_launcher.py measure_package_size.py validate_release_manifest.py timeline_utils.py persistent_queue.py benchmarks/benchmark_frame_extraction.py tests/test_queue_retry_cancel.py tests/test_cache_checkpoint.py tests/test_app_update_channels.py tests/test_persistent_queue.py
+          python -m py_compile streamlit_app.py video_screenshot_advanced.py video_downloader.py queue_per_video.py updater.py app_update.py windows_launcher.py measure_package_size.py validate_release_manifest.py timeline_utils.py persistent_queue.py benchmarks/benchmark_frame_extraction.py tests/test_queue_retry_cancel.py tests/test_cache_checkpoint.py tests/test_app_update_channels.py tests/test_persistent_queue.py tests/test_queue_crash_resume.py
 
       - name: Install test dependencies
         shell: bash

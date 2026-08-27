@@ -1,5 +1,11 @@
 # Video Screenshot Filter — Optimized Streamlit Package
 
+## Ghi chú v0.1.23
+
+SQLite queue nay dùng state machine có schema version và migration additive từ v0.1.22. Khi mở database cũ, FrameForge tự bổ sung stable `item_id`, `source_position`, phase/progress, heartbeat và timestamps mà không xóa report cũ. Item đang `running` hoặc `retrying` khi ứng dụng dừng bất thường được đánh dấu `interrupted`; resume đưa item về queue mà không đổi định danh.
+
+Retry item dùng stable ID thay vì vị trí hiển thị, tránh lệch mapping khi retry subset. Store có heartbeat/progress, phát hiện job stale, retry failed và đóng connection idempotent. Integration test dùng subprocess và `os._exit()` để mô phỏng crash thật, sau đó reopen/resume và hoàn tất lại queue.
+
 ## Ghi chú v0.1.22
 
 Queue nhiều video nay dùng **bounded scheduler**: số item được submit đồng thời không vượt quá số video worker hiệu dụng. Pause không cấp thêm item queued; các video đang chạy kết thúc tại checkpoint an toàn. Cancel có thể ngắt khi queue đang pause hoặc đang retry backoff thay vì chờ hết delay.

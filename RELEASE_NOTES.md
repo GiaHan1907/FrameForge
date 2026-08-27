@@ -1,5 +1,15 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.23
+
+## SQLite state machine và crash-safe queue resume
+
+`persistent_queue.py` được nâng cấp lên schema v0.1.23 theo migration additive từ schema v0.1.22. Database cũ được giữ nguyên report/status, sau đó backfill `item_id` ổn định, `source_position`, phase/progress/message, heartbeat và thời gian bắt đầu/kết thúc. Migration chạy tự động khi mở store và có schema metadata để nhận biết phiên bản.
+
+Queue item có state transition được kiểm soát cho `queued`, `running`, `retrying`, `completed`, `failed`, `cancelled` và `interrupted`. Khi mở lại queue sau khi process bị dừng bất thường, item đang `running` hoặc `retrying` được đánh dấu `interrupted`; `resume_job()` đưa chúng về `queued` mà không đổi stable item ID. Retry theo `item_id` không bị lệch khi xử lý một subset.
+
+Store bổ sung heartbeat/progress API, phát hiện job stale, retry item/retry failed và đóng connection idempotent. Integration test dùng subprocess thật và `os._exit()` để mô phỏng crash sau khi SQLite đã commit, rồi xác minh reopen/resume, stable IDs, migration legacy và hoàn tất toàn bộ queue.
+
 # FrameForge v0.1.22
 
 ## Bounded queue, điều khiển đáng tin cậy và preview hai panel

@@ -210,6 +210,14 @@ Nếu browser không phát được preview, hãy đổi video sang MP4/H.264. �
 
 Từ v0.1.16, mỗi URL và mỗi lần retry tải video vào staging riêng `.frameforge_download_*`, rồi mới chuyển file hoàn tất sang thư mục lưu video. Cách này tránh việc file cũ cùng video khiến yt-dlp bỏ qua download và FrameForge báo nhầm `yt-dlp không tạo được file video đầu ra`. Staging được dọn tự động sau cả thành công và lỗi.
 
+## v0.1.23 — SQLite state machine và resume sau crash
+
+Khi mở queue database được tạo từ v0.1.22, FrameForge tự chạy migration additive lên schema v0.1.23. Report, checkpoint và trạng thái cũ được giữ lại; hệ thống bổ sung `item_id` ổn định, `source_position`, phase/progress, heartbeat và timestamps. Không cần xóa file SQLite hoặc tạo database mới.
+
+Nếu ứng dụng bị đóng hoặc crash, item đang `running` hoặc `retrying` sẽ được đánh dấu `interrupted` khi queue được mở lại. Chọn **Resume** để đưa các item này về `queued`; stable item ID không thay đổi và video đã hoàn tất không bị chạy lại. Nếu muốn chạy lại một item lỗi, dùng stable item ID nội bộ của queue; không dựa vào số thứ tự sau khi lọc subset.
+
+Integration test của bản này mô phỏng process chết đột ngột sau khi SQLite đã commit, mở lại database trong process mới, xác minh hai item active chuyển thành `interrupted`, item thứ ba vẫn `queued`, rồi resume và hoàn tất toàn bộ queue.
+
 ## v0.1.22 — Bounded queue, preview hai panel và UX gọn hơn
 
 Khi xử lý nhiều video, FrameForge dùng bounded scheduler: số video được submit đồng thời không vượt quá số `Video xử lý song song` hiệu dụng. Các video còn lại thực sự ở trạng thái chờ, giúp giảm áp lực RAM và tránh tạo quá nhiều future trong một queue lớn.
