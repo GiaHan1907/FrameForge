@@ -63,6 +63,7 @@ from video_screenshot_advanced import (
     timestamp_label,
 )
 from timeline_utils import build_timeline_entries, filter_timeline_entries
+from queue_per_video import classify_error, render_queue_per_video
 from video_downloader import (
     QUALITY_FORMATS,
     DownloadFailure,
@@ -1361,15 +1362,13 @@ with st.sidebar:
                 "Độ nhạy thay đổi cảnh",
                 0.05,
                 0.95,
-                float(st.session_state.get("scene_threshold", 0.30)),
-                0.05,
+                step=0.05,
                 key="scene_threshold",
                 help="Thấp hơn sẽ nhạy hơn và có thể tạo nhiều scene hơn.",
             )
             min_scene_gap = st.number_input(
                 "Khoảng cách tối thiểu giữa scene (giây)",
                 min_value=0.1,
-                value=float(st.session_state.get("min_scene_gap", 0.5)),
                 step=0.1,
                 key="min_scene_gap",
             )
@@ -1377,8 +1376,7 @@ with st.sidebar:
                 "Ngưỡng chống flash",
                 0.10,
                 0.95,
-                float(st.session_state.get("flash_return_ratio", 0.55)),
-                0.05,
+                step=0.05,
                 key="flash_return_ratio",
                 help="Thấp hơn giúp bỏ các thay đổi ngắn quay lại cảnh cũ.",
             )
@@ -1386,15 +1384,13 @@ with st.sidebar:
                 "Độ lệch sáng tối đa khi nhận diện flash",
                 0.01,
                 0.50,
-                float(st.session_state.get("flash_brightness_threshold", 0.18)),
-                0.01,
+                step=0.01,
                 key="flash_brightness_threshold",
             )
             scene_confirmations = st.slider(
                 "Số frame xác nhận thay đổi cảnh",
                 1,
                 5,
-                int(st.session_state.get("scene_confirmations", 2)),
                 key="scene_confirmations",
                 help="Tăng lên để chống nhiễu/flash; giảm xuống 1 cho chuyển cảnh rất nhanh.",
             )
@@ -1424,7 +1420,6 @@ with st.sidebar:
             "Chiều rộng phân tích",
             min_value=160,
             max_value=1920,
-            value=int(st.session_state.get("analysis_width", 640)),
             step=80,
             key="analysis_width",
             help="Frame được thu nhỏ trước khi đo scene, độ nét và trùng lặp.",
@@ -1433,7 +1428,6 @@ with st.sidebar:
             "FPS phân tích scene",
             min_value=1.0,
             max_value=30.0,
-            value=float(st.session_state.get("analysis_fps", 8.0)),
             step=1.0,
             key="analysis_fps",
             help="Giảm FPS để tăng tốc; tăng FPS nếu cảnh thay đổi rất nhanh.",
@@ -1449,7 +1443,6 @@ with st.sidebar:
     min_sharpness = st.number_input(
         "Ngưỡng độ nét tối thiểu",
         min_value=0.0,
-        value=float(st.session_state.get("min_sharpness", 100.0)),
         step=10.0,
         key="min_sharpness",
         help="Điểm đã chuẩn hóa về chiều rộng tham chiếu 640 px. Đặt 0 để tắt lọc mờ.",
@@ -1458,7 +1451,6 @@ with st.sidebar:
         "Ngưỡng trùng dHash",
         0,
         32,
-        int(st.session_state.get("duplicate_threshold", 6)),
         key="duplicate_threshold",
         help="Khoảng cách càng nhỏ thì frame càng giống. Đặt 0 để tắt lọc trùng.",
     )
@@ -1466,8 +1458,7 @@ with st.sidebar:
         "Ngưỡng motion blur",
         0.0,
         1.0,
-        float(st.session_state.get("motion_blur_threshold", 0.30)),
-        0.05,
+        step=0.05,
         key="motion_blur_threshold",
         help="Điểm càng cao càng có nguy cơ nhòe chuyển động. Đặt 0 để tắt.",
     )
@@ -1476,19 +1467,18 @@ with st.sidebar:
     encode_profile = st.selectbox(
         "Profile encode",
         list(ENCODE_PROFILE_LABELS),
-        index=list(ENCODE_PROFILE_LABELS).index(st.session_state.get("encode_profile", "Chất lượng cao")),
         key="encode_profile",
         help="Nhanh giảm chi phí encode; Chất lượng cao ưu tiên tối ưu kích thước/chất lượng file.",
     )
     image_format = st.selectbox(
         "Định dạng ảnh",
- ["jpg", "png", "webp"], index=0,
+         ["jpg", "png", "webp"],
         key="image_format",
+
     )
     crop_ratio = st.selectbox(
         "Tỉ lệ crop screenshot",
         list(CROP_RATIO_LABELS),
-        index=list(CROP_RATIO_LABELS).index(st.session_state.get("crop_ratio", "Không crop")),
         key="crop_ratio",
         help="Crop chính giữa, không kéo giãn hình. Chiều rộng đầu ra áp dụng sau khi crop.",
     )
@@ -1496,27 +1486,23 @@ with st.sidebar:
         "Chất lượng JPG/WebP",
         1,
         100,
-        int(st.session_state.get("quality", 95)),
         key="quality",
         disabled=image_format == "png",
     )
     width = st.number_input(
         "Chiều rộng đầu ra (0 = giữ nguyên)",
         min_value=0,
-        value=int(st.session_state.get("width", 0)),
         step=64,
         key="width",
     )
     overwrite = st.checkbox(
         "Ghi đè file đầu ra đã tồn tại",
-        value=bool(st.session_state.get("overwrite", True)),
         key="overwrite",
     )
     retry_count = st.number_input(
         "Số lần retry mỗi video",
         min_value=0,
         max_value=5,
-        value=int(st.session_state.get("retries", 2)),
         step=1,
         key="retries",
         help="Nếu một video lỗi tạm thời, FrameForge sẽ tự thử lại trước khi chuyển sang video kế tiếp.",
@@ -1525,7 +1511,6 @@ with st.sidebar:
         "Thời gian chờ retry (giây)",
         min_value=0.0,
         max_value=30.0,
-        value=float(st.session_state.get("retry_delay", 1.0)),
         step=0.5,
         key="retry_delay",
     )
@@ -1533,20 +1518,17 @@ with st.sidebar:
         "Vùng đệm dung lượng tối thiểu (MB)",
         min_value=0,
         max_value=8192,
-        value=int(st.session_state.get("disk_reserve_mb", 512)),
         step=128,
         key="disk_reserve_mb",
         help="Không bắt đầu hoặc tiếp tục ghi khi dung lượng trống thấp hơn vùng đệm này.",
     )
     use_scene_cache = st.checkbox(
         "Dùng cache phân tích scene",
-        value=bool(st.session_state.get("use_scene_cache", True)),
         key="use_scene_cache",
         help="Lần chạy sau sẽ seek tới các timestamp đã chọn thay vì phân tích lại toàn bộ video.",
     )
     cross_run_duplicates = st.checkbox(
         "Loại duplicate giữa các lần chạy",
-        value=bool(st.session_state.get("cross_run_duplicates", True)),
         key="cross_run_duplicates",
         help="Dùng dHash index trong thư mục screenshot để tránh lưu lại frame gần giống đã xuất trước đó.",
     )
@@ -1644,6 +1626,8 @@ def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output
             "fraction": 1.0,
             "message": f"Đã hoàn tất · lưu {report.get('saved', 0)} ảnh" if "error" not in report else str(report.get("error")),
             "rss_bytes": current_process_rss_bytes(),
+            "attempts": int(report.get("attempts", 1) or 1),
+            "saved": int(report.get("saved", 0) or 0),
         })
         if report.get("requested") is not None:
             state["units_done"] = int(report.get("requested", 0) or 0)
@@ -1701,10 +1685,12 @@ def _resume_processing_job(job: dict[str, object]) -> None:
     job["message"] = "Đã tiếp tục queue."
 
 
-def _retry_failed_processing(job: dict[str, object]) -> bool:
+def _retry_failed_processing(job: dict[str, object], positions: set[int] | None = None) -> bool:
     reports = job.get("reports") or []
     failed_paths: list[Path] = []
-    for report in reports:
+    for position, report in enumerate(reports):
+        if positions is not None and position not in positions:
+            continue
         if not isinstance(report, dict) or "error" not in report:
             continue
         candidate = Path(str(report.get("video", "")))
@@ -1724,6 +1710,100 @@ def _retry_failed_processing(job: dict[str, object]) -> bool:
         Path(str(job["work_dir"])),
     )
     return True
+
+
+class _ProcessingQueueAdapter:
+    """Adapter để dùng renderer queue per-video với processing_job hiện tại."""
+
+    def __init__(self, job: dict[str, object]) -> None:
+        self.job = job
+
+    def snapshot(self) -> dict[str, object]:
+        status = str(self.job.get("status", "running"))
+        paused = status == "paused"
+        progress = self.job.get("progress") or {}
+        reports = self.job.get("reports") or []
+        input_paths = list(self.job.get("input_paths", []))
+        items: list[dict[str, object]] = []
+        for position, path in enumerate(input_paths):
+            state = progress.get(str(path), {})
+            report = reports[position] if position < len(reports) and isinstance(reports[position], dict) else {}
+            phase = str(state.get("phase", "queued"))
+            fraction = float(state.get("fraction", 0.0) or 0.0)
+            if "error" in report or phase in {"error", "failed"}:
+                item_status = "failed"
+            elif fraction >= 1.0 or phase == "completed":
+                item_status = "completed"
+            elif phase == "retrying":
+                item_status = "retrying"
+            elif phase == "queued":
+                item_status = "paused" if paused else "queued"
+            else:
+                item_status = "running"
+            telemetry = progress_telemetry(state)
+            error_info = classify_error(RuntimeError(str(report.get("error", "")))) if report.get("error") else None
+            items.append({
+                "position": position,
+                "video_path": str(path),
+                "status": item_status,
+                "fraction": max(0.0, min(1.0, fraction)),
+                "message": str(state.get("message", "Đang chờ")),
+                "attempts": int(state.get("attempts", report.get("attempts", 0)) or 0),
+                "error_code": report.get("error_code") or (error_info.code if error_info else None),
+                "error": report.get("error"),
+                "suggestion": report.get("suggestion") or (error_info.suggestion if error_info else None),
+                "saved": int(state.get("saved", report.get("saved", 0)) or 0),
+                "fps": telemetry["fps"],
+                "eta": telemetry["eta"],
+                "rss": telemetry["rss"],
+            })
+        return {
+            "status": status,
+            "running": status in {"running", "paused"},
+            "paused": paused,
+            "total": len(items),
+            "completed": sum(item["status"] == "completed" for item in items),
+            "failed": sum(item["status"] == "failed" for item in items),
+            "cancelled": sum(item["status"] == "cancelled" for item in items),
+            "fraction": sum(float(item["fraction"]) for item in items) / max(1, len(items)),
+            "last_error": self.job.get("error"),
+            "pause_note": self._pause_note(),
+            "items": items,
+        }
+
+    def _pause_note(self) -> str:
+        args = self.job.get("args")
+        configured_workers = getattr(args, "workers", 1) if args is not None else 1
+        if isinstance(configured_workers, str):
+            parallel = configured_workers.lower() == "auto" or configured_workers.isdigit() and int(configured_workers) > 1
+        else:
+            parallel = int(configured_workers or 1) > 1
+        if parallel:
+            return "Tạm dừng chỉ chặn ranh giới item/retry; các video đã submit ở worker song song có thể tiếp tục đến checkpoint gần nhất."
+        return "Tạm dừng có hiệu lực ở ranh giới video/retry; video đang chạy không bị dừng giữa một frame."
+
+    def pause(self) -> None:
+        _pause_processing_job(self.job)
+
+    def resume(self) -> None:
+        _resume_processing_job(self.job)
+
+    def cancel(self) -> None:
+        cancel_event = self.job.get("cancel_event")
+        if cancel_event is not None:
+            cancel_event.set()
+        self.job["message"] = "Đang dừng an toàn sau checkpoint gần nhất..."
+
+    def retry_failed(self) -> int:
+        reports = self.job.get("reports") or []
+        failed = {position for position, report in enumerate(reports) if isinstance(report, dict) and "error" in report}
+        if not _retry_failed_processing(self.job, failed):
+            raise RuntimeError("Không còn file nguồn failed để retry.")
+        return len(failed)
+
+    def retry_item(self, position: int) -> None:
+        if not _retry_failed_processing(self.job, {int(position)}):
+            raise RuntimeError("File nguồn của item failed không còn tồn tại.")
 
 
 def _shutdown_processing_job(job: dict[str, object]) -> None:
@@ -1868,56 +1948,7 @@ def _render_processing_job() -> None:
         return
     status = str(job.get("status"))
     if status in {"running", "paused"}:
-        st.markdown('<div class="section-heading"><span>◌</span> Tiến trình xử lý</div>', unsafe_allow_html=True)
-        input_paths = list(job.get("input_paths", []))
-        progress_state = job.get("progress", {})
-        fractions = [float(progress_state.get(str(path), {}).get("fraction", 0.0)) for path in input_paths]
-        overall = sum(fractions) / max(1, len(fractions))
-        completed = int(job.get("completed", {}).get("count", 0))
-        st.progress(overall, text=f"Tổng thể: {overall:.0%} · hoàn tất {completed}/{len(input_paths)} video")
-        telemetry = [progress_telemetry(progress_state.get(str(path), {})) for path in input_paths]
-        total_done = sum(int(item["done"] or 0) for item in telemetry)
-        total_units = sum(int(item["total"] or 0) for item in telemetry)
-        started_at = [float(progress_state.get(str(path), {}).get("started_at", 0.0) or 0.0) for path in input_paths]
-        elapsed = max(0.0, time.monotonic() - min((value for value in started_at if value), default=time.monotonic()))
-        overall_fps = total_done / elapsed if total_done > 0 and elapsed > 0.2 else None
-        overall_eta = ((total_units - total_done) / overall_fps) if overall_fps and total_units > total_done else None
-        current_rss = max((int(item["rss"] or 0) for item in telemetry), default=0)
-        fps_col, eta_col, ram_col = st.columns(3)
-        fps_col.metric("Tốc độ", f"{overall_fps:.1f} FPS" if overall_fps else "—")
-        eta_col.metric("ETA", format_eta(overall_eta))
-        ram_col.metric("RAM process", format_bytes(current_rss) if current_rss else "—")
-        st.markdown("#### Queue theo video")
-        for path in input_paths:
-            item = progress_state.get(str(path), {})
-            phase = str(item.get("phase", "queued"))
-            fraction = float(item.get("fraction", 0.0))
-            message = str(item.get("message", "Đang chờ"))
-            item_telemetry = progress_telemetry(item)
-            fps_label = f"{float(item_telemetry['fps']):.1f} FPS" if item_telemetry["fps"] else "—"
-            eta_label = format_eta(float(item_telemetry["eta"])) if item_telemetry["eta"] is not None else "—"
-            ram_label = format_bytes(int(item_telemetry["rss"] or 0)) if item_telemetry["rss"] else "—"
-            with st.container(border=True):
-                st.markdown(f"**{path.name}** · `{phase}`")
-                st.progress(min(1.0, max(0.0, fraction)), text=f"{fraction:.0%} · {message}")
-                st.caption(f"{fps_label} · ETA {eta_label} · RAM {ram_label}")
-        control_pause, control_cancel = st.columns([1, 1])
-        with control_pause:
-            if status == "paused":
-                if st.button("Tiếp tục queue", key="resume_processing_live", type="primary", use_container_width=True):
-                    _resume_processing_job(job)
-                    st.rerun()
-            elif st.button("Tạm dừng queue", key="pause_processing_live", type="secondary", use_container_width=True):
-                _pause_processing_job(job)
-                st.rerun()
-        with control_cancel:
-            if st.button("Hủy xử lý", key="cancel_processing", type="secondary", use_container_width=True):
-                cancel_event = job.get("cancel_event")
-                if cancel_event is not None:
-                    cancel_event.set()
-                job["message"] = "Đang dừng an toàn sau checkpoint gần nhất..."
-                st.warning(job["message"])
-        st.caption("Tạm dừng có hiệu lực ở ranh giới video; video đang chạy sẽ hoàn tất rồi queue chờ tiếp tục.")
+        render_queue_per_video(_ProcessingQueueAdapter(job), key_prefix="processing_queue")
         return
 
     if status == "cancelled":
@@ -1940,6 +1971,8 @@ def _render_processing_job() -> None:
         st.error(str(job.get("message", "Có lỗi khi xử lý queue.")))
         return
     reports = job.get("reports") or []
+    if status == "completed":
+        render_queue_per_video(_ProcessingQueueAdapter(job), key_prefix="processing_queue_done")
     output_dir = Path(str(job["output_dir"]))
     report_path = Path(str(job["report_path"]))
     zip_bytes = make_zip(output_dir, report_path)
@@ -1973,13 +2006,6 @@ def _render_processing_job() -> None:
             st.error(f"✕ {video_name} · thất bại · {report.get('error')}")
         else:
             st.success(f"✓ {video_name} · hoàn tất · lưu {int(report.get('saved', 0))} ảnh · {int(report.get('attempts', 1))} lần thử")
-    if failed_reports:
-        if st.button(f"Thử lại {len(failed_reports)} mục thất bại", key="retry_failed_processing", type="primary"):
-            if _retry_failed_processing(job):
-                st.rerun()
-            else:
-                st.warning("Không còn file nguồn để thử lại; với file upload, hãy chọn lại video rồi chạy lại queue.")
-
     download_col, report_col = st.columns([1, 1])
     with download_col:
         st.download_button(

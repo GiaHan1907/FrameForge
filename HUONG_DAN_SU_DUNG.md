@@ -52,7 +52,9 @@ Trong sidebar, chọn một hoặc nhiều video. Khu vực **Xem trước video
 
 Sau khi chọn cấu hình, bấm **Bắt đầu xử lý**. Ứng dụng tạo một job nền và hiển thị progress tổng thể cùng progress riêng cho từng video. Các giai đoạn gồm `queued`, `preparing`, `analyzing`, `selecting`, `saving` và `completed`; khi video lỗi, queue sẽ tự retry theo số lần đã chọn trước khi chuyển sang video tiếp theo.
 
-Trong lúc xử lý, bấm **Hủy xử lý** để dừng an toàn. FrameForge kiểm tra yêu cầu hủy giữa các checkpoint, giải phóng `VideoCapture` và giữ lại các screenshot đã ghi trước đó. Job đang chạy sẽ khóa nút bắt đầu mới để tránh tạo hai queue cùng lúc.
+Trong lúc xử lý, khu vực **Queue theo video** hiển thị card riêng cho từng file với trạng thái, phần trăm, message, số lần thử, số ảnh đã lưu, FPS, ETA và RAM. Bấm **Tạm dừng** để đặt pause event; pause chỉ có hiệu lực tại ranh giới video/retry và không cắt video đang chạy giữa một frame. Khi `Video xử lý song song` lớn hơn 1, các video đã được submit cho worker có thể tiếp tục đến checkpoint gần nhất; nếu cần pause tuần tự rõ ràng, đặt giá trị bằng 1. Bấm **Tiếp tục** để mở lại item còn chờ.
+
+Bấm **Hủy xử lý** để dừng an toàn. FrameForge kiểm tra yêu cầu hủy giữa các checkpoint, giải phóng `VideoCapture` và giữ lại các screenshot đã ghi trước đó. Job đang chạy sẽ khóa nút bắt đầu mới để tránh tạo hai queue cùng lúc. Sau khi job kết thúc, **Thử lại mục thất bại** chạy lại toàn bộ report lỗi còn file nguồn; nút **Retry item này** chỉ chạy một item lỗi. Nếu file upload tạm đã bị xóa hoặc di chuyển, cần chọn lại video trước khi retry.
 
 Sau khi từng video hoàn tất, file input tạm của video đó được xóa ngay; khi cả job hoàn tất hoặc gặp lỗi, work directory còn lại cũng được dọn. Nếu bạn bấm **Hủy xử lý**, work directory và checkpoint vẫn được giữ để có thể resume. Khi đóng browser trên bản EXE desktop, FrameForge chờ một khoảng reconnect ngắn, hủy job đang chạy, đóng executor, dọn work directory rồi dừng Streamlit. Chạy `streamlit run` thủ công không tự tắt server khi browser đóng.
 
@@ -208,13 +210,21 @@ Nếu browser không phát được preview, hãy đổi video sang MP4/H.264. �
 
 Từ v0.1.16, mỗi URL và mỗi lần retry tải video vào staging riêng `.frameforge_download_*`, rồi mới chuyển file hoàn tất sang thư mục lưu video. Cách này tránh việc file cũ cùng video khiến yt-dlp bỏ qua download và FrameForge báo nhầm `yt-dlp không tạo được file video đầu ra`. Staging được dọn tự động sau cả thành công và lỗi.
 
+## v0.1.21 — Tích hợp queue per-video
+
+Module `queue_per_video.py` nay được tích hợp vào Streamlit chính qua `_ProcessingQueueAdapter`, nên giao diện queue dùng chung với engine `process_videos` ổn định, SQLite queue và JSON checkpoint hiện có. Module không tự thay thế engine hoặc tạo một lifecycle lưu trữ thứ hai trong Streamlit.
+
+Card per-video có bộ lọc trạng thái, chẩn đoán mã lỗi/gợi ý, attempts, số ảnh đã lưu và telemetry FPS/ETA/RAM. Các thao tác pause, resume, cancel, retry failed và retry item đều có điều kiện an toàn: queue đang chạy không cho retry; retry subset chỉ nhận nguồn còn tồn tại; cancel vẫn giữ checkpoint/work directory để resume theo flow hiện có. Ba PyInstaller spec và bước kiểm tra runtime của Windows CI đều đóng gói/kiểm tra `queue_per_video.py`.
+
+Pause được thiết kế tại ranh giới item. Ở chế độ một video worker, video hiện tại hoàn tất rồi item kế tiếp mới chờ. Ở chế độ nhiều video worker, những video đã submit có thể tiếp tục; đây là giới hạn chủ động để không thay đổi engine đa luồng hiện tại hoặc dừng giữa frame.
+
 ## v0.1.20 — Wizard và điều khiển queue
 
 Giao diện chính có wizard bốn bước: `01 · Nguồn`, `02 · Chọn frame`, `03 · Chất lượng` và `04 · Đầu ra`. Summary card bên dưới hiển thị số video, mode, analysis width/FPS, crop ratio, format và encode profile hiện tại trước khi chạy.
 
 Khi đã chọn video, preview hiển thị crop overlay. Vùng sáng có viền xanh là phần sẽ được giữ lại; vùng tối là phần bị crop. Overlay chỉ minh họa frame đầu, còn engine áp dụng ratio đã chọn cho mọi frame được lưu.
 
-Trong lúc xử lý, phần `Queue theo video` hiển thị trạng thái, phần trăm, message, FPS, ETA và RAM cho từng video. **Tạm dừng queue** chỉ ngăn video kế tiếp bắt đầu; video đang chạy sẽ hoàn tất rồi queue chờ. **Tiếp tục queue** mở lại các video còn chờ. **Hủy xử lý** giữ checkpoint để resume. Sau khi queue kết thúc, **Thử lại mục thất bại** chạy lại các file nguồn còn tồn tại; file upload đã bị xóa hoặc di chuyển cần được chọn lại.
+Trong lúc xử lý, phần `Queue theo video` hiển thị trạng thái, phần trăm, message, attempts, số ảnh đã lưu, FPS, ETA và RAM cho từng video. **Tạm dừng queue** chỉ có hiệu lực ở ranh giới video/retry và không dừng giữa frame; ở nhiều worker, video đã submit có thể tiếp tục. **Tiếp tục queue** mở lại các video còn chờ. **Hủy xử lý** giữ checkpoint để resume. Sau khi queue kết thúc, retry chỉ chạy các file nguồn còn tồn tại; file upload đã bị xóa hoặc di chuyển cần được chọn lại.
 
 ## 12. Profile encode và benchmark hiệu suất ảnh
 

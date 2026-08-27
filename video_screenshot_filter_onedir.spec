@@ -37,6 +37,7 @@ datas += [
     ("app_config.py", "."),
     ("persistent_queue.py", "."),
     ("timeline_utils.py", "."),
+    ("queue_per_video.py", "."),
     ("frameforge_version.txt", "."),
 ]
 

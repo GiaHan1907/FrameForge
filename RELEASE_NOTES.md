@@ -1,5 +1,15 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.21
+
+## Tích hợp queue per-video vào Streamlit chính
+
+Module `queue_per_video.py` được tích hợp vào giao diện Streamlit qua `_ProcessingQueueAdapter`, dùng lại engine `process_videos`, SQLite queue, JSON checkpoint, retry exponential backoff và lifecycle cleanup hiện có. Giao diện live hiển thị card cho từng video với trạng thái `queued`, `running`, `retrying`, `paused`, `completed` hoặc `failed`, cùng attempts, số ảnh đã lưu, FPS, ETA, RAM, mã lỗi và gợi ý.
+
+Các nút **Tạm dừng**, **Tiếp tục**, **Hủy xử lý**, **Thử lại mục thất bại** và **Retry item này** đã nối vào job hiện tại. Retry chỉ nhận report lỗi có file nguồn còn tồn tại; cancel giữ checkpoint/work directory theo flow resume hiện có. Pause an toàn ở ranh giới item/retry và không dừng giữa frame. Với nhiều video worker, các video đã submit có thể tiếp tục đến checkpoint gần nhất; chế độ `Video xử lý song song = 1` cho semantics pause tuần tự rõ ràng hơn.
+
+Cả ba PyInstaller spec đều nhúng `queue_per_video.py`; workflow Windows compile và kiểm tra runtime module này trước packaged smoke test. Downloader vẫn chỉ xử lý URL công khai được phép, không bổ sung cookie, login, DRM bypass hoặc PAT.
+
 # FrameForge v0.1.20
 
 ## Wizard UI, crop overlay và queue per-video

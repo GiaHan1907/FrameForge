@@ -2,6 +2,12 @@
 
 Gói này chứa ứng dụng Streamlit và CLI tối ưu để cắt screenshot từ video. Pipeline mới đọc video **tuần tự một lần**, phân tích frame ở độ phân giải thấp hơn và chỉ mã hóa các frame được chọn ở độ phân giải đầu ra.
 
+## Ghi chú v0.1.21
+
+Tích hợp module queue per-video vào Streamlit chính thông qua adapter tương thích với engine `process_videos` hiện có. Giao diện live hiển thị card riêng cho từng video, trạng thái `queued`, `running`, `retrying`, `paused`, `completed` hoặc `failed`, cùng attempts, số ảnh đã lưu, FPS, ETA, RAM, mã lỗi và gợi ý xử lý. Module được nhúng trong cả ba PyInstaller spec và được Windows CI kiểm tra như runtime module.
+
+Các nút **Tạm dừng**, **Tiếp tục**, **Hủy xử lý**, **Thử lại mục thất bại** và **Retry item này** dùng lại pause event, cancel event, SQLite/checkpoint và retry/backoff của engine hiện tại; không thay thế lifecycle bền vững đang có. Retry subset chỉ chạy các report lỗi có file nguồn còn tồn tại. Pause an toàn tại ranh giới video/retry, không dừng giữa một frame. Khi cấu hình nhiều video worker, các video đã submit có thể tiếp tục đến checkpoint gần nhất; muốn pause tuần tự rõ ràng nên đặt `Video xử lý song song = 1`.
+
 ## Ghi chú v0.1.14
 
 Bản desktop xóa file input tạm sau từng video hoàn tất và dọn work directory ở cuối job. Job bị hủy vẫn giữ checkpoint/work directory để resume. Khi browser đóng trên bản EXE, session watchdog sẽ hủy job đang chạy, đóng executor, dọn dữ liệu tạm và dừng Streamlit; lệnh `streamlit run` thủ công không bật auto-shutdown.
@@ -14,7 +20,7 @@ Giao diện chính có wizard 4 bước: `Nguồn`, `Chọn frame`, `Chất lư�
 
 Preview video có crop overlay theo ratio đã chọn. Vùng sáng có viền xanh là phần được giữ lại, vùng tối là phần bị cắt; overlay dùng frame đầu để minh họa và không thay đổi file nguồn.
 
-Queue hiển thị per-video với trạng thái, phần trăm, message, FPS, ETA và RAM. `Tạm dừng queue` có hiệu lực ở ranh giới video; video đang chạy hoàn tất rồi queue chờ. `Tiếp tục queue` mở lại các video còn lại. `Hủy xử lý` giữ checkpoint, còn `Thử lại mục thất bại` chạy lại các file nguồn thất bại vẫn còn tồn tại.
+Queue hiển thị per-video với trạng thái, phần trăm, message, attempts, số ảnh đã lưu, FPS, ETA, RAM và chẩn đoán lỗi. `Tạm dừng queue` có hiệu lực ở ranh giới video/retry; video đang chạy không bị cắt giữa frame. Với nhiều video worker, các video đã submit có thể tiếp tục đến checkpoint gần nhất. `Tiếp tục queue` mở lại item còn chờ, `Hủy xử lý` giữ checkpoint, còn retry chỉ chạy các file nguồn thất bại vẫn còn tồn tại.
 
 ## Ghi chú v0.1.19
 
