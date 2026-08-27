@@ -3,7 +3,12 @@ from __future__ import annotations
 import ast
 import math
 import re
+import tempfile
 import time
+from types import SimpleNamespace
+
+import cv2
+import numpy as np
 import unittest
 from pathlib import Path
 
@@ -76,9 +81,42 @@ class StreamlitDirectoryStateTests(unittest.TestCase):
         self.assertIn('fps_col.metric("Tốc độ"', self.source)
         self.assertIn('eta_col.metric("ETA"', self.source)
         self.assertIn('ram_col.metric("RAM process"', self.source)
+        self.assertIn('WIZARD_STEPS', self.source)
+        self.assertIn('wizard_step', self.source)
+        self.assertIn('preview_crop_overlay', self.source)
+        self.assertIn('Tạm dừng queue', self.source)
+        self.assertIn('Tiếp tục queue', self.source)
+        self.assertIn('Thử lại', self.source)
+        self.assertIn('Queue theo video', self.source)
         self.assertIn('DownloadFailure', self.source)
         self.assertIn('download_error_hook', self.source)
         self.assertIn('state == "retrying"', self.source)
+
+    def test_crop_overlay_function_behavior(self) -> None:
+        function = next(
+            node for node in self.tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "preview_crop_overlay"
+        )
+        namespace = {
+            "CROP_RATIO_VALUES": {"Không crop": None, "9:16": 9 / 16},
+            "Path": Path,
+            "cv2": cv2,
+            "np": np,
+            "tempfile": tempfile,
+        }
+        exec(compile(ast.Module(body=[function], type_ignores=[]), "streamlit_app.py", "exec"), namespace)
+        with tempfile.TemporaryDirectory() as temporary:
+            video_path = Path(temporary) / "preview.mp4"
+            writer = cv2.VideoWriter(str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), 8.0, (160, 90))
+            self.assertTrue(writer.isOpened())
+            try:
+                for index in range(3):
+                    writer.write(np.full((90, 160, 3), 50 + index * 30, dtype=np.uint8))
+            finally:
+                writer.release()
+            overlay = namespace["preview_crop_overlay"](video_path, "9:16")
+            self.assertIsNotNone(overlay)
+            self.assertTrue(bytes(overlay).startswith(b"\x89PNG"))
 
     def test_progress_parser_and_telemetry_behavior(self) -> None:
         functions = [

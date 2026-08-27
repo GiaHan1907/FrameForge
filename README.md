@@ -8,6 +8,14 @@ Bản desktop xóa file input tạm sau từng video hoàn tất và dọn work 
 
 Khu vực tải video công khai dùng panel responsive hai tầng: vùng URL rộng ở phía trên, quality ở cột bên cạnh, và playlist limit/retry/action ở hàng dưới. Preview video dùng khung 16:9 tối đa 560px, tự co theo màn hình. Theme chính được đồng bộ dark mode cho canvas, card, input, select, timeline và cảnh báo. Screenshot mới có tên dạng `HH-MM-SS.mmm.jpg`; video tải xuống có tên dạng `video_YYYYMMDD_HHMMSS.ext` với hậu tố collision khi cần.
 
+## Ghi chú v0.1.20
+
+Giao diện chính có wizard 4 bước: `Nguồn`, `Chọn frame`, `Chất lượng` và `Đầu ra`. Summary card hiển thị số video, mode, analysis width/FPS, crop ratio, format và encode profile để người dùng kiểm tra trước khi chạy.
+
+Preview video có crop overlay theo ratio đã chọn. Vùng sáng có viền xanh là phần được giữ lại, vùng tối là phần bị cắt; overlay dùng frame đầu để minh họa và không thay đổi file nguồn.
+
+Queue hiển thị per-video với trạng thái, phần trăm, message, FPS, ETA và RAM. `Tạm dừng queue` có hiệu lực ở ranh giới video; video đang chạy hoàn tất rồi queue chờ. `Tiếp tục queue` mở lại các video còn lại. `Hủy xử lý` giữ checkpoint, còn `Thử lại mục thất bại` chạy lại các file nguồn thất bại vẫn còn tồn tại.
+
 ## Ghi chú v0.1.19
 
 Pipeline ảnh nay tạo một ảnh phân tích nhỏ dùng chung cho grayscale, sharpness, motion blur, dHash và histogram. Các metric không cần thiết sẽ không được tính: job không lọc chất lượng hoặc duplicate có thể bỏ qua Laplacian, Scharr, dHash và histogram tương ứng. Điều này giảm xử lý CPU nhưng vẫn giữ đầy đủ metric khi scene detection, best-frame hoặc bộ lọc được bật.

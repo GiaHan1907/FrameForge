@@ -208,6 +208,14 @@ Nếu browser không phát được preview, hãy đổi video sang MP4/H.264. �
 
 Từ v0.1.16, mỗi URL và mỗi lần retry tải video vào staging riêng `.frameforge_download_*`, rồi mới chuyển file hoàn tất sang thư mục lưu video. Cách này tránh việc file cũ cùng video khiến yt-dlp bỏ qua download và FrameForge báo nhầm `yt-dlp không tạo được file video đầu ra`. Staging được dọn tự động sau cả thành công và lỗi.
 
+## v0.1.20 — Wizard và điều khiển queue
+
+Giao diện chính có wizard bốn bước: `01 · Nguồn`, `02 · Chọn frame`, `03 · Chất lượng` và `04 · Đầu ra`. Summary card bên dưới hiển thị số video, mode, analysis width/FPS, crop ratio, format và encode profile hiện tại trước khi chạy.
+
+Khi đã chọn video, preview hiển thị crop overlay. Vùng sáng có viền xanh là phần sẽ được giữ lại; vùng tối là phần bị crop. Overlay chỉ minh họa frame đầu, còn engine áp dụng ratio đã chọn cho mọi frame được lưu.
+
+Trong lúc xử lý, phần `Queue theo video` hiển thị trạng thái, phần trăm, message, FPS, ETA và RAM cho từng video. **Tạm dừng queue** chỉ ngăn video kế tiếp bắt đầu; video đang chạy sẽ hoàn tất rồi queue chờ. **Tiếp tục queue** mở lại các video còn chờ. **Hủy xử lý** giữ checkpoint để resume. Sau khi queue kết thúc, **Thử lại mục thất bại** chạy lại các file nguồn còn tồn tại; file upload đã bị xóa hoặc di chuyển cần được chọn lại.
+
 ## 12. Profile encode và benchmark hiệu suất ảnh
 
 Trong nhóm **Đầu ra**, trường `Profile encode` có hai lựa chọn. `Nhanh` giảm các bước tối ưu tốn CPU khi ghi JPEG/WebP/PNG, phù hợp khi cần tạo nhiều screenshot hoặc preview nhanh. `Chất lượng cao` dùng các tùy chọn tối ưu hiện tại, phù hợp khi ưu tiên chất lượng và kích thước file. Profile không thay đổi kích thước hoặc tỷ lệ ảnh; nó chỉ thay đổi cách encode file.

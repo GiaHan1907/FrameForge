@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import atexit
 import contextlib
+import copy
 import io
+import cv2
+import numpy as np
 from datetime import datetime
 
 import html
@@ -50,6 +53,7 @@ from video_screenshot_advanced import (
     cleanup_frameforge_temp_dirs,
     current_process_rss_bytes,
     CROP_RATIO_LABELS,
+    CROP_RATIO_VALUES,
     ENCODE_PROFILE_LABELS,
     ensure_free_disk_space,
     format_bytes,
@@ -70,6 +74,8 @@ from video_downloader import (
 
 
 cleanup_frameforge_temp_dirs(older_than_seconds=24 * 60 * 60, max_total_bytes=2 * 1024**3)
+
+WIZARD_STEPS = ("01 · Nguồn", "02 · Chọn frame", "03 · Chất lượng", "04 · Đầu ra")
 
 PRESET_CONFIGS = {
     "Nhanh": {
@@ -217,9 +223,65 @@ def progress_telemetry(item: dict[str, object]) -> dict[str, float | int | None]
     }
 
 
+def preview_crop_overlay(source: object, crop_ratio: str) -> bytes | None:
+    """Lấy frame đầu và phủ vùng giữ lại theo crop ratio để preview UI."""
+    temporary_path: Path | None = None
+    try:
+        if hasattr(source, "getvalue"):
+            temporary = tempfile.NamedTemporaryFile(prefix="frameforge_preview_", suffix=".mp4", delete=False)
+            temporary.write(source.getvalue())
+            temporary.close()
+            temporary_path = Path(temporary.name)
+            video_path = temporary_path
+        else:
+            video_path = Path(str(source))
+        capture = cv2.VideoCapture(str(video_path))
+        ok, frame = capture.read()
+        capture.release()
+        if not ok or frame is None:
+            return None
+        target_ratio = CROP_RATIO_VALUES.get(str(crop_ratio))
+        if target_ratio is None:
+            target_ratio = frame.shape[1] / max(frame.shape[0], 1)
+        height, width = frame.shape[:2]
+        current_ratio = width / max(height, 1)
+        if current_ratio > target_ratio:
+            kept_width = max(1, min(width, round(height * target_ratio)))
+            left = max(0, (width - kept_width) // 2)
+            top, right, bottom = 0, left + kept_width, height
+        else:
+            kept_height = max(1, min(height, round(width / target_ratio)))
+            top = max(0, (height - kept_height) // 2)
+            left, right, bottom = 0, width, top + kept_height
+        original = frame.copy()
+        shaded = cv2.addWeighted(frame, 0.38, np.zeros_like(frame), 0.62, 0)
+        shaded[top:bottom, left:right] = original[top:bottom, left:right]
+        cv2.rectangle(shaded, (left, top), (max(left + 1, right - 1), max(top + 1, bottom - 1)), (91, 214, 164), 4)
+        cv2.putText(shaded, str(crop_ratio), (max(12, left + 12), max(28, top + 28)), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (91, 214, 164), 2, cv2.LINE_AA)
+        preview = cv2.resize(shaded, (min(720, width), max(1, round(height * min(720, width) / width))), interpolation=cv2.INTER_AREA)
+        success, encoded = cv2.imencode(".png", preview)
+        return encoded.tobytes() if success else None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def wizard_summary() -> dict[str, str]:
+    source_count = len(uploaded_files or []) + len(downloaded_paths)
+    output_format = "PNG" if image_format == "png" else image_format.upper()
+    crop_label = crop_ratio if crop_ratio != "Không crop" else "Giữ nguyên"
+    return {
+        "Nguồn": f"{source_count} video",
+        "Chọn frame": str(mode_label),
+        "Chất lượng": f"{int(analysis_width)} px · {float(analysis_fps):g} FPS",
+        "Đầu ra": f"{output_format} · {crop_label} · {encode_profile}",
+    }
+
+
 st.session_state.setdefault("preset_choice", "Cân bằng")
 for _preset_key, _preset_value in PRESET_CONFIGS["Cân bằng"].items():
     st.session_state.setdefault(_preset_key, _preset_value)
+st.session_state.setdefault("wizard_step", WIZARD_STEPS[0])
 
 st.set_page_config(
     page_title="FrameForge · Video Screenshot",
@@ -1534,6 +1596,7 @@ def build_args() -> SimpleNamespace:
 def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output_dir: Path, work_dir: Path) -> None:
     args.queue_db = Path(str(getattr(args, "queue_db", "") or output_dir / ".frameforge_queue.sqlite3"))
     cancel_event = threading.Event()
+    pause_event = threading.Event()
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="frameforge-ui")
     progress_state = {
         str(path): {
@@ -1597,12 +1660,14 @@ def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output
         cancel_event,
         args.retries,
         args.retry_delay,
+        pause_event,
     )
     job = {
         "status": "running",
         "future": future,
         "executor": executor,
         "cancel_event": cancel_event,
+        "pause_event": pause_event,
         "progress": progress_state,
         "completed": completed,
         "input_paths": input_paths,
@@ -1618,6 +1683,47 @@ def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output
     if isinstance(shutdown_state, dict):
         shutdown_state["job"] = job
 
+
+
+def _pause_processing_job(job: dict[str, object]) -> None:
+    pause_event = job.get("pause_event")
+    if pause_event is not None:
+        pause_event.set()
+    job["status"] = "paused"
+    job["message"] = "Đã tạm dừng queue; video hiện tại sẽ hoàn tất rồi chờ tiếp tục."
+
+
+def _resume_processing_job(job: dict[str, object]) -> None:
+    pause_event = job.get("pause_event")
+    if pause_event is not None:
+        pause_event.clear()
+    job["status"] = "running"
+    job["message"] = "Đã tiếp tục queue."
+
+
+def _retry_failed_processing(job: dict[str, object]) -> bool:
+    reports = job.get("reports") or []
+    failed_paths: list[Path] = []
+    for report in reports:
+        if not isinstance(report, dict) or "error" not in report:
+            continue
+        candidate = Path(str(report.get("video", "")))
+        if candidate.is_file():
+            failed_paths.append(candidate)
+    if not failed_paths:
+        return False
+    args = job.get("args")
+    if args is None:
+        return False
+    retry_args = copy.copy(args)
+    retry_args.resume = False
+    _start_processing_job(
+        retry_args,
+        failed_paths,
+        Path(str(job["output_dir"])),
+        Path(str(job["work_dir"])),
+    )
+    return True
 
 
 def _shutdown_processing_job(job: dict[str, object]) -> None:
@@ -1692,7 +1798,7 @@ def _start_desktop_session_watchdog() -> None:
 
     def cleanup_at_exit() -> None:
         job = state.get("job")
-        if isinstance(job, dict) and job.get("status") == "running":
+        if isinstance(job, dict) and job.get("status") in {"running", "paused"}:
             _shutdown_processing_job(job)
 
     atexit.register(cleanup_at_exit)
@@ -1721,7 +1827,7 @@ def _finish_processing_job(job: dict[str, object], keep_work_dir: bool = False, 
 
 def _poll_processing_job() -> dict[str, object] | None:
     job = st.session_state.get("processing_job")
-    if not isinstance(job, dict) or job.get("status") != "running":
+    if not isinstance(job, dict) or job.get("status") not in {"running", "paused"}:
         return job if isinstance(job, dict) else None
     future = job.get("future")
     if future is None or not future.done():
@@ -1747,7 +1853,8 @@ def _poll_processing_job() -> dict[str, object] | None:
         job["status"] = "error"
         job["error"] = str(exc)
         job["message"] = f"Không thể xử lý queue: {exc}"
-    _finish_processing_job(job, keep_work_dir=str(job.get("status")) == "cancelled")
+    has_failures = any(isinstance(item, dict) and "error" in item for item in (job.get("reports") or []))
+    _finish_processing_job(job, keep_work_dir=str(job.get("status")) == "cancelled" or has_failures)
     return job
 
 
@@ -1760,7 +1867,7 @@ def _render_processing_job() -> None:
     if not job:
         return
     status = str(job.get("status"))
-    if status == "running":
+    if status in {"running", "paused"}:
         st.markdown('<div class="section-heading"><span>◌</span> Tiến trình xử lý</div>', unsafe_allow_html=True)
         input_paths = list(job.get("input_paths", []))
         progress_state = job.get("progress", {})
@@ -1780,6 +1887,7 @@ def _render_processing_job() -> None:
         fps_col.metric("Tốc độ", f"{overall_fps:.1f} FPS" if overall_fps else "—")
         eta_col.metric("ETA", format_eta(overall_eta))
         ram_col.metric("RAM process", format_bytes(current_rss) if current_rss else "—")
+        st.markdown("#### Queue theo video")
         for path in input_paths:
             item = progress_state.get(str(path), {})
             phase = str(item.get("phase", "queued"))
@@ -1789,15 +1897,27 @@ def _render_processing_job() -> None:
             fps_label = f"{float(item_telemetry['fps']):.1f} FPS" if item_telemetry["fps"] else "—"
             eta_label = format_eta(float(item_telemetry["eta"])) if item_telemetry["eta"] is not None else "—"
             ram_label = format_bytes(int(item_telemetry["rss"] or 0)) if item_telemetry["rss"] else "—"
-            st.caption(f"**{path.name}** · {phase} · {fraction:.0%} · {message} · {fps_label} · ETA {eta_label} · RAM {ram_label}")
-        if st.button("Hủy xử lý", key="cancel_processing", type="secondary"):
-            cancel_event = job.get("cancel_event")
-            if cancel_event is not None:
-                cancel_event.set()
-            job["message"] = "Đang dừng an toàn sau checkpoint gần nhất..."
-            st.warning(job["message"])
-        else:
-            st.caption("Bạn có thể hủy; FrameForge sẽ giải phóng VideoCapture và dọn file tạm.")
+            with st.container(border=True):
+                st.markdown(f"**{path.name}** · `{phase}`")
+                st.progress(min(1.0, max(0.0, fraction)), text=f"{fraction:.0%} · {message}")
+                st.caption(f"{fps_label} · ETA {eta_label} · RAM {ram_label}")
+        control_pause, control_cancel = st.columns([1, 1])
+        with control_pause:
+            if status == "paused":
+                if st.button("Tiếp tục queue", key="resume_processing_live", type="primary", use_container_width=True):
+                    _resume_processing_job(job)
+                    st.rerun()
+            elif st.button("Tạm dừng queue", key="pause_processing_live", type="secondary", use_container_width=True):
+                _pause_processing_job(job)
+                st.rerun()
+        with control_cancel:
+            if st.button("Hủy xử lý", key="cancel_processing", type="secondary", use_container_width=True):
+                cancel_event = job.get("cancel_event")
+                if cancel_event is not None:
+                    cancel_event.set()
+                job["message"] = "Đang dừng an toàn sau checkpoint gần nhất..."
+                st.warning(job["message"])
+        st.caption("Tạm dừng có hiệu lực ở ranh giới video; video đang chạy sẽ hoàn tất rồi queue chờ tiếp tục.")
         return
 
     if status == "cancelled":
@@ -1831,6 +1951,7 @@ def _render_processing_job() -> None:
     total_motion_blur = sum(int(item.get("rejected_motion_blur", 0)) for item in reports)
     total_errors = sum(int(item.get("capture_errors", 0)) for item in reports) + sum("error" in item for item in reports)
     total_attempts = sum(int(item.get("attempts", 1)) for item in reports)
+    failed_reports = [item for item in reports if isinstance(item, dict) and "error" in item]
     metric_a, metric_b, metric_c, metric_d, metric_e = st.columns(5)
     metric_a.metric("Đã lưu", total_saved)
     metric_b.metric("Loại vì mờ", total_blurry)
@@ -1845,6 +1966,19 @@ def _render_processing_job() -> None:
         f"Tổng số lượt thử xử lý: {total_attempts} · retry tự động theo từng video · "
         f"video worker: {video_label} · extraction worker thực tế/video: {adaptive_label}."
     )
+    st.markdown("#### Queue theo video")
+    for report in reports:
+        video_name = Path(str(report.get("video", "video không xác định"))).name
+        if "error" in report:
+            st.error(f"✕ {video_name} · thất bại · {report.get('error')}")
+        else:
+            st.success(f"✓ {video_name} · hoàn tất · lưu {int(report.get('saved', 0))} ảnh · {int(report.get('attempts', 1))} lần thử")
+    if failed_reports:
+        if st.button(f"Thử lại {len(failed_reports)} mục thất bại", key="retry_failed_processing", type="primary"):
+            if _retry_failed_processing(job):
+                st.rerun()
+            else:
+                st.warning("Không còn file nguồn để thử lại; với file upload, hãy chọn lại video rồi chạy lại queue.")
 
     download_col, report_col = st.columns([1, 1])
     with download_col:
@@ -1910,7 +2044,31 @@ with overview_d:
         unsafe_allow_html=True,
     )
 
+st.markdown('<div class="section-heading"><span>◎</span> Wizard cấu hình 4 bước</div>', unsafe_allow_html=True)
+wizard_step = st.radio(
+    "Bước cấu hình",
+    list(WIZARD_STEPS),
+    key="wizard_step",
+    horizontal=True,
+    label_visibility="collapsed",
+)
+summary = wizard_summary()
+summary_cols = st.columns(4)
+for summary_col, step_name in zip(summary_cols, WIZARD_STEPS):
+    summary_key = step_name.split(" · ", 1)[1]
+    summary_col.markdown(
+        f'<div class="info-card"><div class="label">{html.escape(step_name)}</div><div class="value" style="font-size:1rem">{html.escape(summary[summary_key])}</div><div class="sub">{"Đang chỉnh" if wizard_step == step_name else "Đã cấu hình"}</div></div>',
+        unsafe_allow_html=True,
+    )
+st.caption({
+    "01 · Nguồn": "Chọn video upload hoặc video đã tải công khai.",
+    "02 · Chọn frame": "Chọn scene, best frame, mỗi N giây hoặc đúng N frame.",
+    "03 · Chất lượng": "Điều chỉnh phân tích, lọc mờ/trùng và worker.",
+    "04 · Đầu ra": "Chọn crop ratio, format, chất lượng và encode profile.",
+}[wizard_step])
+
 if uploaded_files or downloaded_paths:
+
     st.markdown('<div class="section-heading"><span>▷</span> Xem trước video</div>', unsafe_allow_html=True)
     preview_entries = [(Path(item.name).name, "upload", item) for item in (uploaded_files or [])]
     preview_entries += [(path.name, "download", path) for path in downloaded_paths]
@@ -1928,6 +2086,9 @@ if uploaded_files or downloaded_paths:
             st.video(preview_entry[2].getvalue(), format=preview_mime, subtitles=None, width=560)
         else:
             st.video(str(preview_entry[2]), format=preview_mime, subtitles=None, width=560)
+        overlay = preview_crop_overlay(preview_entry[2], crop_ratio)
+        if overlay is not None:
+            st.image(overlay, caption=f"Overlay crop · {crop_ratio}", use_container_width=True)
     with preview_note_col:
         st.markdown(
             "<div class='preview-note'><strong>Preview gọn</strong><br>"
@@ -1955,7 +2116,7 @@ with step_c:
     )
 
 active_job = st.session_state.get("processing_job")
-job_running = isinstance(active_job, dict) and active_job.get("status") == "running"
+job_running = isinstance(active_job, dict) and active_job.get("status") in {"running", "paused"}
 
 st.markdown("<br>", unsafe_allow_html=True)
 run_col, hint_col = st.columns([1, 2.2])

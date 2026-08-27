@@ -127,6 +127,13 @@ def check_cancelled(cancel_event=None) -> None:
         raise ProcessingCancelled("Đã hủy theo yêu cầu người dùng.")
 
 
+def wait_if_paused(pause_event=None, cancel_event=None, poll_seconds: float = 0.2) -> None:
+    """Chờ ở ranh giới video khi queue bị pause, nhưng vẫn phản hồi cancel."""
+    while pause_event is not None and pause_event.is_set():
+        check_cancelled(cancel_event)
+        time.sleep(max(0.05, float(poll_seconds)))
+
+
 def emit_progress(
     callback: ProgressCallback | None,
     video: Path,
@@ -1533,6 +1540,7 @@ def process_videos(
     cancel_event=None,
     max_retries: int = 0,
     retry_delay_seconds: float = 1.0,
+    pause_event=None,
 ) -> list[dict[str, object]]:
     """Xử lý queue video, retry từng item và trả báo cáo theo thứ tự đầu vào."""
     if not videos:
@@ -1570,6 +1578,7 @@ def process_videos(
     def run_item(index: int, video: Path) -> dict[str, object]:
         last_error: Exception | None = None
         for attempt in range(retry_count + 1):
+            wait_if_paused(pause_event, cancel_event)
             check_cancelled(cancel_event)
             phase = "retrying" if attempt else "queued"
             message = (
@@ -1623,6 +1632,7 @@ def process_videos(
     if worker_count == 1:
         for index, video in enumerate(videos):
             try:
+                wait_if_paused(pause_event, cancel_event)
                 check_cancelled(cancel_event)
             except ProcessingCancelled:
                 if queue_store is not None and queue_job_id is not None:

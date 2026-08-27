@@ -1,5 +1,15 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.20
+
+## Wizard UI, crop overlay và queue per-video
+
+Giao diện chính bổ sung wizard bốn bước `Nguồn`, `Chọn frame`, `Chất lượng` và `Đầu ra`, cùng summary card cho cấu hình hiện tại trước khi chạy.
+
+Preview video hiển thị crop overlay theo ratio đã chọn. Vùng sáng có viền xanh là phần giữ lại, vùng tối là phần bị crop; overlay dùng frame đầu để minh họa và không thay đổi file nguồn.
+
+Queue xử lý hiển thị trạng thái per-video. Người dùng có thể tạm dừng queue ở ranh giới video, tiếp tục queue, hủy xử lý để giữ checkpoint và thử lại các mục thất bại có file nguồn còn tồn tại. Video đang chạy không bị cắt giữa chừng khi tạm dừng.
+
 # FrameForge v0.1.19
 
 ## Tối ưu pipeline ảnh và benchmark theo công đoạn

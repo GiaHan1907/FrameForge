@@ -52,6 +52,35 @@ class QueueRetryCancelTests(unittest.TestCase):
         self.assertEqual(reports[1]["attempts"], 1)
         self.assertIn(("one.mp4", "retrying"), progress)
 
+    def test_pause_blocks_next_video_until_resumed(self) -> None:
+        pause_event = threading.Event()
+        pause_event.set()
+        calls: list[str] = []
+        result: list[dict[str, object]] = []
+
+        def fake_process(video, output_root, source_root, args, on_progress=None, cancel_event=None):
+            calls.append(video.name)
+            return {"video": str(video), "saved": 1}
+
+        def run_queue() -> None:
+            with patch.object(engine, "process_one_video", side_effect=fake_process):
+                result.extend(
+                    engine.process_videos(
+                        self.videos[:1], self.root / "pause-output", None, self.args,
+                        max_retries=0, retry_delay_seconds=0, pause_event=pause_event,
+                    )
+                )
+
+        worker = threading.Thread(target=run_queue)
+        worker.start()
+        time.sleep(0.08)
+        self.assertEqual(calls, [])
+        pause_event.clear()
+        worker.join(timeout=2.0)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(calls, ["one.mp4"])
+        self.assertEqual(result[0]["saved"], 1)
+
     def test_cancel_before_queue_stops_without_processing(self) -> None:
         cancel_event = threading.Event()
         cancel_event.set()
