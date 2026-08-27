@@ -52,6 +52,76 @@ class QueueRetryCancelTests(unittest.TestCase):
         self.assertEqual(reports[1]["attempts"], 1)
         self.assertIn(("one.mp4", "retrying"), progress)
 
+    def test_bounded_scheduler_does_not_submit_pending_items_while_paused(self) -> None:
+        pause_event = threading.Event()
+        paused_after_first = threading.Event()
+        calls: list[str] = []
+        submitted = 0
+        submitted_lock = threading.Lock()
+        real_executor = engine.ThreadPoolExecutor
+
+        class SpyExecutor:
+            def __init__(self, max_workers, thread_name_prefix):
+                self.inner = real_executor(max_workers=max_workers, thread_name_prefix=thread_name_prefix)
+
+            def __enter__(self):
+                self.inner.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self.inner.__exit__(*args)
+
+            def submit(self, *args, **kwargs):
+                nonlocal submitted
+                with submitted_lock:
+                    submitted += 1
+                return self.inner.submit(*args, **kwargs)
+
+        videos = self.videos + [self.root / "three.mp4", self.root / "four.mp4"]
+        for video in videos[2:]:
+            video.write_bytes(b"test video")
+        args = SimpleNamespace(workers=2, extract_workers=1, disk_reserve_bytes=0)
+
+        def fake_process(video, output_root, source_root, args, on_progress=None, cancel_event=None):
+            calls.append(video.name)
+            return {"video": str(video), "saved": 1}
+
+        def on_complete(video, report):
+            if not paused_after_first.is_set():
+                paused_after_first.set()
+                pause_event.set()
+
+        result: list[dict[str, object]] = []
+
+        def run_queue() -> None:
+            with patch.object(engine, "process_one_video", side_effect=fake_process), patch.object(
+                engine, "ThreadPoolExecutor", SpyExecutor
+            ):
+                result.extend(
+                    engine.process_videos(
+                        videos,
+                        self.root / "bounded-output",
+                        None,
+                        args,
+                        on_complete=on_complete,
+                        pause_event=pause_event,
+                    )
+                )
+
+        worker = threading.Thread(target=run_queue)
+        worker.start()
+        self.assertTrue(paused_after_first.wait(2.0))
+        time.sleep(0.1)
+        with submitted_lock:
+            self.assertEqual(submitted, 2)
+        self.assertLessEqual(len(calls), 2)
+        pause_event.clear()
+        worker.join(timeout=3.0)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(submitted, 4)
+        self.assertEqual(calls, [video.name for video in videos])
+        self.assertEqual([Path(item["video"]).name for item in result], [video.name for video in videos])
+
     def test_pause_blocks_next_video_until_resumed(self) -> None:
         pause_event = threading.Event()
         pause_event.set()
@@ -117,6 +187,43 @@ class QueueRetryCancelTests(unittest.TestCase):
                     on_progress=request_cancel,
                     cancel_event=cancel_event,
                 )
+
+    def test_cancel_interrupts_retry_backoff(self) -> None:
+        cancel_event = threading.Event()
+        retry_started = threading.Event()
+        result: list[BaseException] = []
+
+        def fake_process(video, output_root, source_root, args, on_progress=None, cancel_event=None):
+            raise RuntimeError("temporary failure")
+
+        def on_progress(video, phase, fraction, message):
+            if phase == "retrying":
+                retry_started.set()
+                cancel_event.set()
+
+        def run_queue() -> None:
+            try:
+                with patch.object(engine, "process_one_video", side_effect=fake_process):
+                    engine.process_videos(
+                        [self.videos[0]],
+                        self.root / "backoff-output",
+                        None,
+                        self.args,
+                        on_progress=on_progress,
+                        cancel_event=cancel_event,
+                        max_retries=2,
+                        retry_delay_seconds=30,
+                    )
+            except BaseException as exc:  # noqa: BLE001 - assertion boundary
+                result.append(exc)
+
+        worker = threading.Thread(target=run_queue)
+        worker.start()
+        self.assertTrue(retry_started.wait(2.0))
+        worker.join(timeout=2.0)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], engine.ProcessingCancelled)
 
     def test_adaptive_extract_workers_caps_nested_parallelism(self) -> None:
         with patch.object(engine.os, "cpu_count", return_value=8), patch.object(engine, "available_memory_gb", return_value=16.0):

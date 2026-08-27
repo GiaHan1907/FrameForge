@@ -50,7 +50,7 @@ Trong sidebar, chọn một hoặc nhiều video. Khu vực **Xem trước video
 | Mỗi N giây | Lấy frame theo khoảng thời gian cố định. |
 | Đúng N frame | Phân bố đều đúng số lượng frame trong khoảng thời gian đã chọn. |
 
-Sau khi chọn cấu hình, bấm **Bắt đầu xử lý**. Ứng dụng tạo một job nền và hiển thị progress tổng thể cùng progress riêng cho từng video. Các giai đoạn gồm `queued`, `preparing`, `analyzing`, `selecting`, `saving` và `completed`; khi video lỗi, queue sẽ tự retry theo số lần đã chọn trước khi chuyển sang video tiếp theo.
+Sau khi chọn cấu hình, bấm **Bắt đầu xử lý**. Ứng dụng tạo một job nền và hiển thị progress tổng thể cùng progress riêng cho từng video. Các giai đoạn gồm `queued`, `preparing`, `analyzing`, `selecting`, `saving` và `completed`; bounded scheduler chỉ cấp tối đa số item bằng số worker hiệu dụng. Khi video lỗi, queue sẽ tự retry theo số lần đã chọn trước khi chuyển sang video tiếp theo.
 
 Trong lúc xử lý, khu vực **Queue theo video** hiển thị card riêng cho từng file với trạng thái, phần trăm, message, số lần thử, số ảnh đã lưu, FPS, ETA và RAM. Bấm **Tạm dừng** để đặt pause event; pause chỉ có hiệu lực tại ranh giới video/retry và không cắt video đang chạy giữa một frame. Khi `Video xử lý song song` lớn hơn 1, các video đã được submit cho worker có thể tiếp tục đến checkpoint gần nhất; nếu cần pause tuần tự rõ ràng, đặt giá trị bằng 1. Bấm **Tiếp tục** để mở lại item còn chờ.
 
@@ -209,6 +209,16 @@ taskkill /IM VideoScreenshotFilter.exe /F
 Nếu browser không phát được preview, hãy đổi video sang MP4/H.264. Đây là giới hạn codec của trình duyệt, không phải lỗi cắt screenshot.
 
 Từ v0.1.16, mỗi URL và mỗi lần retry tải video vào staging riêng `.frameforge_download_*`, rồi mới chuyển file hoàn tất sang thư mục lưu video. Cách này tránh việc file cũ cùng video khiến yt-dlp bỏ qua download và FrameForge báo nhầm `yt-dlp không tạo được file video đầu ra`. Staging được dọn tự động sau cả thành công và lỗi.
+
+## v0.1.22 — Bounded queue, preview hai panel và UX gọn hơn
+
+Khi xử lý nhiều video, FrameForge dùng bounded scheduler: số video được submit đồng thời không vượt quá số `Video xử lý song song` hiệu dụng. Các video còn lại thực sự ở trạng thái chờ, giúp giảm áp lực RAM và tránh tạo quá nhiều future trong một queue lớn.
+
+Khi bấm **Tạm dừng**, scheduler không cấp thêm item queued. Video đang chạy có thể hoàn tất đến checkpoint an toàn; cancel được kiểm tra cả trong lúc queue pause và retry backoff. Bấm **Tiếp tục** để cấp các item còn lại. Với một worker, semantics pause tuần tự rõ ràng nhất; với nhiều worker, các video đã submit vẫn có thể tiếp tục đến checkpoint gần nhất.
+
+Preview hiện có hai panel cạnh nhau: **Video gốc** và **Crop overlay**. Panel crop hiển thị vùng giữ lại theo ratio đã chọn, còn file nguồn chỉ được đọc và không bị sửa. Nếu codec không tạo được frame preview, engine vẫn có thể xử lý video nếu FFmpeg/OpenCV đọc được file.
+
+Queue per-video dùng accordion để giảm chiều dài trang. Item đang chạy, retrying, paused hoặc failed tự mở; bộ lọc có thêm trạng thái `Retrying`; item lỗi hiển thị mã lỗi, gợi ý và nút retry riêng. Retry chỉ có thể thực hiện sau khi job dừng và file nguồn còn tồn tại.
 
 ## v0.1.21 — Tích hợp queue per-video
 

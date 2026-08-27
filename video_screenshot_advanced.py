@@ -24,7 +24,7 @@ import shutil
 import sys
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -1575,6 +1575,16 @@ def process_videos(
             completed_checkpoint.update(queue_store.completed_reports(queue_job_id))
             save_checkpoint(checkpoint_file, run_signature, completed_checkpoint)
 
+    def wait_retry_delay(seconds: float) -> None:
+        deadline = time.monotonic() + max(0.0, float(seconds))
+        while True:
+            wait_if_paused(pause_event, cancel_event)
+            check_cancelled(cancel_event)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            time.sleep(min(0.2, remaining))
+
     def run_item(index: int, video: Path) -> dict[str, object]:
         last_error: Exception | None = None
         for attempt in range(retry_count + 1):
@@ -1613,7 +1623,7 @@ def process_videos(
                     0.0,
                     f"Lỗi lần {attempt + 1}; sẽ thử lại sau {retry_delay_seconds:g}s: {exc}",
                 )
-                time.sleep(max(0.0, float(retry_delay_seconds)))
+                wait_retry_delay(retry_delay_seconds)
         assert last_error is not None
         raise last_error
 
@@ -1661,7 +1671,7 @@ def process_videos(
             queue_store.close()
         return [results[index] for index in range(len(videos))]
 
-    print(f"Chạy song song {worker_count} worker cho {len(videos)} video")
+    print(f"Chạy bounded queue với {worker_count} worker cho {len(videos)} video")
     pending_videos: list[tuple[int, Path]] = []
     for index, video in enumerate(videos):
         checkpoint_key = str(video.resolve())
@@ -1677,30 +1687,48 @@ def process_videos(
         max_workers=worker_count,
         thread_name_prefix="video-worker",
     ) as executor:
-        future_map = {
-            executor.submit(run_item, index, video): (index, video)
-            for index, video in pending_videos
-        }
-        for future in as_completed(future_map):
-            try:
+        future_map: dict[object, tuple[int, Path]] = {}
+        next_pending = 0
+
+        def submit_available() -> None:
+            nonlocal next_pending
+            while next_pending < len(pending_videos) and len(future_map) < worker_count:
+                if pause_event is not None and pause_event.is_set():
+                    return
+                index, video = pending_videos[next_pending]
+                next_pending += 1
+                future_map[executor.submit(run_item, index, video)] = (index, video)
+
+        submit_available()
+        while future_map or next_pending < len(pending_videos):
+            if not future_map:
+                # Khi pause sau khi batch hiện tại hoàn tất, không submit thêm item.
+                wait_if_paused(pause_event, cancel_event)
                 check_cancelled(cancel_event)
-            except ProcessingCancelled:
-                if queue_store is not None and queue_job_id is not None:
-                    queue_store.mark_cancelled(queue_job_id)
-                    queue_store.close()
-                raise
-            index, video = future_map[future]
-            try:
-                report = future.result()
-            except ProcessingCancelled:
-                if queue_store is not None and queue_job_id is not None:
-                    queue_store.mark_cancelled(queue_job_id)
-                    queue_store.close()
-                raise
-            except (RuntimeError, ValueError, OSError) as exc:
-                report = {"video": str(video), "error": str(exc), "attempts": retry_count + 1}
-                print(f"Bỏ qua {video}: {exc}", file=sys.stderr)
-            collect(index, video, report)
+                submit_available()
+                continue
+            done, _ = wait(tuple(future_map), return_when=FIRST_COMPLETED)
+            for future in done:
+                try:
+                    check_cancelled(cancel_event)
+                except ProcessingCancelled:
+                    if queue_store is not None and queue_job_id is not None:
+                        queue_store.mark_cancelled(queue_job_id)
+                        queue_store.close()
+                    raise
+                index, video = future_map.pop(future)
+                try:
+                    report = future.result()
+                except ProcessingCancelled:
+                    if queue_store is not None and queue_job_id is not None:
+                        queue_store.mark_cancelled(queue_job_id)
+                        queue_store.close()
+                    raise
+                except (RuntimeError, ValueError, OSError) as exc:
+                    report = {"video": str(video), "error": str(exc), "attempts": retry_count + 1}
+                    print(f"Bỏ qua {video}: {exc}", file=sys.stderr)
+                collect(index, video, report)
+            submit_available()
 
     if queue_store is not None and queue_job_id is not None:
         queue_store.mark_completed_job(queue_job_id)

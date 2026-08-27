@@ -1,5 +1,17 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.22
+
+## Bounded queue, điều khiển đáng tin cậy và preview hai panel
+
+Engine queue nhiều video nay dùng bounded scheduler: chỉ submit số item tối đa bằng số video worker hiệu dụng, không còn submit toàn bộ future ngay từ đầu. Khi pause được bật, scheduler không cấp thêm item queued; các item đang chạy hoàn tất tại checkpoint an toàn rồi queue chờ resume. Cancel trong lúc pause hoặc retry backoff được kiểm tra định kỳ và không phải chờ hết toàn bộ thời gian backoff.
+
+Retry vẫn được thực hiện theo từng video, giữ thứ tự report, SQLite/checkpoint và exponential backoff. Các test tích hợp mới kiểm tra giới hạn submit, pause/resume, cancel trước queue, cancel khi worker chạy, cancel trong backoff, retry từng video và SQLite resume. Retry item/retry failed trong UI chỉ cho phép khi job không còn chạy và nguồn video còn tồn tại.
+
+Preview Streamlit được bố trí thành hai panel cạnh nhau: **Video gốc** và **Crop overlay** theo ratio đang chọn. Frame overlay chỉ dùng để minh họa vùng giữ lại, file nguồn không bị thay đổi. Queue UX dùng accordion cho từng video, tự mở item đang chạy/lỗi, có bộ lọc riêng cho `Retrying`, summary trạng thái và hiển thị attempts, saved, FPS, ETA, RAM cùng chẩn đoán lỗi.
+
+Downloader vẫn chỉ xử lý URL công khai được phép; không bổ sung cookie, login, DRM bypass hoặc PAT. Packaging và release gates tiếp tục giữ nguyên nguyên tắc phải compile, full test, workflow validator, packaged smoke và checksum public trước khi tag.
+
 # FrameForge v0.1.21
 
 ## Tích hợp queue per-video vào Streamlit chính

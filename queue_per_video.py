@@ -252,6 +252,8 @@ class VideoQueueController:
             completed = sum(item["status"] == QueueStatus.COMPLETED.value for item in items)
             failed = sum(item["status"] == QueueStatus.FAILED.value for item in items)
             cancelled = sum(item["status"] == QueueStatus.CANCELLED.value for item in items)
+            active = sum(item["status"] in {QueueStatus.RUNNING.value, QueueStatus.RETRYING.value} for item in items)
+            queued = sum(item["status"] in {QueueStatus.QUEUED.value, QueueStatus.PAUSED.value} for item in items)
             return {
                 "status": self._global_status,
                 "running": self._running,
@@ -260,6 +262,8 @@ class VideoQueueController:
                 "completed": completed,
                 "failed": failed,
                 "cancelled": cancelled,
+                "active": active,
+                "queued": queued,
                 "fraction": completed / total if total else 1.0,
                 "last_error": self._last_error,
                 "items": items,
@@ -414,12 +418,23 @@ def render_queue_per_video(controller: VideoQueueController, *, key_prefix: str 
     import streamlit as st
 
     state = controller.snapshot()
+    status_labels = {
+        "queued": "đang chờ",
+        "running": "đang chạy",
+        "retrying": "đang retry",
+        "paused": "tạm dừng",
+        "completed": "hoàn tất",
+        "failed": "thất bại",
+        "cancelled": "đã hủy",
+    }
     st.markdown("#### Queue theo video")
-    summary_cols = st.columns(4)
+    summary_cols = st.columns(5)
     summary_cols[0].metric("Tổng", state["total"])
-    summary_cols[1].metric("Hoàn tất", state["completed"])
-    summary_cols[2].metric("Lỗi", state["failed"])
-    summary_cols[3].metric("Trạng thái", state["status"])
+    summary_cols[1].metric("Đang chạy", state.get("active", 0))
+    summary_cols[2].metric("Đang chờ", state.get("queued", 0))
+    summary_cols[3].metric("Hoàn tất", state["completed"])
+    summary_cols[4].metric("Lỗi", state["failed"])
+    st.caption(f"Trạng thái queue: {status_labels.get(str(state['status']), str(state['status']))}")
     if state.get("pause_note"):
         st.caption(str(state["pause_note"]))
 
@@ -445,24 +460,17 @@ def render_queue_per_video(controller: VideoQueueController, *, key_prefix: str 
     with action_cols[3]:
         filter_value = st.selectbox(
             "Lọc",
-            ["Tất cả", "Đang chờ", "Đang chạy", "Hoàn tất", "Thất bại", "Đã hủy"],
+            ["Tất cả", "Đang chờ", "Đang chạy", "Retrying", "Hoàn tất", "Thất bại", "Đã hủy"],
             key=f"{key_prefix}_filter",
             label_visibility="collapsed",
         )
 
-    status_labels = {
-        "queued": "đang chờ",
-        "running": "đang chạy",
-        "retrying": "đang retry",
-        "paused": "tạm dừng",
-        "completed": "hoàn tất",
-        "failed": "thất bại",
-        "cancelled": "đã hủy",
-    }
     filter_map = {
         "Tất cả": None,
-        "Đang chờ": {"queued", "retrying"},
-        "Đang chạy": {"running", "paused"},
+        "Đang chờ": {"queued", "paused"},
+        "Đang chạy": {"running"},
+
+        "Retrying": {"retrying"},
         "Hoàn tất": {"completed"},
         "Thất bại": {"failed"},
         "Đã hủy": {"cancelled"},
@@ -471,10 +479,11 @@ def render_queue_per_video(controller: VideoQueueController, *, key_prefix: str 
     for item in state["items"]:
         if allowed is not None and item["status"] not in allowed:
             continue
-        with st.container(border=True):
-            name = Path(item["video_path"]).name
-            status_label = status_labels.get(str(item["status"]), str(item["status"]))
-            st.markdown(f"**{item['position'] + 1}. {name}** · `{status_label}`")
+        status_label = status_labels.get(str(item["status"]), str(item["status"]))
+        with st.expander(
+            f"{item['position'] + 1}. {Path(item['video_path']).name} · {status_label}",
+            expanded=item["status"] in {"running", "retrying", "paused", "failed"},
+        ):
             st.progress(item["fraction"], text=f"{item['fraction']:.0%} · {item['message']}")
             fps_label = f"{float(item['fps']):.1f} FPS" if item.get("fps") else "FPS —"
             eta_value = item.get("eta")
@@ -492,8 +501,12 @@ def render_queue_per_video(controller: VideoQueueController, *, key_prefix: str 
                 if item["suggestion"]:
                     st.info(item["suggestion"])
                 if not state["running"] and st.button("Retry item này", key=f"{key_prefix}_retry_{item['position']}"):
-                    controller.retry_item(int(item["position"]))
-                    st.rerun()
+                    try:
+                        controller.retry_item(int(item["position"]))
+                    except (RuntimeError, ValueError, FileNotFoundError) as exc:
+                        st.error(str(exc))
+                    else:
+                        st.rerun()
 
 
 # Ví dụ tích hợp vào FrameForge hiện tại:

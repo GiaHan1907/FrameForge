@@ -1765,6 +1765,8 @@ class _ProcessingQueueAdapter:
             "completed": sum(item["status"] == "completed" for item in items),
             "failed": sum(item["status"] == "failed" for item in items),
             "cancelled": sum(item["status"] == "cancelled" for item in items),
+            "active": sum(item["status"] in {"running", "retrying"} for item in items),
+            "queued": sum(item["status"] in {"queued", "paused"} for item in items),
             "fraction": sum(float(item["fraction"]) for item in items) / max(1, len(items)),
             "last_error": self.job.get("error"),
             "pause_note": self._pause_note(),
@@ -2106,22 +2108,22 @@ if uploaded_files or downloaded_paths:
     )
     preview_entry = next(entry for entry in preview_entries if entry[0] == preview_name)
     preview_mime = mimetypes.guess_type(preview_name)[0] or "video/mp4"
-    preview_col, preview_note_col = st.columns([1.55, 0.85], gap="large")
+    preview_col, crop_preview_col = st.columns(2, gap="large")
     with preview_col:
+        st.markdown("**Video gốc**")
         if preview_entry[1] == "upload":
             st.video(preview_entry[2].getvalue(), format=preview_mime, subtitles=None, width=560)
         else:
             st.video(str(preview_entry[2]), format=preview_mime, subtitles=None, width=560)
+        st.caption("File nguồn chỉ được đọc để xem trước; không bị thay đổi.")
+    with crop_preview_col:
+        st.markdown(f"**Crop overlay · {crop_ratio}**")
         overlay = preview_crop_overlay(preview_entry[2], crop_ratio)
         if overlay is not None:
-            st.image(overlay, caption=f"Overlay crop · {crop_ratio}", use_container_width=True)
-    with preview_note_col:
-        st.markdown(
-            "<div class='preview-note'><strong>Preview gọn</strong><br>"
-            "Khung xem trước được giới hạn chiều rộng và chiều cao để không lấn át phần điều khiển. "
-            "Một số codec như MKV/TS có thể không được trình duyệt hỗ trợ.</div>",
-            unsafe_allow_html=True,
-        )
+            st.image(overlay, use_container_width=True)
+            st.caption("Vùng sáng có viền xanh là phần được giữ lại; vùng tối là phần bị crop.")
+        else:
+            st.info("Không thể tạo frame preview cho codec này. Bạn vẫn có thể xử lý video bằng engine.")
 
 st.markdown('<div class="section-heading"><span>→</span> Quy trình hoạt động</div>', unsafe_allow_html=True)
 step_a, step_b, step_c = st.columns(3)

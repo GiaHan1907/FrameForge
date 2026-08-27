@@ -1,10 +1,16 @@
 # Video Screenshot Filter — Optimized Streamlit Package
 
+## Ghi chú v0.1.22
+
+Queue nhiều video nay dùng **bounded scheduler**: số item được submit đồng thời không vượt quá số video worker hiệu dụng. Pause không cấp thêm item queued; các video đang chạy kết thúc tại checkpoint an toàn. Cancel có thể ngắt khi queue đang pause hoặc đang retry backoff thay vì chờ hết delay.
+
+Preview được chia thành hai panel cạnh nhau: **Video gốc** và **Crop overlay** theo tỉ lệ đang chọn. Queue per-video dùng accordion, tự mở item đang chạy/lỗi, có filter `Retrying`, summary trạng thái và telemetry attempts, saved, FPS, ETA, RAM. Retry vẫn giữ SQLite/checkpoint và chỉ chạy nguồn video còn tồn tại.
+
 Gói này chứa ứng dụng Streamlit và CLI tối ưu để cắt screenshot từ video. Pipeline mới đọc video **tuần tự một lần**, phân tích frame ở độ phân giải thấp hơn và chỉ mã hóa các frame được chọn ở độ phân giải đầu ra.
 
 ## Ghi chú v0.1.21
 
-Tích hợp module queue per-video vào Streamlit chính thông qua adapter tương thích với engine `process_videos` hiện có. Giao diện live hiển thị card riêng cho từng video, trạng thái `queued`, `running`, `retrying`, `paused`, `completed` hoặc `failed`, cùng attempts, số ảnh đã lưu, FPS, ETA, RAM, mã lỗi và gợi ý xử lý. Module được nhúng trong cả ba PyInstaller spec và được Windows CI kiểm tra như runtime module.
+Tích hợp module queue per-video vào Streamlit chính thông qua adapter tương thích với engine `process_videos` hiện có. Giao diện live hiển thị card riêng cho từng video, trạng thái `queued`, `running`, `retrying`, `paused`, `completed` hoặc `failed`, cùng attempts, số ảnh đã lưu, FPS, ETA, RAM, mã lỗi và gợi ý xử lý. Module được nhúng trong cả ba PyInstaller spec và được Windows CI kiểm tra như runtime module. Bounded scheduler và preview hai panel được hoàn thiện trong v0.1.22.
 
 Các nút **Tạm dừng**, **Tiếp tục**, **Hủy xử lý**, **Thử lại mục thất bại** và **Retry item này** dùng lại pause event, cancel event, SQLite/checkpoint và retry/backoff của engine hiện tại; không thay thế lifecycle bền vững đang có. Retry subset chỉ chạy các report lỗi có file nguồn còn tồn tại. Pause an toàn tại ranh giới video/retry, không dừng giữa một frame. Khi cấu hình nhiều video worker, các video đã submit có thể tiếp tục đến checkpoint gần nhất; muốn pause tuần tự rõ ràng nên đặt `Video xử lý song song = 1`.
 
