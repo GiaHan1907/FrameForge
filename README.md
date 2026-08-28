@@ -28,7 +28,7 @@ PowerShell Authenticode check và FFmpeg health check chạy ẩn console bằng
 
 Bổ sung focus-visible, keyboard guidance, reduced motion, status live region và responsive layout cho preview/queue. Visual regression contract, browser smoke và full regression suite được cập nhật.
 
-Xem chi tiết tại [GitHub Releases](https://github.com/GiaHan1907/FrameForge/releases).
+Xem ba bản cập nhật gần nhất trong README; lịch sử đầy đủ nằm tại [CHANGELOG.md](CHANGELOG.md). Roadmap đề xuất tiếp theo xem tại [ROADMAP_v0.1.33.md](ROADMAP_v0.1.33.md). Các installer đã phát hành nằm trên [GitHub Releases](https://github.com/GiaHan1907/FrameForge/releases).
 
 ## Chạy từ source
 

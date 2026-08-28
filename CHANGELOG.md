@@ -1,0 +1,227 @@
+# Changelog
+
+Lịch sử thay đổi của FrameForge. Các phiên bản tuân theo SemVer; bản mới nhất được đặt ở đầu.
+
+## [Unreleased]
+
+Các cải tiến đang được cân nhắc cho v0.1.33 được ghi trong [ROADMAP_v0.1.33.md](ROADMAP_v0.1.33.md).
+
+## [0.1.32] — Desktop auto-shutdown watchdog
+
+- Thêm watchdog nhận biết khi browser session desktop cuối cùng đóng.
+- Hủy job đang chạy an toàn, giữ checkpoint theo lifecycle hiện tại và dọn work directory phù hợp.
+- Dừng Streamlit runtime, sau đó kết thúc đúng `VideoScreenshotFilter.exe` cùng process con bằng `taskkill.exe /PID /T /F`.
+- Chạy `taskkill.exe` với `CREATE_NO_WINDOW` để không tạo terminal phụ.
+- Thêm `FRAMEFORGE_DESKTOP_PID` làm PID guard, tránh kill nhầm process khác.
+- Giữ nguyên hành vi khi chạy `streamlit run` thủ công; auto-shutdown chỉ bật từ desktop launcher.
+- Thêm unit test cho non-Windows no-op, taskkill flags và PID mismatch.
+- Cập nhật Inno Setup mặc định và script `build_installer_v0132.bat`.
+
+## [0.1.31] — Silent Windows runtime
+
+- Ẩn console của PowerShell Authenticode check.
+- Ẩn console của FFmpeg health check.
+- Giữ PyInstaller `console=False` cho EXE release.
+- Cập nhật shortcut Inno Setup trỏ trực tiếp tới EXE với `WorkingDir` đúng.
+- Thêm smoke test kiểm tra PE GUI subsystem, shortcut target, working directory và silent launch.
+- Thêm Process Monitor startup capture để phân tích process con.
+- Thêm `check_launcher_log.ps1` và hướng dẫn đọc `launcher_error.log`.
+- Thêm workflow build Windows và checksum/metadata artifact.
+
+## [0.1.30] — Accessibility và responsive UI
+
+- Thêm `:focus-visible`, keyboard guidance và trạng thái live region cho các khu vực tương tác.
+- Bổ sung reduced-motion handling.
+- Cải thiện responsive layout cho preview, queue và các card summary.
+- Thêm visual regression contract test cho selector accessibility, breakpoint và live status.
+- Cập nhật browser smoke và tài liệu migration.
+
+## [0.1.29] — Preset cá nhân và job history
+
+- Cho phép lưu preset cấu hình cá nhân.
+- Thêm job history JSON cho các job gần đây.
+- Thêm diagnostic payload JSON có thông tin version và lỗi rút gọn.
+- Thêm import/export cấu hình.
+- Bảo vệ session state khi import JSON không hợp lệ.
+
+## [0.1.28] — Interactive preview workspace
+
+- Thay preview đơn bằng workspace gồm scene marker timeline, frame gallery và crop preview.
+- Đọc frame theo timestamp để xem kết quả thực tế.
+- Hiển thị scene marker thật và phân biệt với timestamp ước tính.
+- Hỗ trợ chọn timestamp, crop ratio và xem overlay cạnh preview gốc.
+- Cập nhật regression test cho layout hai cột và nhãn tương thích.
+
+## [0.1.27] — Validation và queue visibility
+
+- Thêm step validation trước khi chạy job.
+- Thêm sticky summary card cho cấu hình quan trọng.
+- Thêm queue dashboard tổng quan theo trạng thái.
+- Thêm resource meter cho RAM/disk.
+- Thêm error actions và diagnostic action theo item.
+- Cải thiện hiển thị resource wait, retry và lỗi per-video.
+
+## [0.1.26] — P0 reliability upgrades
+
+- Thêm adaptive target count, tự mở rộng candidate budget khi frame bị loại nhiều.
+- Thêm `verify_video_manifest()` và CLI `--repair-manifest` để kiểm tra/sửa manifest sau crash.
+- Thêm resume validation bằng `run_signature`.
+- Thêm dynamic resource back-pressure và trạng thái `resource_wait`.
+- Thêm shortfall diagnostics phân biệt target, candidate, saved và lý do frame bị loại.
+- Thêm quick scene preview dùng marker scene thật.
+- Bổ sung regression test và tài liệu P0.
+
+## [0.1.25] — Target count và atomic output
+
+- Cố gắng đạt số ảnh mục tiêu sau filter bằng candidate budget giới hạn.
+- Thêm `.frameforge_manifest.json` cho từng video.
+- Encode vào file tạm rồi rename atomic trước khi ghi nhận output.
+- Thêm shortfall diagnostics và resource guard trước khi xử lý.
+- Preview hiển thị timestamp dự kiến theo mode.
+
+## [0.1.24] — Số lượng screenshot per-video
+
+- Cho phép chọn số screenshot riêng cho mỗi video.
+- Giữ semantics khác nhau giữa scene/every mode và exact-frame mode.
+- Cập nhật queue/report để ghi nhận target count từng video.
+
+## [0.1.23] — Crash-resilient persistent queue
+
+- Thêm SQLite state machine có schema version và additive migration từ v0.1.22.
+- Thêm stable `item_id`, source position, phase/progress, heartbeat và timestamps.
+- Đánh dấu item đang chạy thành `interrupted` sau crash và hỗ trợ resume.
+- Retry dùng stable ID thay vì vị trí hiển thị.
+- Thêm integration test mô phỏng crash bằng subprocess và `os._exit()`.
+
+## [0.1.22] — Bounded queue và dual preview
+
+- Thêm bounded scheduler giới hạn số video submit đồng thời.
+- Pause/cancel/retry hoạt động theo ranh giới video/checkpoint an toàn.
+- Thêm preview Video gốc và Crop overlay cạnh nhau.
+- Queue per-video hiển thị attempts, saved, FPS, ETA, RAM và lỗi.
+
+## [0.1.21] — Queue per-video controls
+
+- Tích hợp queue per-video vào Streamlit chính.
+- Thêm các nút pause, resume, cancel và retry item.
+- Hiển thị trạng thái và telemetry riêng cho từng video.
+- Đóng gói module queue vào PyInstaller và kiểm tra trên Windows CI.
+
+## [0.1.20] — Wizard và crop overlay
+
+- Thêm wizard bốn bước: Nguồn, Chọn frame, Chất lượng và Đầu ra.
+- Thêm summary card cấu hình.
+- Thêm crop overlay theo tỉ lệ screenshot.
+- Bổ sung mẫu queue controls và preview cạnh nhau.
+
+## [0.1.19] — Conditional metrics và encode profiling
+
+- Dùng ảnh phân tích nhỏ dùng chung cho grayscale, sharpness, motion blur, dHash và histogram.
+- Chỉ tính metric khi tính năng tương ứng được bật.
+- Thêm encode profile Nhanh và Chất lượng cao.
+- Benchmark tách các công đoạn decode, analysis, encode và write.
+
+## [0.1.18] — Downloader error classification
+
+- Phân loại lỗi yt-dlp thành access denied, rate limited, FFmpeg missing, format unavailable, output error, network error và unknown.
+- Thêm retry exponential backoff cho lỗi tạm thời.
+- Cho queue tiếp tục các URL còn lại qua callback lỗi per-video.
+
+## [0.1.17] — Screenshot crop ratios
+
+- Thêm crop ratio `16:9`, `9:16`, `4:5`, `1:1` và Không crop.
+- Crop trung tâm trước resize, không kéo giãn ảnh.
+- Preset Video dọc/TikTok mặc định dùng `9:16`.
+
+## [0.1.16] — Downloader staging
+
+- Cô lập từng URL và retry vào thư mục staging riêng.
+- Tránh nhầm output cũ với file download mới.
+- Dọn staging sau success, error hoặc retry.
+
+## [0.1.15] — Preset và live telemetry
+
+- Thêm preset Nhanh, Cân bằng, Chất lượng cao và Video dọc/TikTok.
+- Hiển thị FPS, ETA và RSS RAM trong lúc xử lý.
+- Thêm adaptive extraction worker theo duration, timestamp, CPU/RAM và số video worker.
+
+## [0.1.14] — Compact preview và timestamp naming
+
+- Thu nhỏ preview video và dùng layout downloader responsive.
+- Đồng bộ dark mode cho downloader.
+- Đặt tên screenshot theo `HH-MM-SS.mmm.jpg`.
+- Đặt tên video theo timestamp và thêm collision suffix.
+
+## [0.1.13] — Desktop cleanup lifecycle
+
+- Tự động dọn file input tạm và work directory sau job hoàn tất.
+- Browser đóng sẽ hủy job, đóng executor và dừng server ở bản desktop.
+- Cải thiện dark downloader UI và responsive layout.
+
+## [0.1.12] — Directory picker state fix
+
+- Sửa lỗi Streamlit session state khi chọn lại thư mục video/screenshot.
+- Không gán trực tiếp vào widget key sau khi widget đã được khởi tạo.
+
+## [0.1.11] — Windows package modules
+
+- Bổ sung các runtime modules còn thiếu vào PyInstaller package.
+- Cải thiện Windows CI validation cho package output.
+
+## [0.1.10] — Duplicate index và cleanup quota
+
+- Tối ưu duplicate index giữa các lần chạy.
+- Bổ sung giới hạn cleanup và quản lý cache/output an toàn hơn.
+
+## [0.1.9] — Adaptive extraction và queue telemetry
+
+- Thêm adaptive extraction budget.
+- Bổ sung telemetry vòng đời queue và tiến độ xử lý.
+
+## [0.1.8] — Windows benchmark encoding
+
+- Sửa vấn đề encoding console khi chạy benchmark trên Windows.
+
+## [0.1.7] — Persistent queue và adaptive workers
+
+- Thêm persistent queue SQLite.
+- Bổ sung adaptive worker và benchmark RAM/tốc độ trên CI.
+- Thêm checkpoint cấp frame/scene.
+
+## [0.1.6] — Timeline, channels và rollback updater
+
+- Thêm interactive timeline.
+- Thêm stable/beta update channel.
+- Bổ sung rollback updater và signing/release workflow.
+
+## [0.1.5] — Retry/cancel test coverage
+
+- Bổ sung automated tests cho retry queue và cancel processing.
+- Cải thiện các trạng thái queue cơ bản.
+
+## [0.1.4] — Update manifest validation
+
+- Validate public update manifest trước khi hiển thị thông báo update.
+- Kiểm tra checksum và cấu trúc metadata an toàn hơn.
+
+## [0.1.3] — Startup update check
+
+- Kiểm tra app update ngay khi khởi động thay vì chỉ dựa vào cache dài hạn.
+
+## [0.1.2] — Persistent output folders
+
+- Ghi nhớ thư mục lưu video và screenshot.
+- Cải thiện update UX và config persistence.
+
+## [0.1.1] — Release workflow fix
+
+- Sửa checkout/release validation trong GitHub Actions.
+
+## [0.1.0] — Public app updates
+
+- Bật cơ chế public one-click app updates.
+
+[Unreleased]: https://github.com/GiaHan1907/FrameForge/compare/v0.1.32...HEAD
+[0.1.32]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.32
+[0.1.31]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.31
+[0.1.30]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.30
