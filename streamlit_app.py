@@ -386,6 +386,59 @@ def validate_ui_configuration() -> dict[str, list[str]]:
     return {"errors": errors, "warnings": warnings}
 
 
+def preview_frame_at(source: object, timestamp: float, crop_ratio: str = "Không crop") -> bytes | None:
+    """Đọc một frame preview tại timestamp và áp dụng crop ratio hiện tại."""
+    temporary_path: Path | None = None
+    try:
+        if hasattr(source, "getvalue"):
+            with tempfile.NamedTemporaryFile(prefix="frameforge_gallery_", suffix=".mp4", delete=False) as handle:
+                handle.write(source.getvalue())
+                temporary_path = Path(handle.name)
+            video_path = temporary_path
+        else:
+            video_path = Path(str(source))
+        capture = cv2.VideoCapture(str(video_path))
+        capture.set(cv2.CAP_PROP_POS_MSEC, max(0.0, float(timestamp)) * 1000.0)
+        ok, frame = capture.read()
+        capture.release()
+        if not ok or frame is None:
+            return None
+        target_ratio = CROP_RATIO_VALUES.get(str(crop_ratio))
+        if target_ratio is not None:
+            height, width = frame.shape[:2]
+            if width / max(height, 1) > target_ratio:
+                kept_width = max(1, min(width, round(height * target_ratio)))
+                left = max(0, (width - kept_width) // 2)
+                frame = frame[:, left:left + kept_width]
+            else:
+                kept_height = max(1, min(height, round(width / target_ratio)))
+                top = max(0, (height - kept_height) // 2)
+                frame = frame[top:top + kept_height, :]
+        frame = cv2.resize(frame, (min(720, frame.shape[1]), max(1, round(frame.shape[0] * min(720, frame.shape[1]) / frame.shape[1]))), interpolation=cv2.INTER_AREA)
+        success, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        return encoded.tobytes() if success else None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def preview_scene_timeline(duration: float, estimated: list[float], actual: list[float]) -> None:
+    """Hiển thị timeline nhẹ với phân biệt marker ước tính và marker scene thật."""
+    safe_duration = max(float(duration or 0.0), 0.001)
+    estimated_marks = "".join(
+        f'<span title="Ước tính {value:.3f}s" style="left:{max(0,min(100,value/safe_duration*100)):.2f}%"></span>'
+        for value in estimated
+    )
+    actual_marks = "".join(
+        f'<b title="Scene thật {value:.3f}s" style="left:{max(0,min(100,value/safe_duration*100)):.2f}%"></b>'
+        for value in actual
+    )
+    st.markdown(
+        f'<div class="scene-timeline"><div class="track">{estimated_marks}{actual_marks}</div><div class="timeline-legend"><span>● Ước tính</span><strong>◆ Scene thật</strong><em>0s — {safe_duration:.1f}s</em></div></div>',
+        unsafe_allow_html=True,
+    )
+
+
 def wizard_summary() -> dict[str, str]:
     source_count = len(uploaded_files or []) + len(downloaded_paths)
     output_format = "PNG" if image_format == "png" else image_format.upper()
@@ -503,6 +556,13 @@ st.markdown(
         padding: .65rem .8rem;
         box-shadow: 0 10px 28px rgba(0,0,0,.22);
     }
+    .scene-timeline { margin: .45rem 0 .8rem; }
+    .scene-timeline .track { position: relative; height: 10px; border-radius: 999px; background: #25334d; border: 1px solid #3a4a68; }
+    .scene-timeline .track span, .scene-timeline .track b { position: absolute; top: -4px; width: 3px; height: 18px; border-radius: 3px; background: #7d9cff; }
+    .scene-timeline .track b { background: #43d6a3; width: 5px; }
+    .timeline-legend { display:flex; justify-content:space-between; gap:.6rem; color:#9aa8bd; font-size:.72rem; margin-top:.35rem; }
+    .timeline-legend strong { color:#43d6a3; }
+    .timeline-legend em { font-style:normal; }
     .status-pill {
         display: inline-block;
         border-radius: 999px;
@@ -2377,58 +2437,59 @@ st.caption({
 
 if uploaded_files or downloaded_paths:
 
-    st.markdown('<div class="section-heading"><span>▷</span> Xem trước video</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-heading"><span>▷</span> Preview workspace</div>', unsafe_allow_html=True)
     preview_entries = [(Path(item.name).name, "upload", item) for item in (uploaded_files or [])]
     preview_entries += [(path.name, "download", path) for path in downloaded_paths]
     preview_names = [entry[0] for entry in preview_entries]
-    preview_name = st.selectbox(
-        "Chọn video để xem trước",
-        preview_names,
-        label_visibility="collapsed",
-    )
+    preview_name = st.selectbox("Chọn video để xem preview", preview_names, label_visibility="collapsed")
     preview_entry = next(entry for entry in preview_entries if entry[0] == preview_name)
     preview_mime = mimetypes.guess_type(preview_name)[0] or "video/mp4"
-    preview_col, crop_preview_col = st.columns(2, gap="large")
-    with preview_col:
-        st.markdown("**Video gốc**")
-        if preview_entry[1] == "upload":
-            st.video(preview_entry[2].getvalue(), format=preview_mime, subtitles=None, width=560)
-        else:
-            st.video(str(preview_entry[2]), format=preview_mime, subtitles=None, width=560)
-        st.caption("File nguồn chỉ được đọc để xem trước; không bị thay đổi.")
-    with crop_preview_col:
-        st.markdown(f"**Crop overlay · {crop_ratio}**")
-        overlay = preview_crop_overlay(preview_entry[2], crop_ratio)
-        if overlay is not None:
-            st.image(overlay, use_container_width=True)
-            st.caption("Vùng sáng có viền xanh là phần được giữ lại; vùng tối là phần bị crop.")
-        else:
-            st.info("Không thể tạo frame preview cho codec này. Bạn vẫn có thể xử lý video bằng engine.")
-    with st.expander("Phân bố screenshot dự kiến", expanded=True):
-        preview_duration = preview_video_duration(preview_entry[2])
-        preview_timestamps = build_preview_timestamps(
-            preview_duration,
-            mode_label,
-            float(start),
-            float(end) if limit_end else None,
-            float(every) if every is not None else None,
-            int(count or max_screenshots),
-            int(max_screenshots),
-        )
+    preview_duration = preview_video_duration(preview_entry[2])
+    preview_timestamps = build_preview_timestamps(
+        preview_duration, mode_label, float(start), float(end) if limit_end else None,
+        float(every) if every is not None else None, int(count or max_screenshots), int(max_screenshots),
+    )
+    actual_scene_marks = st.session_state.get("quick_scene_preview_marks", [])
+    with st.container(border=True):
+        preview_col, crop_preview_col = st.columns([1.15, 1], gap="large")
+        with preview_col:
+            st.markdown("**Video gốc**")
+            if preview_entry[1] == "upload":
+                st.video(preview_entry[2].getvalue(), format=preview_mime, subtitles=None, width=560)
+            else:
+                st.video(str(preview_entry[2]), format=preview_mime, subtitles=None, width=560)
+            st.caption("File nguồn chỉ được đọc để xem; không bị thay đổi.")
+        with crop_preview_col:
+            st.markdown(f"**Crop overlay · {crop_ratio}**")
+            overlay = preview_crop_overlay(preview_entry[2], crop_ratio)
+            if overlay is not None:
+                st.image(overlay, use_container_width=True)
+                st.caption("Vùng sáng có viền xanh là phần được giữ lại.")
+            else:
+                st.info("Không thể tạo frame preview cho codec này; engine vẫn có thể xử lý video.")
+        st.markdown("**Phân bố screenshot dự kiến · timeline tương tác**")
+        if preview_duration:
+            preview_scene_timeline(float(preview_duration), preview_timestamps, actual_scene_marks)
+        timeline_col, action_col = st.columns([2, 1])
+        with timeline_col:
+            max_preview_time = max(0.1, float(preview_duration or end or 1.0))
+            selected_preview_time = st.slider("Mốc preview", 0.0, max_preview_time, min(max_preview_time / 2, max_preview_time), 0.1, key="preview_timestamp_slider")
+        with action_col:
+            st.markdown("**Scene detection**")
+            if st.button("Phân tích nhanh scene thật", key="quick_scene_preview_button"):
+                st.session_state["quick_scene_preview_marks"] = quick_scene_preview(
+                    preview_entry[2], float(scene_threshold), float(start), float(end) if limit_end else None, float(analysis_fps)
+                )
+                st.rerun()
+        selected_frame = preview_frame_at(preview_entry[2], selected_preview_time, crop_ratio)
+        if selected_frame is not None:
+            st.image(selected_frame, caption=f"Frame gallery · {selected_preview_time:.1f}s · crop {crop_ratio}", use_container_width=True)
         if preview_timestamps:
-            suffix = " · ước tính theo khoảng thời gian" if mode_label in {"Best frame per scene", "Scene detection"} else ""
-            st.caption(f"{len(preview_timestamps)} mốc dự kiến{suffix}: " + " · ".join(f"{value:.3f}s" for value in preview_timestamps[:24]))
-            if len(preview_timestamps) > 24:
-                st.caption(f"Còn {len(preview_timestamps) - 24} mốc khác; preview này không chạy scene detection thật.")
-        else:
-            st.info("Chưa đọc được thời lượng video để tạo phân bố preview.")
-        if st.button("Phân tích nhanh scene thật", key="quick_scene_preview_button"):
-            st.session_state["quick_scene_preview_marks"] = quick_scene_preview(
-                preview_entry[2], float(scene_threshold), float(start), float(end) if limit_end else None, float(analysis_fps)
-            )
-        actual_scene_marks = st.session_state.get("quick_scene_preview_marks", [])
+            st.caption(f"Gallery hiện tại: {len(preview_timestamps)} mốc dự kiến · chọn thanh trượt để xem frame tại timestamp bất kỳ.")
         if actual_scene_marks:
-            st.caption("Scene marker thực tế sau phân tích nhanh: " + " · ".join(f"{value:.3f}s" for value in actual_scene_marks))
+            st.success(f"Đã phân tích {len(actual_scene_marks)} scene marker thực tế.")
+        else:
+            st.info("Chưa có marker scene thật. Bấm ‘Phân tích scene thật’ để chạy phân tích nhanh.")
 
 st.markdown('<div class="section-heading"><span>→</span> Quy trình hoạt động</div>', unsafe_allow_html=True)
 step_a, step_b, step_c = st.columns(3)

@@ -1,5 +1,17 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.28
+
+## Preview workspace: scene markers, frame gallery và crop tương tác
+
+Khu vực xem trước được nâng cấp thành **Preview workspace** với video gốc và crop preview đặt cạnh nhau trong một container thống nhất. Người dùng có thể chọn timestamp bằng thanh trượt để xem frame thực tế tại bất kỳ mốc nào trong video; frame preview áp dụng trực tiếp crop ratio hiện tại mà không thay đổi file nguồn.
+
+Timeline preview mới phân biệt timestamp ước tính bằng marker xanh và scene marker thật bằng marker xanh lá sau khi chạy **Phân tích nhanh scene thật**. Workspace hiển thị số marker, thời lượng video và số mốc dự kiến, giúp người dùng kiểm tra mật độ scene trước khi chạy pipeline đầy đủ.
+
+Frame gallery cho phép xem nhanh frame tại mốc đang chọn, kèm timestamp và crop ratio. Cơ chế đọc frame dùng độ phân giải preview giới hạn để giữ giao diện phản hồi nhanh và tự dọn file tạm đối với video upload.
+
+Regression tests tiếp tục bảo vệ crop overlay, scene preview, layout hai panel và các helper preview cũ.
+
 # FrameForge v0.1.27
 
 ## UI/UX: Validation, queue dashboard và resource visibility
