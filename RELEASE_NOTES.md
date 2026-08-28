@@ -1,5 +1,15 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.30
+
+## Accessibility, keyboard navigation và responsive polish
+
+Bổ sung focus ring rõ ràng cho keyboard navigation, touch target tối thiểu 40px và vùng trạng thái `aria-live` để các thay đổi quan trọng dễ nhận biết hơn. Giao diện hiển thị hướng dẫn dùng phím Tab, Enter và Space cho các control chính.
+
+Responsive layout được tinh chỉnh cho màn hình dưới 900px và 640px: sticky summary chuyển về flow tĩnh để không che nội dung, timeline legend tự xuống dòng, khoảng cách cột được thu gọn và card vẫn giữ chiều cao tối thiểu dễ thao tác. `prefers-reduced-motion` được hỗ trợ để giảm animation với người dùng đã bật tùy chọn hệ thống.
+
+Thêm visual regression contract tests nhằm bảo vệ các selector CSS, breakpoint, trạng thái accessibility và đảm bảo các tính năng preview workspace, job history, config export và queue dashboard không bị mất trong các lần chỉnh UI tiếp theo.
+
 # FrameForge v0.1.29
 
 ## Preset cá nhân, job history và cấu hình portable

@@ -495,6 +495,32 @@ st.markdown(
         min-height: 100vh;
     }
 
+    /* v0.1.30 accessibility and responsive polish */
+    :focus-visible {
+        outline: 3px solid #8fb0ff !important;
+        outline-offset: 3px !important;
+    }
+    button, [role="button"], input, textarea, [data-baseweb="select"] > div {
+        min-height: 40px;
+    }
+    [aria-live="polite"] {
+        border-left: 3px solid var(--green);
+        padding-left: .65rem;
+    }
+    @media (max-width: 900px) {
+        .block-container { padding-left: 1rem; padding-right: 1rem; }
+        .sticky-summary { position: static; }
+        .timeline-legend { flex-wrap: wrap; }
+    }
+    @media (max-width: 640px) {
+        .block-container { padding-top: 1rem; }
+        [data-testid="stHorizontalBlock"] { gap: .55rem; }
+        .info-card { min-height: 76px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+    }
+
     [data-testid="stMarkdownContainer"],
     [data-testid="stText"],
     label,
@@ -2498,7 +2524,8 @@ def _render_processing_job() -> None:
 
 
 # Main overview
-st.markdown('<div class="section-heading"><span>✦</span> Tổng quan</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-heading" aria-label="Tổng quan FrameForge"><span>✦</span> Tổng quan</div>', unsafe_allow_html=True)
+st.markdown('<div aria-live="polite">Dùng phím Tab để di chuyển giữa các control; Enter hoặc Space để kích hoạt nút đang được focus.</div>', unsafe_allow_html=True)
 overview_a, overview_b, overview_c, overview_d = st.columns(4)
 with overview_a:
     st.markdown(
