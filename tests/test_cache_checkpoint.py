@@ -138,6 +138,40 @@ class CacheCheckpointTests(unittest.TestCase):
         self.assertLessEqual(int(report["saved"]), 3)
         self.assertLessEqual(len(list(output.rglob("*.jpg"))), 3)
 
+    def test_target_count_manifest_and_shortfall_diagnostics(self) -> None:
+        args = copy.copy(self.args)
+        args.scene_detection = False
+        args.best_frame_per_scene = False
+        args.count = None
+        args.every = 0.1
+        args.max_screenshots = 3
+        args.target_count_after_filter = True
+        args.target_candidate_multiplier = 3
+        args.duplicate_threshold = 0
+        args.cross_run_duplicates = False
+        args.cross_run_duplicate_threshold = 0
+        args.min_sharpness = 0.0
+        args.motion_blur_threshold = 0.0
+        args.disk_reserve_bytes = 0
+        args.min_free_ram_gb = 0.0
+        output = self.root / "targeted"
+        report = engine.process_video(self.video, output, None, args)
+        self.assertEqual(int(report["target_screenshots"]), 3)
+        self.assertEqual(int(report["shortfall"]), 0)
+        self.assertTrue(Path(str(report["manifest_path"])).is_file())
+        manifest = json.loads(Path(str(report["manifest_path"])).read_text(encoding="utf-8"))
+        self.assertEqual(manifest["report"]["saved"], 3)
+        self.assertEqual(manifest["config"]["target_count_after_filter"], True)
+
+    def test_resource_guard_rejects_insufficient_ram_threshold(self) -> None:
+        args = copy.copy(self.args)
+        args.format = "jpg"
+        args.count = 1
+        args.max_screenshots = 1
+        args.min_free_ram_gb = 10_000.0
+        with self.assertRaises(engine.InsufficientResources):
+            engine.resource_guard(self.root / "resource", 1.0, args)
+
     def test_scene_cache_hit_and_cross_run_duplicate_rejection(self) -> None:
         first_output = self.root / "first"
         second_output = self.root / "second"

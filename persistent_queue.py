@@ -669,6 +669,22 @@ class PersistentQueueStore:
         with self._lock, self._connection:
             self._touch_job(job_id, "completed")
 
+    def list_jobs(self, states: set[str] | None = None) -> list[dict[str, object]]:
+        """Liệt kê job theo trạng thái để UI phát hiện queue cần khôi phục."""
+        with self._lock:
+            if states:
+                placeholders = ",".join("?" for _ in states)
+                rows = self._connection.execute(
+                    f"SELECT * FROM jobs WHERE state IN ({placeholders}) ORDER BY updated_at DESC",
+                    tuple(sorted(states)),
+                ).fetchall()
+            else:
+                rows = self._connection.execute("SELECT * FROM jobs ORDER BY updated_at DESC").fetchall()
+        return [dict(row) for row in rows]
+
+    def list_recoverable_jobs(self) -> list[dict[str, object]]:
+        return self.list_jobs({"running", "paused", "retrying", "interrupted"})
+
     def job_info(self, job_id: str) -> dict[str, object] | None:
         with self._lock:
             row = self._connection.execute(

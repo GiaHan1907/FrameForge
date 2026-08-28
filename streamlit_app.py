@@ -48,6 +48,7 @@ app_update_status = initialize_app_update()
 
 from video_screenshot_advanced import (
     InsufficientDiskSpace,
+    InsufficientResources,
     ProcessingCancelled,
     cleanup_frameforge_cache,
     cleanup_frameforge_temp_dirs,
@@ -64,6 +65,7 @@ from video_screenshot_advanced import (
 )
 from timeline_utils import build_timeline_entries, filter_timeline_entries
 from queue_per_video import classify_error, render_queue_per_video
+from persistent_queue import PersistentQueueStore
 from video_downloader import (
     QUALITY_FORMATS,
     DownloadFailure,
@@ -222,6 +224,53 @@ def progress_telemetry(item: dict[str, object]) -> dict[str, float | int | None]
         "done": done,
         "total": total,
     }
+
+
+def preview_video_duration(source: object) -> float | None:
+    temporary_path: Path | None = None
+    try:
+        if hasattr(source, "getvalue"):
+            temporary = tempfile.NamedTemporaryFile(prefix="frameforge_duration_", suffix=".mp4", delete=False)
+            temporary.write(source.getvalue())
+            temporary.close()
+            temporary_path = Path(temporary.name)
+            video_path = temporary_path
+        else:
+            video_path = Path(str(source))
+        capture = cv2.VideoCapture(str(video_path))
+        fps = float(capture.get(cv2.CAP_PROP_FPS))
+        frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        capture.release()
+        if fps > 0 and frames > 0:
+            return frames / fps
+    except (OSError, TypeError, ValueError):
+        return None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+    return None
+
+
+def build_preview_timestamps(duration: float | None, mode: str, start: float, end: float | None, every: float | None, count: int, maximum: int) -> list[float]:
+    actual_end = min(float(duration), float(end)) if duration and end is not None else float(duration or end or 0.0)
+    actual_start = max(0.0, min(float(start), actual_end))
+    if actual_end <= actual_start:
+        return []
+    if mode == "Đúng N frame":
+        total = max(1, int(count))
+        if total == 1:
+            return [round((actual_start + actual_end) / 2, 3)]
+        safe_end = max(actual_start, actual_end - 0.1)
+        return [round(actual_start + index * (safe_end - actual_start) / (total - 1), 3) for index in range(total)]
+    interval = float(every or 5.0)
+    timestamps = []
+    current = actual_start
+    while current < actual_end and len(timestamps) < max(1, int(maximum)):
+        timestamps.append(round(current, 3))
+        current += interval
+    if mode in {"Best frame per scene", "Scene detection"} and maximum > 0:
+        timestamps = timestamps[:maximum]
+    return timestamps
 
 
 def preview_crop_overlay(source: object, crop_ratio: str) -> bytes | None:
@@ -870,6 +919,23 @@ def normalize_output_dir(value: str, fallback: Path) -> Path:
     return path
 
 
+def find_recoverable_queue_jobs(root: Path) -> list[dict[str, object]]:
+    jobs: list[dict[str, object]] = []
+    if not root.exists():
+        return jobs
+    for database in sorted(root.rglob(".frameforge_queue.sqlite3"), key=lambda path: path.stat().st_mtime, reverse=True):
+        try:
+            with PersistentQueueStore(database) as store:
+                for info in store.list_recoverable_jobs():
+                    items = store.snapshot(str(info["job_id"]))
+                    existing = sum(Path(item.video_path).is_file() for item in items)
+                    if existing:
+                        jobs.append({"database": database, "info": info, "items": items, "existing": existing})
+        except (OSError, ValueError, TypeError):
+            continue
+    return jobs[:10]
+
+
 def make_zip(directory: Path, report_path: Path) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -1367,6 +1433,12 @@ with st.sidebar:
             "với Đúng N frame đây là số frame chính xác. Bộ lọc mờ/trùng có thể làm số ảnh lưu thực tế thấp hơn."
         ),
     )
+    target_count_after_filter = st.checkbox(
+        "Cố gắng đủ số ảnh sau khi lọc",
+        key="target_count_after_filter",
+        disabled=mode_label == "Đúng N frame",
+        help="Chỉ áp dụng cho scene/every mode; engine sẽ xét thêm candidate, tối đa gấp 3 lần mục tiêu, để bù ảnh bị loại bởi filter mờ/trùng.",
+    )
 
     if mode_label in {"Best frame per scene", "Scene detection"}:
         with st.expander("Tinh chỉnh scene detection", expanded=True):
@@ -1435,6 +1507,14 @@ with st.sidebar:
             step=80,
             key="analysis_width",
             help="Frame được thu nhỏ trước khi đo scene, độ nét và trùng lặp.",
+        )
+        min_free_ram_gb = st.number_input(
+            "RAM khả dụng tối thiểu (GB)",
+            min_value=0.0,
+            max_value=64.0,
+            step=0.5,
+            key="min_free_ram_gb",
+            help="Tạm dừng/không bắt đầu job nếu RAM khả dụng thấp hơn ngưỡng; 0 để tắt.",
         )
         analysis_fps = st.number_input(
             "FPS phân tích scene",
@@ -1553,6 +1633,9 @@ def build_args() -> SimpleNamespace:
         every=float(every) if every is not None else None,
         count=int(count) if count is not None else None,
         max_screenshots=int(max_screenshots),
+        target_count_after_filter=bool(target_count_after_filter and mode_label != "Đúng N frame"),
+        target_candidate_multiplier=3,
+        min_free_ram_gb=float(min_free_ram_gb),
         scene_detection=mode_label in {"Best frame per scene", "Scene detection"},
         best_frame_per_scene=mode_label == "Best frame per scene",
         scene_threshold=float(scene_threshold),
@@ -1940,7 +2023,7 @@ def _poll_processing_job() -> dict[str, object] | None:
         job["status"] = "cancelled"
         job["error"] = str(exc)
         job["message"] = "Đã hủy xử lý; checkpoint và các screenshot đã ghi trước đó vẫn được giữ lại để tiếp tục."
-    except InsufficientDiskSpace as exc:
+    except (InsufficientDiskSpace, InsufficientResources) as exc:
         job["status"] = "error"
         job["error"] = str(exc)
         job["message"] = str(exc)
@@ -1999,6 +2082,8 @@ def _render_processing_job() -> None:
     total_motion_blur = sum(int(item.get("rejected_motion_blur", 0)) for item in reports)
     total_errors = sum(int(item.get("capture_errors", 0)) for item in reports) + sum("error" in item for item in reports)
     total_attempts = sum(int(item.get("attempts", 1)) for item in reports)
+    total_target = sum(int(item.get("target_screenshots", 0) or 0) for item in reports)
+    total_shortfall = sum(int(item.get("shortfall", 0) or 0) for item in reports)
     failed_reports = [item for item in reports if isinstance(item, dict) and "error" in item]
     metric_a, metric_b, metric_c, metric_d, metric_e = st.columns(5)
     metric_a.metric("Đã lưu", total_saved)
@@ -2010,6 +2095,11 @@ def _render_processing_job() -> None:
     video_workers = sorted({int(item.get("video_workers", 1)) for item in reports if "error" not in item})
     adaptive_label = ", ".join(str(value) for value in adaptive_workers) or "1"
     video_label = ", ".join(str(value) for value in video_workers) or "1"
+    if total_target > 0:
+        if total_shortfall:
+            st.warning(f"Thiếu {total_shortfall} screenshot so với mục tiêu {total_target}. Xem từng video để biết lý do bị loại.")
+        else:
+            st.success(f"Đã đạt mục tiêu {total_target} screenshot sau filter.")
     st.caption(
         f"Tổng số lượt thử xử lý: {total_attempts} · retry tự động theo từng video · "
         f"video worker: {video_label} · extraction worker thực tế/video: {adaptive_label}."
@@ -2020,7 +2110,11 @@ def _render_processing_job() -> None:
         if "error" in report:
             st.error(f"✕ {video_name} · thất bại · {report.get('error')}")
         else:
-            st.success(f"✓ {video_name} · hoàn tất · lưu {int(report.get('saved', 0))} ảnh · {int(report.get('attempts', 1))} lần thử")
+            shortfall = int(report.get("shortfall", 0) or 0)
+            suffix = f" · thiếu {shortfall}" if shortfall else ""
+            st.success(f"✓ {video_name} · hoàn tất · lưu {int(report.get('saved', 0))} ảnh{suffix} · {int(report.get('attempts', 1))} lần thử")
+            if report.get("shortfall_message"):
+                st.caption(str(report["shortfall_message"]))
     download_col, report_col = st.columns([1, 1])
     with download_col:
         st.download_button(
@@ -2137,6 +2231,24 @@ if uploaded_files or downloaded_paths:
             st.caption("Vùng sáng có viền xanh là phần được giữ lại; vùng tối là phần bị crop.")
         else:
             st.info("Không thể tạo frame preview cho codec này. Bạn vẫn có thể xử lý video bằng engine.")
+    with st.expander("Phân bố screenshot dự kiến", expanded=True):
+        preview_duration = preview_video_duration(preview_entry[2])
+        preview_timestamps = build_preview_timestamps(
+            preview_duration,
+            mode_label,
+            float(start),
+            float(end) if limit_end else None,
+            float(every) if every is not None else None,
+            int(count or max_screenshots),
+            int(max_screenshots),
+        )
+        if preview_timestamps:
+            suffix = " · ước tính theo khoảng thời gian" if mode_label in {"Best frame per scene", "Scene detection"} else ""
+            st.caption(f"{len(preview_timestamps)} mốc dự kiến{suffix}: " + " · ".join(f"{value:.3f}s" for value in preview_timestamps[:24]))
+            if len(preview_timestamps) > 24:
+                st.caption(f"Còn {len(preview_timestamps) - 24} mốc khác; preview này không chạy scene detection thật.")
+        else:
+            st.info("Chưa đọc được thời lượng video để tạo phân bố preview.")
 
 st.markdown('<div class="section-heading"><span>→</span> Quy trình hoạt động</div>', unsafe_allow_html=True)
 step_a, step_b, step_c = st.columns(3)
@@ -2158,6 +2270,36 @@ with step_c:
 
 active_job = st.session_state.get("processing_job")
 job_running = isinstance(active_job, dict) and active_job.get("status") in {"running", "paused"}
+
+if not job_running:
+    recovery_root = normalize_output_dir(
+        st.session_state.get("screenshot_dir", ""),
+        Path.home() / "Videos" / "FrameForge" / "screenshots",
+    )
+    recoverable_jobs = find_recoverable_queue_jobs(recovery_root)
+    if recoverable_jobs:
+        st.markdown("#### Queue có thể khôi phục")
+        recovery_labels = [
+            f"{Path(str(item['database'])).parent.name} · {item['info'].get('state', 'interrupted')} · {item['existing']} file nguồn"
+            for item in recoverable_jobs
+        ]
+        recovery_index = st.selectbox("Chọn queue cũ", range(len(recovery_labels)), format_func=lambda index: recovery_labels[index], key="recovery_queue_choice")
+        selected_recovery = recoverable_jobs[int(recovery_index)]
+        st.caption("Các item đã hoàn tất sẽ được bỏ qua theo checkpoint; item interrupted sẽ tiếp tục bằng stable item ID.")
+        if st.button("Tiếp tục queue đã gián đoạn", key="resume_persistent_queue", type="primary"):
+            recovery_info = selected_recovery["info"]
+            recovery_items = selected_recovery["items"]
+            resume_args = build_args()
+            resume_args.resume = True
+            resume_args.queue_db = Path(str(selected_recovery["database"]))
+            resume_args.queue_run_signature = str(recovery_info.get("run_signature", ""))
+            recovery_output = Path(str(selected_recovery["database"])).parent
+            resume_args.checkpoint_path = recovery_output / ".frameforge_checkpoint.json"
+            resume_args.cache_root = recovery_root / ".frameforge_scene_cache"
+            resume_args.duplicate_root = recovery_root / ".frameforge_duplicate_index"
+            resume_paths = [Path(item.video_path) for item in recovery_items]
+            _start_processing_job(resume_args, resume_paths, recovery_output, recovery_output)
+            st.rerun()
 
 st.markdown("<br>", unsafe_allow_html=True)
 run_col, hint_col = st.columns([1, 2.2])

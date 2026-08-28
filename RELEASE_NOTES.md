@@ -1,5 +1,13 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.25
+
+## Target count, manifest và resource guard
+
+Bổ sung chế độ **Cố gắng đủ số ảnh sau khi lọc** cho scene/every mode. Engine xét thêm candidate trong budget tối đa gấp 3 lần mục tiêu để bù ảnh bị loại bởi sharpness, motion blur hoặc duplicate, đồng thời báo cáo rõ `target_screenshots`, `saved`, `shortfall` và `shortfall_reasons`.
+
+Mỗi video tạo `.frameforge_manifest.json`; screenshot được encode vào file tạm rồi rename atomically trước khi ghi nhận thành công. Resource guard kiểm tra dung lượng output ước tính và RAM khả dụng. Streamlit hiển thị preview phân bố timestamp dự kiến và shortfall diagnostics theo từng video. Thêm regression tests cho target count, manifest, atomic output, resource guard và preview.
+
 # FrameForge v0.1.24
 
 ## Chọn số screenshot cho mỗi video

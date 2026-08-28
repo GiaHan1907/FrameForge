@@ -210,6 +210,12 @@ Nếu browser không phát được preview, hãy đổi video sang MP4/H.264. �
 
 Từ v0.1.16, mỗi URL và mỗi lần retry tải video vào staging riêng `.frameforge_download_*`, rồi mới chuyển file hoàn tất sang thư mục lưu video. Cách này tránh việc file cũ cùng video khiến yt-dlp bỏ qua download và FrameForge báo nhầm `yt-dlp không tạo được file video đầu ra`. Staging được dọn tự động sau cả thành công và lỗi.
 
+## v0.1.25 — Target count, manifest và resource guard
+
+Bật **Cố gắng đủ số ảnh sau khi lọc** nếu muốn FrameForge xét thêm candidate để cố gắng đạt số screenshot đã nhập sau khi loại frame mờ, motion blur và duplicate. Engine xét tối đa gấp 3 lần số mục tiêu để tránh xử lý vô hạn. Nếu không đủ, report hiển thị `target`, `saved`, `shortfall` và các lý do bị loại.
+
+Mỗi thư mục video có file `.frameforge_manifest.json` chứa cấu hình không nhạy cảm, danh sách ảnh và report. Ảnh được ghi qua file tạm rồi đổi tên an toàn; file tạm còn lại sau khi dừng bất thường không được tính là ảnh hoàn tất. Resource guard kiểm tra dung lượng dự kiến và RAM khả dụng trước khi bắt đầu video. Preview hiển thị các timestamp dự kiến; với scene mode đây là ước tính theo khoảng thời gian, không phải kết quả scene detection thật.
+
 ## v0.1.24 — Chọn số screenshot cho mỗi video
 
 Trong bước **Cách chọn frame**, nhập **Số screenshot mỗi video** từ 1 đến 1000. Với **Best frame per scene** và **Scene detection**, đây là số screenshot tối đa; scene ít hoặc bộ lọc mờ/trùng có thể làm số ảnh lưu thực tế thấp hơn. Với **Mỗi N giây**, giá trị này giới hạn số mốc đầu tiên được lấy. Với **Đúng N frame**, giá trị này là số frame chính xác được phân bố đều trong khoảng thời gian đã chọn.

@@ -24,6 +24,7 @@ import shutil
 import sys
 import tempfile
 import time
+import uuid
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Callable
 from dataclasses import dataclass
@@ -356,6 +357,14 @@ def save_duplicate_hashes(path: Path, hashes: set[int], buckets: dict[str, set[i
     )
 
 
+def build_run_signature(args: argparse.Namespace) -> str:
+    """Tạo chữ ký ổn định từ cấu hình xử lý, không phụ thuộc path runtime."""
+    ignored = {"queue_db", "queue_run_signature", "checkpoint_path", "resume", "cache_root", "duplicate_root"}
+    values = {key: value for key, value in vars(args).items() if key not in ignored}
+    payload = json.dumps(values, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def checkpoint_path(output_root: Path, args: argparse.Namespace) -> Path:
     configured = getattr(args, "checkpoint_path", None)
     return Path(configured) if configured else output_root / ".frameforge_checkpoint.json"
@@ -507,6 +516,39 @@ def threshold_01(value: str) -> float:
     if not 0 <= number <= 1:
         raise argparse.ArgumentTypeError("giá trị phải nằm trong khoảng 0 đến 1")
     return number
+
+
+def available_ram_gb() -> float | None:
+    """Đọc RAM khả dụng, hỗ trợ Windows và Linux mà không bắt buộc psutil."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            class MemoryStatusEx(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            status = MemoryStatusEx()
+            status.dwLength = ctypes.sizeof(MemoryStatusEx)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                return status.ullAvailPhys / (1024**3)
+        meminfo = Path("/proc/meminfo")
+        if meminfo.exists():
+            for line in meminfo.read_text(encoding="ascii").splitlines():
+                if line.startswith("MemAvailable:"):
+                    return float(line.split()[1]) / (1024**2)
+    except (AttributeError, OSError, ValueError, TypeError, IndexError):
+        return None
+    return None
 
 
 def available_memory_gb() -> float | None:
@@ -842,8 +884,112 @@ def save_image(
         image.save(encoded, format="PNG", optimize=bool(profile["png_optimize"]))
     record_stage_timing(stage_timings, "encode", encode_started)
     write_started = time.perf_counter()
-    output.write_bytes(encoded.getvalue())
+    temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_bytes(encoded.getvalue())
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
     record_stage_timing(stage_timings, "write", write_started)
+
+
+class InsufficientResources(RuntimeError):
+    """Tài nguyên khả dụng thấp hơn ngưỡng an toàn của job."""
+
+
+def resource_guard(output_dir: Path, duration: float, args: argparse.Namespace) -> dict[str, object]:
+    estimated_count = estimate_screenshot_count(duration, args)
+    bytes_per_image = 4 * 1024**2 if getattr(args, "format", "jpg") == "png" else 2 * 1024**2
+    estimated_bytes = estimated_count * bytes_per_image
+    free_disk = ensure_free_disk_space(
+        output_dir,
+        required_bytes=estimated_bytes,
+        reserve_bytes=int(getattr(args, "disk_reserve_bytes", 0) or 0),
+    )
+    available_ram = available_ram_gb()
+    minimum_ram = float(getattr(args, "min_free_ram_gb", 0.0) or 0.0)
+    if available_ram is not None and minimum_ram > 0 and available_ram < minimum_ram:
+        raise InsufficientResources(
+            f"RAM khả dụng chỉ còn {available_ram:.1f} GB, thấp hơn ngưỡng {minimum_ram:.1f} GB."
+        )
+    return {
+        "estimated_screenshots": estimated_count,
+        "estimated_output_bytes": estimated_bytes,
+        "free_disk_bytes": free_disk,
+        "available_ram_gb": round(available_ram, 3) if available_ram is not None else None,
+    }
+
+
+def estimate_screenshot_count(duration: float, args: argparse.Namespace) -> int:
+    configured = int(getattr(args, "max_screenshots", 0) or 0)
+    if configured > 0:
+        return configured
+    if getattr(args, "count", None) is not None:
+        return max(1, int(args.count))
+    every = getattr(args, "every", None)
+    if every is not None and float(every) > 0:
+        return max(1, math.ceil(max(0.0, duration) / float(every)))
+    return 0
+
+
+def finalize_report_diagnostics(reports: dict[str, object], args: argparse.Namespace) -> dict[str, object]:
+    target_mode = bool(getattr(args, "target_count_after_filter", False))
+    target = int(getattr(args, "max_screenshots", 0) or 0) if target_mode else 0
+    saved = int(reports.get("saved", 0) or 0)
+    shortfall = max(0, target - saved) if target > 0 else 0
+    reports["target_screenshots"] = target
+    reports["target_count_after_filter"] = target_mode
+    reports["shortfall"] = shortfall
+    reports["shortfall_reasons"] = {
+        "rejected_blurry": int(reports.get("rejected_blurry", 0) or 0),
+        "rejected_motion_blur": int(reports.get("rejected_motion_blur", 0) or 0),
+        "rejected_duplicate": int(reports.get("rejected_duplicate", 0) or 0),
+        "rejected_duplicate_cross_run": int(reports.get("rejected_duplicate_cross_run", 0) or 0),
+        "capture_errors": int(reports.get("capture_errors", 0) or 0),
+    }
+    if shortfall:
+        reports["shortfall_message"] = (
+            f"Thiếu {shortfall} screenshot so với mục tiêu {target}; "
+            "hãy nới bộ lọc, tăng phạm vi thời gian hoặc tắt duplicate/blur filter."
+        )
+    else:
+        reports["shortfall_message"] = None
+    return reports
+
+
+def write_video_manifest(video: Path, output_dir: Path, args: argparse.Namespace, reports: dict[str, object]) -> Path:
+    manifest_path = output_dir / ".frameforge_manifest.json"
+    files = sorted(
+        str(path.relative_to(output_dir))
+        for path in output_dir.iterdir()
+        if path.is_file() and path.name != manifest_path.name and not path.name.startswith(".")
+    )
+    safe_config = {
+        "count": getattr(args, "count", None),
+        "every": getattr(args, "every", None),
+        "max_screenshots": getattr(args, "max_screenshots", 0),
+        "target_count_after_filter": getattr(args, "target_count_after_filter", False),
+        "scene_detection": getattr(args, "scene_detection", False),
+        "best_frame_per_scene": getattr(args, "best_frame_per_scene", False),
+        "min_sharpness": getattr(args, "min_sharpness", 0),
+        "motion_blur_threshold": getattr(args, "motion_blur_threshold", 0),
+        "duplicate_threshold": getattr(args, "duplicate_threshold", 0),
+        "format": getattr(args, "format", "jpg"),
+        "crop_ratio": getattr(args, "crop_ratio", "Không crop"),
+        "width": getattr(args, "width", None),
+    }
+    payload = {
+        "manifest_version": 1,
+        "updated_at": time.time(),
+        "video": str(video.resolve()),
+        "video_size": video.stat().st_size if video.is_file() else None,
+        "video_mtime_ns": video.stat().st_mtime_ns if video.exists() else None,
+        "files": files,
+        "config": safe_config,
+        "report": reports,
+    }
+    _atomic_write_json(manifest_path, payload)
+    return manifest_path
 
 
 def accept_and_save(
@@ -1075,6 +1221,16 @@ def screenshot_limit(args: argparse.Namespace) -> int | None:
     return value if value > 0 else None
 
 
+def candidate_limit(args: argparse.Namespace) -> int | None:
+    limit = screenshot_limit(args)
+    if limit is None:
+        return None
+    if getattr(args, "target_count_after_filter", False):
+        multiplier = max(1, int(getattr(args, "target_candidate_multiplier", 3) or 3))
+        return limit * multiplier
+    return limit
+
+
 def process_fixed_mode(
     capture: cv2.VideoCapture,
     video: Path,
@@ -1106,8 +1262,10 @@ def process_fixed_mode(
             current += interval
 
     limit = screenshot_limit(args)
-    if limit is not None and args.count is None:
-        targets = targets[:limit]
+    target_mode = bool(getattr(args, "target_count_after_filter", False))
+    target_candidates = candidate_limit(args)
+    if target_candidates is not None and args.count is None:
+        targets = targets[:target_candidates]
 
     effective_extract_workers = adaptive_extract_workers(
         video_worker_count=int(getattr(args, "video_workers", 1)),
@@ -1130,7 +1288,7 @@ def process_fixed_mode(
         "extraction_workers": effective_extract_workers,
         "stage_timings": getattr(args, "stage_timings", None),
     }
-    if effective_extract_workers > 1 and len(targets) >= int(getattr(args, "extract_min_targets", 8)):
+    if effective_extract_workers > 1 and len(targets) >= int(getattr(args, "extract_min_targets", 8)) and not target_mode:
         multiprocessing_args = copy.copy(args)
         multiprocessing_args.extract_workers = effective_extract_workers
         return process_fixed_mode_multiprocess(
@@ -1143,6 +1301,8 @@ def process_fixed_mode(
     estimated_frames = max(1, int(max(0.0, actual_end - actual_start) * max(args.source_fps, 1.0)))
     while target_index < len(targets):
         check_cancelled(cancel_event)
+        if target_mode and limit is not None and int(reports["saved"]) >= limit:
+            break
         decode_started = time.perf_counter()
         ok, frame = capture.read()
         record_stage_timing(getattr(args, "stage_timings", None), "decode", decode_started)
@@ -1235,6 +1395,8 @@ def process_scene_mode(
         "smart_scene_detection": True,
     }
     limit = screenshot_limit(args)
+    target_mode = bool(getattr(args, "target_count_after_filter", False))
+    candidate_budget = candidate_limit(args)
     selected_times: list[float] = []
     previous_gray: np.ndarray | None = None
     previous_histogram: np.ndarray | None = None
@@ -1252,7 +1414,7 @@ def process_scene_mode(
 
     def flush(candidate: FrameCandidate | None, index: int, previous: int | None) -> int | None:
         check_cancelled(cancel_event)
-        if candidate is None or (limit is not None and len(selected_times) >= limit):
+        if candidate is None or (target_mode and limit is not None and int(reports["saved"]) >= limit) or (not target_mode and limit is not None and len(selected_times) >= limit):
             return previous
         reports["requested"] = int(reports["requested"]) + 1
         selected_times.append(round(float(candidate.timestamp), 3))
@@ -1262,7 +1424,7 @@ def process_scene_mode(
 
     while True:
         check_cancelled(cancel_event)
-        if limit is not None and len(selected_times) >= limit:
+        if (target_mode and limit is not None and int(reports["saved"]) >= limit) or (not target_mode and limit is not None and len(selected_times) >= limit) or (candidate_budget is not None and len(selected_times) >= candidate_budget):
             break
         decode_started = time.perf_counter()
         ok, frame = capture.read()
@@ -1410,11 +1572,13 @@ def process_cached_scene_mode(
     cancel_event=None,
 ) -> dict[str, object]:
     limit = screenshot_limit(args)
+    target_mode = bool(getattr(args, "target_count_after_filter", False))
     selected_times = [float(item) for item in cached.get("selected_times", [])]
     scene_times = [float(item) for item in cached.get("scene_times", [])]
     if limit is not None:
-        selected_times = selected_times[:limit]
-        scene_times = scene_times[:limit]
+        cap = candidate_limit(args) if target_mode else limit
+        selected_times = selected_times[:cap]
+        scene_times = scene_times[:cap]
     reports: dict[str, object] = {
         "selection_mode": "best_frame_per_scene" if args.best_frame_per_scene else "scene_detection",
         "requested": len(selected_times),
@@ -1436,6 +1600,8 @@ def process_cached_scene_mode(
     requirements = metric_requirements(args)
     for index, timestamp in enumerate(selected_times, start=1):
         check_cancelled(cancel_event)
+        if target_mode and limit is not None and int(reports["saved"]) >= limit:
+            break
         capture.set(cv2.CAP_PROP_POS_MSEC, timestamp * 1000.0)
         decode_started = time.perf_counter()
         ok, frame = capture.read()
@@ -1478,7 +1644,7 @@ def process_video(
     else:
         output_dir = output_root / video.stem
     output_dir.mkdir(parents=True, exist_ok=True)
-    ensure_free_disk_space(output_dir, required_bytes=0, reserve_bytes=int(getattr(args, "disk_reserve_bytes", 512 * 1024**2)))
+    resource_info = resource_guard(output_dir, duration, args)
     duplicate_root_value = getattr(args, "duplicate_root", None)
     duplicate_root = Path(duplicate_root_value) if duplicate_root_value else output_root / ".frameforge_hashes"
     duplicate_root.mkdir(parents=True, exist_ok=True)
@@ -1522,6 +1688,7 @@ def process_video(
         )
     reports["cache_hit"] = bool(cached)
     reports["scene_cache_path"] = str(cache_path) if args.scene_detection and cache_path is not None else None
+    reports["resource_guard"] = resource_info
 
     reports.update({
         "video": str(video),
@@ -1532,6 +1699,9 @@ def process_video(
         "analysis_width": args.analysis_width,
         "analysis_fps": args.analysis_fps,
     })
+    finalize_report_diagnostics(reports, args)
+    manifest_path = write_video_manifest(video, output_dir, args, reports)
+    reports["manifest_path"] = str(manifest_path)
     print(
         f"  Kết quả: lưu={reports['saved']}, mờ={reports['rejected_blurry']}, "
         f"trùng={reports['rejected_duplicate']}, lỗi={reports['capture_errors']}"
@@ -1581,7 +1751,7 @@ def process_videos(
     runtime_args.extract_min_targets = max(1, int(getattr(args, "extract_min_targets", 8)))
     results: dict[int, dict[str, object]] = {}
     checkpoint_file = checkpoint_path(output_root, args)
-    run_signature = processing_signature(args)
+    run_signature = str(getattr(args, "queue_run_signature", "") or processing_signature(args))
     checkpoint = load_checkpoint(checkpoint_file)
     completed_checkpoint = checkpoint.get("completed", {}) if getattr(args, "resume", False) and checkpoint.get("run_signature") == run_signature else {}
     if not isinstance(completed_checkpoint, dict):
@@ -1776,6 +1946,17 @@ def parse_args() -> argparse.Namespace:
         type=positive_int,
         default=0,
         help="Số screenshot tối đa cho mỗi video; 0 = không giới hạn. Với --count, --count vẫn là số chính xác.",
+    )
+    parser.add_argument(
+        "--target-count-after-filter",
+        action="store_true",
+        help="Cố gắng lưu đủ --max-screenshots sau filter; xét tối đa gấp 3 lần số candidate.",
+    )
+    parser.add_argument(
+        "--min-free-ram-gb",
+        type=non_negative_float,
+        default=0.0,
+        help="Không bắt đầu video nếu RAM khả dụng dưới ngưỡng GB; 0 = tắt.",
     )
     parser.add_argument("--scene-threshold", type=threshold_01, default=0.30, help="Ngưỡng thay đổi cảnh 0–1; thấp hơn nhạy hơn.")
     parser.add_argument("--min-scene-gap", type=positive_float, default=0.5, help="Khoảng cách tối thiểu giữa scene, tính bằng giây.")

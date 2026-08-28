@@ -6,6 +6,12 @@ Trong sidebar, nhập **Số screenshot mỗi video** từ 1 đến 1000. Với 
 
 CLI cũng hỗ trợ `--max-screenshots N` cho scene/every mode; `--count N` vẫn giữ semantics cũ là lấy đúng N frame. Khi đổi số lượng trong scene mode, cache scene được invalidated bằng cache key mới để không dùng nhầm danh sách timestamp cũ.
 
+## Ghi chú v0.1.25
+
+FrameForge bổ sung chế độ **Cố gắng đủ số ảnh sau khi lọc**. Với scene/every mode, engine xét thêm candidate trong budget giới hạn để bù ảnh bị loại bởi sharpness, motion blur hoặc duplicate. Report phân biệt `target_screenshots`, `saved`, `shortfall` và `shortfall_reasons`; nếu không đủ ảnh, giao diện nêu rõ lý do.
+
+Mỗi video có `.frameforge_manifest.json` ghi cấu hình an toàn, danh sách file và report. Ảnh được encode vào file tạm rồi rename atomically trước khi report ghi nhận là đã lưu. Resource guard kiểm tra dung lượng ước tính và RAM khả dụng trước khi bắt đầu video. Preview hiển thị các timestamp dự kiến theo mode; scene preview là ước tính, không thay thế scene detection thật.
+
 ## Ghi chú v0.1.23
 
 SQLite queue nay dùng state machine có schema version và migration additive từ v0.1.22. Khi mở database cũ, FrameForge tự bổ sung stable `item_id`, `source_position`, phase/progress, heartbeat và timestamps mà không xóa report cũ. Item đang `running` hoặc `retrying` khi ứng dụng dừng bất thường được đánh dấu `interrupted`; resume đưa item về queue mà không đổi định danh.
