@@ -7,15 +7,28 @@ import tempfile
 import time
 from types import SimpleNamespace
 
-import cv2
-import numpy as np
 import unittest
 from pathlib import Path
+
+try:
+    import cv2
+    import numpy as np
+except ImportError:
+    cv2 = None  # type: ignore[assignment]
+    np = None  # type: ignore[assignment]
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _has_cv2():
+    return cv2 is not None and np is not None
+
+
+@unittest.skipUnless(
+    _has_cv2(),
+    "cv2/numpy not installed; skipping Streamlit directory state tests",
+)
 class StreamlitDirectoryStateTests(unittest.TestCase):
     def setUp(self) -> None:
         self.source = (ROOT / "streamlit_app.py").read_text(encoding="utf-8")

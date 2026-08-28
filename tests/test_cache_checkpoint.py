@@ -8,13 +8,27 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import numpy as np
-from PIL import Image
+try:
+    import numpy as np
+    from PIL import Image
+    import video_screenshot_advanced as engine
+except ImportError:
+    np = None  # type: ignore[assignment]
 
-import video_screenshot_advanced as engine
-from timeline_utils import build_timeline_entries, filter_timeline_entries
+try:
+    from timeline_utils import build_timeline_entries, filter_timeline_entries
+except ImportError:
+    pass
 
 
+def _has_deps():
+    return np is not None
+
+
+@unittest.skipUnless(
+    _has_deps(),
+    "numpy/PIL not installed; skipping cache checkpoint tests",
+)
 class CacheCheckpointTests(unittest.TestCase):
     def setUp(self) -> None:
         self.video = Path("/home/ubuntu/scene_test/two_scenes.mp4")

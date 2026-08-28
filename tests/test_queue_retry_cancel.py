@@ -9,10 +9,22 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import video_screenshot_advanced as engine
+try:
+    import video_screenshot_advanced as engine
+except ImportError:
+    engine = None  # type: ignore[assignment]
+
 from persistent_queue import PersistentQueueStore
 
 
+def _has_engine():
+    return engine is not None
+
+
+@unittest.skipUnless(
+    _has_engine(),
+    "video_screenshot_advanced (cv2) not installed; skipping queue retry tests",
+)
 class QueueRetryCancelTests(unittest.TestCase):
     def setUp(self) -> None:
         self.root_context = tempfile.TemporaryDirectory()
