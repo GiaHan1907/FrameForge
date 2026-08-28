@@ -1,5 +1,19 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.27
+
+## UI/UX: Validation, queue dashboard và resource visibility
+
+Bổ sung validation ngay trong wizard 4 bước. FrameForge kiểm tra nguồn video, thư mục output, khoảng thời gian, số screenshot, kích thước phân tích và FPS trước khi bật nút **Bắt đầu xử lý**. Các cấu hình có rủi ro shortfall hoặc dùng nhiều worker nhưng chưa đặt RAM reserve được hiển thị dưới dạng cảnh báo sớm.
+
+Summary card mới được ghim khi cuộn trang, hiển thị nhanh số video, mode chọn frame, định dạng/crop output và trạng thái cấu hình. Người dùng không cần quay lại đầu trang để kiểm tra các thông số quan trọng trước khi chạy queue.
+
+Khi queue đang chạy, dashboard tổng quan hiển thị tổng video, đang chạy, đang chờ, hoàn tất, lỗi và đã hủy cùng progress tổng. Resource meter hiển thị RAM khả dụng, disk còn trống, RSS của FrameForge và các ngưỡng admission đang áp dụng. Trạng thái `resource_wait` được giải thích rõ là đang chờ tài nguyên, không phải video bị lỗi.
+
+Các lỗi queue hiện có diagnostic action để tải file `frameforge-diagnostic.json` chứa version và lỗi rút gọn. Diagnostic không bao gồm cookie hoặc thông tin đăng nhập, giúp người dùng dễ gửi thông tin hỗ trợ mà không phải sao chép thủ công từ màn hình.
+
+Thêm regression assertions cho các thành phần UI v0.1.27; toàn bộ test suite và compile check tiếp tục được chạy trước khi release.
+
 # FrameForge v0.1.26
 
 ## P0: Adaptive target, manifest safety và resource back-pressure

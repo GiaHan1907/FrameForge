@@ -53,6 +53,8 @@ from video_screenshot_advanced import (
     cleanup_frameforge_cache,
     cleanup_frameforge_temp_dirs,
     current_process_rss_bytes,
+    available_ram_gb,
+    free_disk_bytes,
     CROP_RATIO_LABELS,
     CROP_RATIO_VALUES,
     ENCODE_PROFILE_LABELS,
@@ -356,6 +358,34 @@ def preview_crop_overlay(source: object, crop_ratio: str) -> bytes | None:
             temporary_path.unlink(missing_ok=True)
 
 
+def validate_ui_configuration() -> dict[str, list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    source_count = len(uploaded_files or []) + len(downloaded_paths)
+    if source_count == 0:
+        errors.append("Hãy chọn ít nhất một video upload hoặc tải video công khai.")
+    screenshot_dir_value = str(st.session_state.get("screenshot_dir", "") or "").strip()
+    if not screenshot_dir_value:
+        errors.append("Chưa chọn thư mục lưu screenshot.")
+    if float(start) < 0:
+        errors.append("Thời điểm bắt đầu không được nhỏ hơn 0 giây.")
+    if limit_end and float(end) <= float(start):
+        errors.append("Thời điểm kết thúc phải lớn hơn thời điểm bắt đầu.")
+    if int(max_screenshots) < 1:
+        errors.append("Số screenshot mỗi video phải từ 1 trở lên.")
+    if float(analysis_fps) <= 0 or int(analysis_width) < 64:
+        errors.append("Độ phân giải phân tích phải từ 64 px và FPS phải lớn hơn 0.")
+    if float(min_sharpness) > 300:
+        warnings.append("Ngưỡng sharpness rất cao; video có thể tạo shortfall lớn.")
+    if int(max_screenshots) > 300:
+        warnings.append("Số screenshot lớn có thể làm tăng thời gian xử lý và dung lượng output.")
+    if int(workers) if isinstance(workers, int) else str(workers).isdigit():
+        worker_count = int(workers)
+        if worker_count > 1 and float(min_free_ram_gb) <= 0:
+            warnings.append("Nhiều worker nhưng chưa đặt RAM reserve; nên đặt ngưỡng RAM tối thiểu để queue tự back-pressure.")
+    return {"errors": errors, "warnings": warnings}
+
+
 def wizard_summary() -> dict[str, str]:
     source_count = len(uploaded_files or []) + len(downloaded_paths)
     output_format = "PNG" if image_format == "png" else image_format.upper()
@@ -460,6 +490,27 @@ st.markdown(
         max-width: 1440px;
         padding-top: 2.2rem;
         padding-bottom: 3rem;
+    }
+
+    .sticky-summary {
+        position: sticky;
+        top: .55rem;
+        z-index: 20;
+        background: rgba(21, 29, 45, .96);
+        backdrop-filter: blur(12px);
+        border: 1px solid #34445d;
+        border-radius: 14px;
+        padding: .65rem .8rem;
+        box-shadow: 0 10px 28px rgba(0,0,0,.22);
+    }
+    .status-pill {
+        display: inline-block;
+        border-radius: 999px;
+        padding: .2rem .55rem;
+        margin: .1rem .2rem .1rem 0;
+        font-size: .76rem;
+        border: 1px solid #3a4a68;
+        background: #202b41;
     }
 
     h1, h2, h3, h4, h5, h6 {
@@ -1946,6 +1997,69 @@ class _ProcessingQueueAdapter:
             raise RuntimeError("File nguồn của item failed không còn tồn tại.")
 
 
+def render_resource_meter(args: object | None = None, output_root: Path | None = None) -> None:
+    if output_root is None:
+        output_root = normalize_output_dir(
+            st.session_state.get("screenshot_dir", ""),
+            Path.home() / "Videos" / "FrameForge" / "screenshots",
+        )
+    try:
+        free_disk = free_disk_bytes(output_root)
+    except OSError:
+        free_disk = 0
+    ram_available = available_ram_gb()
+    ram_threshold = float(getattr(args, "min_free_ram_gb", min_free_ram_gb) or 0.0) if args is not None else float(min_free_ram_gb)
+    disk_threshold = float(getattr(args, "disk_reserve_bytes", disk_reserve_mb * 1024 * 1024) or 0.0) if args is not None else float(disk_reserve_mb * 1024 * 1024)
+    ram_label = "Không đọc được" if ram_available is None else f"{ram_available:.1f} GB"
+    disk_label = format_bytes(free_disk)
+    ram_ok = ram_available is None or ram_available >= ram_threshold
+    disk_ok = free_disk >= disk_threshold
+    state = "Ổn định" if ram_ok and disk_ok else "Cần chú ý"
+    st.markdown(f"**Tài nguyên hệ thống** · `{state}`")
+    meter_a, meter_b, meter_c = st.columns(3)
+    with meter_a:
+        st.metric("RAM khả dụng", ram_label, f"ngưỡng {ram_threshold:.1f} GB")
+    with meter_b:
+        st.metric("Disk còn trống", disk_label, f"reserve {format_bytes(disk_threshold)}")
+    with meter_c:
+        st.metric("RSS FrameForge", format_bytes(current_process_rss_bytes()))
+    if not ram_ok:
+        st.warning("RAM dưới ngưỡng admission; queue sẽ chờ tài nguyên trước khi cấp thêm video.")
+    if not disk_ok:
+        st.warning("Disk dưới vùng đệm an toàn; hãy chọn thư mục khác hoặc dọn dung lượng trước khi chạy.")
+
+
+def render_queue_dashboard(snapshot: dict[str, object]) -> None:
+    total = int(snapshot.get("total", 0) or 0)
+    fraction = float(snapshot.get("fraction", 0.0) or 0.0)
+    st.markdown("#### Queue dashboard")
+    dashboard = st.columns(6)
+    values = [
+        ("Tổng video", total),
+        ("Đang chạy", int(snapshot.get("active", 0) or 0)),
+        ("Đang chờ", int(snapshot.get("queued", 0) or 0)),
+        ("Hoàn tất", int(snapshot.get("completed", 0) or 0)),
+        ("Lỗi", int(snapshot.get("failed", 0) or 0)),
+        ("Đã hủy", int(snapshot.get("cancelled", 0) or 0)),
+    ]
+    for column, (label, value) in zip(dashboard, values):
+        column.metric(label, value)
+    st.progress(max(0.0, min(1.0, fraction)), text=f"Tiến độ tổng: {fraction:.0%}")
+
+
+def error_actions(error: str, *, key_prefix: str) -> None:
+    diagnostic = json.dumps({
+        "app": "FrameForge",
+        "version": "0.1.27",
+        "error": str(error),
+    }, ensure_ascii=False, indent=2)
+    col_a, col_b = st.columns([1, 1])
+    with col_a:
+        st.download_button("Tải diagnostic", data=diagnostic, file_name="frameforge-diagnostic.json", mime="application/json", key=f"{key_prefix}_diagnostic", use_container_width=True)
+    with col_b:
+        st.caption("Diagnostic chỉ chứa version và lỗi rút gọn; không bao gồm cookie hoặc thông tin đăng nhập.")
+
+
 def _shutdown_processing_job(job: dict[str, object]) -> None:
     """Hủy job nền và dọn work directory khi desktop session bị đóng."""
     cancel_event = job.get("cancel_event")
@@ -2088,7 +2202,11 @@ def _render_processing_job() -> None:
         return
     status = str(job.get("status"))
     if status in {"running", "paused"}:
-        render_queue_per_video(_ProcessingQueueAdapter(job), key_prefix="processing_queue")
+        adapter = _ProcessingQueueAdapter(job)
+        snapshot = adapter.snapshot()
+        render_queue_dashboard(snapshot)
+        render_resource_meter(job.get("args"), Path(str(job.get("output_dir", ""))).parent)
+        render_queue_per_video(adapter, key_prefix="processing_queue")
         return
 
     if status == "cancelled":
@@ -2108,7 +2226,9 @@ def _render_processing_job() -> None:
                     st.rerun()
         return
     if status == "error":
-        st.error(str(job.get("message", "Có lỗi khi xử lý queue.")))
+        message = str(job.get("message", "Có lỗi khi xử lý queue."))
+        st.error(message)
+        error_actions(message, key_prefix="queue_error")
         return
     reports = job.get("reports") or []
     if status == "completed":
@@ -2230,6 +2350,9 @@ wizard_step = st.radio(
     label_visibility="collapsed",
 )
 summary = wizard_summary()
+validation = validate_ui_configuration()
+validation_errors = validation["errors"]
+validation_warnings = validation["warnings"]
 summary_cols = st.columns(4)
 for summary_col, step_name in zip(summary_cols, WIZARD_STEPS):
     summary_key = step_name.split(" · ", 1)[1]
@@ -2237,6 +2360,14 @@ for summary_col, step_name in zip(summary_cols, WIZARD_STEPS):
         f'<div class="info-card"><div class="label">{html.escape(step_name)}</div><div class="value" style="font-size:1rem">{html.escape(summary[summary_key])}</div><div class="sub">{"Đang chỉnh" if wizard_step == step_name else "Đã cấu hình"}</div></div>',
         unsafe_allow_html=True,
     )
+st.markdown(
+    f'<div class="sticky-summary"><strong>Sẵn sàng xử lý</strong> · {html.escape(summary["Nguồn"])} · {html.escape(summary["Chọn frame"])} · {html.escape(summary["Đầu ra"])}<br><span class="status-pill">{"Cấu hình hợp lệ" if not validation_errors else f"Cần sửa {len(validation_errors)} mục"}</span><span class="status-pill">{"Có cảnh báo" if validation_warnings else "Không có cảnh báo"}</span></div>',
+    unsafe_allow_html=True,
+)
+if validation_errors:
+    st.error("Chưa thể bắt đầu xử lý. Hãy kiểm tra các mục sau: " + " · ".join(validation_errors))
+if validation_warnings:
+    st.warning("Lưu ý cấu hình: " + " · ".join(validation_warnings))
 st.caption({
     "01 · Nguồn": "Chọn video upload hoặc video đã tải công khai.",
     "02 · Chọn frame": "Chọn scene, best frame, mỗi N giây hoặc đúng N frame.",
@@ -2363,9 +2494,10 @@ with run_col:
         "▶  Bắt đầu xử lý",
         type="primary",
         use_container_width=True,
-        disabled=(not uploaded_files and not downloaded_paths) or job_running,
+        disabled=bool(validation_errors) or job_running,
     )
 with hint_col:
+    render_resource_meter(build_args() if (uploaded_files or downloaded_paths) else None)
     if not uploaded_files and not downloaded_paths:
         st.markdown(
             '<p class="muted-note">Upload video hoặc tải video công khai ở phía trên để kích hoạt xử lý. Gợi ý: bắt đầu với <b>Best frame per scene</b> và threshold scene 0.30.</p>',
@@ -2380,6 +2512,8 @@ with hint_col:
 if run_clicked:
     args = build_args()
     work_dir: Path | None = None
+    if validation_errors:
+        st.error("Không thể bắt đầu queue vì cấu hình chưa hợp lệ.")
     try:
         screenshot_root = normalize_output_dir(
             st.session_state.get("screenshot_dir", ""),
