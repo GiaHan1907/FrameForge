@@ -97,6 +97,7 @@ def main() -> None:
     # Không đặt server.port: Streamlit trong PyInstaller có thể nhận diện development mode.
     # Server mặc định dùng cổng 8501; thread bên dưới chỉ mở browser sau khi server sẵn sàng.
     os.environ["FRAMEFORGE_DESKTOP_LIFECYCLE"] = "1"
+    os.environ["FRAMEFORGE_DESKTOP_PID"] = str(os.getpid())
     os.environ["STREAMLIT_GLOBAL_DEVELOPMENTMODE"] = "false"
     os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
     os.environ["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"

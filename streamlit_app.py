@@ -17,6 +17,7 @@ import os
 import re
 import sys
 import shutil
+import subprocess
 import tempfile
 import threading
 import time
@@ -2267,6 +2268,26 @@ def error_actions(error: str, *, key_prefix: str) -> None:
         st.caption("Diagnostic chỉ chứa version và lỗi rút gọn; không bao gồm cookie hoặc thông tin đăng nhập.")
 
 
+def _terminate_desktop_process_tree() -> None:
+    """Dừng đúng process desktop hiện tại và toàn bộ child process trên Windows."""
+    if sys.platform != "win32":
+        return
+    expected_pid = os.environ.get("FRAMEFORGE_DESKTOP_PID", "")
+    if expected_pid and expected_pid != str(os.getpid()):
+        return
+    try:
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        subprocess.Popen(
+            ["taskkill.exe", "/PID", str(os.getpid()), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=flags,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # Không để lỗi cleanup làm hỏng trạng thái queue; atexit vẫn xử lý phần còn lại.
+        pass
+
+
 def _shutdown_processing_job(job: dict[str, object]) -> None:
     """Hủy job nền và dọn work directory khi desktop session bị đóng."""
     cancel_event = job.get("cancel_event")
@@ -2314,6 +2335,13 @@ def _desktop_session_watchdog(session_id: str, state: dict[str, object]) -> None
                 runtime.stop()
             except Exception:
                 pass
+            # runtime.stop() có thể chỉ dừng server; kill theo đúng PID để không còn
+            # VideoScreenshotFilter.exe treo nền sau khi người dùng đóng web.
+            threading.Thread(
+                target=_terminate_desktop_process_tree,
+                name="frameforge-process-tree-terminator",
+                daemon=True,
+            ).start()
             return
         time.sleep(2.0)
 

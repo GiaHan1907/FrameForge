@@ -1,5 +1,17 @@
 # Video Screenshot Filter — Optimized Streamlit Package
 
+## Auto-shutdown khi đóng web
+
+Ở bản desktop, khi browser session cuối cùng đóng, watchdog sẽ hủy job đang chạy, dọn work directory, dừng Streamlit và gọi `taskkill.exe /PID /T /F` với `CREATE_NO_WINDOW` để kết thúc đúng `VideoScreenshotFilter.exe` cùng process con. Cơ chế này chỉ bật khi launcher đặt `FRAMEFORGE_DESKTOP_LIFECYCLE=1` và `FRAMEFORGE_DESKTOP_PID`; chạy `streamlit run` thủ công không bị kill.
+
+Có thể xác minh sau khi đóng web bằng PowerShell:
+
+```powershell
+Get-Process VideoScreenshotFilter -ErrorAction SilentlyContinue
+```
+
+Nếu không có output, process desktop đã được dừng. Khi cần điều tra, kiểm tra `launcher_error.log` và dùng `tests/process_monitor_startup.ps1`; không chạy `taskkill` thủ công khi còn queue chưa lưu checkpoint.
+
 ## Chuẩn bị phát hành v0.1.31
 
 v0.1.31 tập trung vào silent Windows runtime và chẩn đoán launcher. EXE release dùng PyInstaller `console=False`; PowerShell Authenticode check và FFmpeg health check dùng `CREATE_NO_WINDOW` trên Windows để tránh cửa sổ console chớp tắt. Inno Setup tạo shortcut trực tiếp tới `VideoScreenshotFilter.exe` với `WorkingDir` là thư mục cài đặt.
