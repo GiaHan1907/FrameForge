@@ -470,17 +470,17 @@ st.markdown(
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
     :root {
-        --ink: #f4f7ff;
-        --muted: #9aa8bd;
-        --line: #2a3852;
-        --surface: #151d2d;
-        --surface-2: #1b263b;
-        --canvas: #0b1220;
-        --input: #202b41;
-        --input-border: #3a4a68;
-        --blue: #5d86ff;
-        --violet: #9a72ff;
-        --green: #43d6a3;
+        --ink: #f0f4f8;
+        --muted: #8896a8;
+        --line: #253040;
+        --surface: #131c2a;
+        --surface-2: #192436;
+        --canvas: #0a1018;
+        --input: #1c2638;
+        --input-border: #324258;
+        --accent: #34d399;
+        --accent-dim: #059669;
+        --green: #34d399;
     }
 
     html, body, [class*="css"] {
@@ -498,14 +498,14 @@ st.markdown(
 
     /* v0.1.30 accessibility and responsive polish */
     :focus-visible {
-        outline: 3px solid #8fb0ff !important;
-        outline-offset: 3px !important;
+        outline: 2px solid var(--accent) !important;
+        outline-offset: 2px !important;
     }
     button, [role="button"], input, textarea, [data-baseweb="select"] > div {
         min-height: 40px;
     }
     [aria-live="polite"] {
-        border-left: 3px solid var(--green);
+        border-left: 2px solid var(--accent);
         padding-left: .65rem;
     }
     @media (max-width: 900px) {
@@ -576,17 +576,17 @@ st.markdown(
         position: sticky;
         top: .55rem;
         z-index: 20;
-        background: rgba(21, 29, 45, .96);
+        background: rgba(19, 28, 42, .96);
         backdrop-filter: blur(12px);
-        border: 1px solid #34445d;
+        border: 1px solid var(--line);
         border-radius: 14px;
         padding: .65rem .8rem;
-        box-shadow: 0 10px 28px rgba(0,0,0,.22);
+        box-shadow: 0 8px 24px -8px rgba(0,0,0,0.3);
     }
     .scene-timeline { margin: .45rem 0 .8rem; }
     .scene-timeline .track { position: relative; height: 10px; border-radius: 999px; background: #25334d; border: 1px solid #3a4a68; }
-    .scene-timeline .track span, .scene-timeline .track b { position: absolute; top: -4px; width: 3px; height: 18px; border-radius: 3px; background: #7d9cff; }
-    .scene-timeline .track b { background: #43d6a3; width: 5px; }
+    .scene-timeline .track span, .scene-timeline .track b { position: absolute; top: -4px; width: 3px; height: 18px; border-radius: 3px; background: #4b6584; }
+    .scene-timeline .track b { background: var(--accent); width: 5px; }
     .timeline-legend { display:flex; justify-content:space-between; gap:.6rem; color:#9aa8bd; font-size:.72rem; margin-top:.35rem; }
     .timeline-legend strong { color:#43d6a3; }
     .timeline-legend em { font-style:normal; }
@@ -643,24 +643,29 @@ st.markdown(
     .hero {
         position: relative;
         overflow: hidden;
-        padding: 2.2rem 2.4rem;
-        border-radius: 24px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 2rem;
+        padding: 2.4rem 2.8rem;
+        border-radius: 20px;
         color: white;
-        background: linear-gradient(120deg, #233b90 0%, #3867f2 48%, #7547e9 100%);
-        box-shadow: 0 18px 40px rgba(45, 72, 170, 0.22);
+        background: linear-gradient(135deg, #0f1a2e 0%, #162032 60%, #0d1520 100%);
+        border: 1px solid rgba(52, 211, 153, 0.12);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 16px 40px -12px rgba(0,0,0,0.35);
         margin-bottom: 1.35rem;
     }
 
     .hero::after {
         content: '';
         position: absolute;
-        width: 280px;
-        height: 280px;
-        top: -135px;
-        right: 6%;
-        border: 1px solid rgba(255,255,255,.22);
+        width: 320px;
+        height: 320px;
+        top: -100px;
+        right: -40px;
+        border: 1px solid rgba(52, 211, 153, 0.08);
         border-radius: 50%;
-        box-shadow: 0 0 0 26px rgba(255,255,255,.06), 0 0 0 52px rgba(255,255,255,.04);
+        box-shadow: 0 0 0 40px rgba(52, 211, 153, 0.03), 0 0 0 80px rgba(52, 211, 153, 0.015);
     }
 
     .hero-kicker {
@@ -671,9 +676,9 @@ st.markdown(
         gap: .45rem;
         padding: .32rem .7rem;
         border-radius: 999px;
-        color: #dfe8ff;
-        background: rgba(255,255,255,.13);
-        border: 1px solid rgba(255,255,255,.2);
+        color: var(--accent);
+        background: rgba(52, 211, 153, 0.08);
+        border: 1px solid rgba(52, 211, 153, 0.18);
         font-size: .77rem;
         font-weight: 700;
         letter-spacing: .1em;
@@ -683,10 +688,11 @@ st.markdown(
     .hero h1 {
         position: relative;
         z-index: 1;
-        margin: .85rem 0 .45rem;
+        margin: .65rem 0 .45rem;
         color: white;
-        font-size: clamp(2rem, 4vw, 3.25rem);
-        line-height: 1.04;
+        font-size: clamp(1.6rem, 3vw, 2.4rem);
+        line-height: 1.1;
+        letter-spacing: -0.04em;
     }
 
     .hero p {
@@ -710,9 +716,9 @@ st.markdown(
         width: 38px;
         height: 38px;
         margin-right: .55rem;
-        border-radius: 12px;
+        border-radius: 10px;
         color: white;
-        background: linear-gradient(135deg, #4b7bff, #9a64ff);
+        background: var(--accent-dim);
         font-size: 1.3rem;
         vertical-align: middle;
     }
@@ -758,8 +764,8 @@ st.markdown(
         align-items: center;
         justify-content: center;
         border-radius: 8px;
-        color: #a9c0ff;
-        background: #1d2b4a;
+        color: var(--accent);
+        background: rgba(52, 211, 153, 0.08);
         font-size: .85rem;
     }
 
@@ -767,9 +773,8 @@ st.markdown(
         height: 100%;
         padding: 1rem 1.05rem;
         border: 1px solid var(--line);
-        border-radius: 16px;
+        border-radius: 14px;
         background: var(--surface);
-        box-shadow: 0 5px 16px rgba(29, 42, 68, .04);
     }
 
     .info-card .label {
@@ -835,15 +840,15 @@ st.markdown(
     }
 
     .download-panel [data-testid="stButton"] > button:hover {
-        border-color: var(--blue);
+        border-color: var(--accent);
         color: #ffffff;
-        background: #2a3b5b;
+        background: #253550;
     }
 
     .download-panel [data-testid="stButton"] > button[kind="primary"] {
         border: 0;
         color: #ffffff;
-        background: linear-gradient(110deg, #3867f2, #7547e9);
+        background: var(--accent-dim);
     }
 
     @media (max-width: 900px) {
@@ -867,7 +872,7 @@ st.markdown(
         justify-content: center;
         border-radius: 9px;
         color: white;
-        background: linear-gradient(135deg, var(--blue), var(--violet));
+        background: var(--accent-dim);
         font-size: .8rem;
         font-weight: 700;
     }
@@ -890,9 +895,8 @@ st.markdown(
     div[data-testid="stMetric"] {
         padding: 1rem 1.1rem;
         border: 1px solid var(--line);
-        border-radius: 16px;
+        border-radius: 14px;
         background: var(--surface);
-        box-shadow: 0 5px 16px rgba(29, 42, 68, .04);
     }
 
     div[data-testid="stMetricLabel"] {
@@ -907,15 +911,21 @@ st.markdown(
     .stButton > button[kind="primary"] {
         min-height: 3rem;
         border: 0;
-        border-radius: 12px;
-        background: linear-gradient(110deg, #3867f2, #7547e9);
-        box-shadow: 0 10px 20px rgba(64, 88, 220, .2);
+        border-radius: 11px;
+        background: var(--accent-dim);
+        box-shadow: 0 4px 14px -3px rgba(5, 150, 105, 0.3);
         font-weight: 700;
+        transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
     }
 
     .stButton > button[kind="primary"]:hover {
         border: 0;
-        background: linear-gradient(110deg, #2d59df, #663bd4);
+        background: #047857;
+        box-shadow: 0 6px 20px -3px rgba(5, 150, 105, 0.4);
+    }
+
+    .stButton > button[kind="primary"]:active {
+        transform: scale(0.98);
     }
 
     [data-testid="stFileUploader"] {
@@ -1324,9 +1334,11 @@ if app_update_status.rollback_available and app_update_status.rollback_version:
 st.markdown(
     """
     <section class="hero">
-      <div class="hero-kicker">● Intelligent video toolkit</div>
-      <h1>FrameForge</h1>
-      <p>Cắt screenshot đẹp và chính xác hơn từ video — tự nhận diện phân cảnh, chọn frame sắc nét nhất và loại bỏ ảnh mờ hoặc trùng lặp.</p>
+      <div>
+        <div class="hero-kicker">Scene-aware video toolkit</div>
+        <h1>FrameForge</h1>
+        <p>Cắt screenshot từ video bằng pipeline đọc một lần — nhận diện phân cảnh, chọn frame sắc nét nhất, loại bỏ mờ và trùng lặp.</p>
+      </div>
     </section>
     """,
     unsafe_allow_html=True,
