@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $exePath = Join-Path $InstallDir 'VideoScreenshotFilter.exe'
 $desktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'FrameForge.lnk'
-$startMenuShortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\FrameForge.lnk'
+$startMenuRoot = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
 
 function Fail([string]$message) {
     Write-Error "SMOKE FAIL: $message"
@@ -59,8 +59,14 @@ Write-Host "OK PE subsystem: GUI (2)" -ForegroundColor Green
 
 $shortcutCount = 0
 if (Test-Shortcut $desktopShortcut) { $shortcutCount++ }
-if (Test-Shortcut $startMenuShortcut) { $shortcutCount++ }
-if ($shortcutCount -eq 0) { Fail "No FrameForge shortcut was found." }
+$startMenuShortcuts = @()
+if (Test-Path $startMenuRoot) {
+    $startMenuShortcuts = @(Get-ChildItem -Path $startMenuRoot -Filter 'FrameForge.lnk' -File -Recurse -ErrorAction SilentlyContinue)
+}
+foreach ($shortcut in $startMenuShortcuts) {
+    if (Test-Shortcut $shortcut.FullName) { $shortcutCount++ }
+}
+if ($shortcutCount -eq 0) { Fail "No FrameForge shortcut was found under Desktop or Start Menu." }
 
 if ($SkipLaunch) {
     Write-Host "OK static installer/shortcut smoke completed." -ForegroundColor Green
