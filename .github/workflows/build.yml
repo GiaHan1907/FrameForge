@@ -1,0 +1,138 @@
+name: FrameForge Windows Installer Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build"
+        required: true
+        default: "0.1.31"
+        type: string
+      profile:
+        description: "PyInstaller profile"
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - minimal
+  workflow_call:
+    inputs:
+      version:
+        required: false
+        type: string
+        default: "0.1.31"
+      profile:
+        required: false
+        type: string
+        default: full
+
+concurrency:
+  group: frameforge-installer-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-installer:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONIOENCODING: utf-8
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      FRAMEFORGE_SKIP_VENV: "1"
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set version and validate inputs
+        run: |
+          $version = "${{ inputs.version }}"
+          $profile = "${{ inputs.profile }}"
+          if ([string]::IsNullOrWhiteSpace($version)) { $version = "0.1.31" }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid SemVer version: $version" }
+          if (@("full", "minimal") -notcontains $profile) { throw "Invalid build profile: $profile" }
+          "FRAMEFORGE_VERSION=$version" >> $env:GITHUB_ENV
+          "BUILD_PROFILE=$profile" >> $env:GITHUB_ENV
+          "BUILD_MODE=onedir" >> $env:GITHUB_ENV
+          Write-Host "Building FrameForge $version ($profile / onedir)"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements_full.txt
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if ($env:BUILD_PROFILE -eq "minimal") {
+            python -m pip install -r requirements.txt pyinstaller
+          } else {
+            python -m pip install -r requirements_full.txt pyinstaller
+          }
+
+      - name: Prepare embedded FFmpeg
+        run: |
+          if (-not (Test-Path "vendor\ffmpeg\ffmpeg.exe") -or -not (Test-Path "vendor\ffmpeg\ffprobe.exe")) {
+            powershell -NoProfile -ExecutionPolicy Bypass -File .\prepare_ffmpeg_windows.ps1 -OutputDir .\vendor\ffmpeg
+          }
+          if (-not (Test-Path "vendor\ffmpeg\ffmpeg.exe")) { throw "Embedded ffmpeg.exe is missing" }
+          if (-not (Test-Path "vendor\ffmpeg\ffprobe.exe")) { throw "Embedded ffprobe.exe is missing" }
+
+      - name: Build PyInstaller and Inno Setup installer
+        run: |
+          cmd /c build_installer_v0131.bat
+          if ($LASTEXITCODE -ne 0) { throw "build_installer_v0131.bat failed with exit code $LASTEXITCODE" }
+
+      - name: Run Python regression tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Validate installer and shortcut smoke script
+        run: |
+          $setup = Join-Path "installer" "FrameForge-Setup-$env:FRAMEFORGE_VERSION.exe"
+          if (-not (Test-Path $setup)) { throw "Installer not found: $setup" }
+          if (-not (Test-Path "dist\VideoScreenshotFilter\VideoScreenshotFilter.exe")) { throw "Packaged EXE not found" }
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows_installer_smoke.ps1 -InstallerPath $setup -SkipInstall -SkipLaunch
+          if ($LASTEXITCODE -ne 0) { throw "Installer smoke validation failed" }
+
+      - name: Generate checksums and build metadata
+        run: |
+          $setup = Get-Item (Join-Path "installer" "FrameForge-Setup-$env:FRAMEFORGE_VERSION.exe")
+          $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "Setup: $($setup.Name)" | Set-Content SHA256SUMS.txt -Encoding UTF8
+          "Setup SHA256: $hash" | Add-Content SHA256SUMS.txt -Encoding UTF8
+          "Version: $env:FRAMEFORGE_VERSION" | Add-Content SHA256SUMS.txt -Encoding UTF8
+          "Profile: $env:BUILD_PROFILE" | Add-Content SHA256SUMS.txt -Encoding UTF8
+          "Console: PyInstaller console=False; child processes CREATE_NO_WINDOW" | Add-Content SHA256SUMS.txt -Encoding UTF8
+          @{
+            app = "FrameForge"
+            version = $env:FRAMEFORGE_VERSION
+            profile = $env:BUILD_PROFILE
+            installer = $setup.Name
+            sha256 = $hash
+            console_policy = "windowed"
+            child_process_policy = "CREATE_NO_WINDOW"
+          } | ConvertTo-Json | Set-Content BUILD_METADATA.txt -Encoding UTF8
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: frameforge-installer-${{ inputs.version || '0.1.31' }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            installer/FrameForge-Setup-*.exe
+            SHA256SUMS.txt
+            BUILD_METADATA.txt
+            build_size_report.json
