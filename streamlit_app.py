@@ -1824,6 +1824,127 @@ def build_args() -> SimpleNamespace:
     )
 
 
+PERSONAL_PRESET_KEYS = tuple(PRESET_CONFIGS["Cân bằng"].keys())
+
+
+def frameforge_user_data_root() -> Path:
+    base = os.environ.get("APPDATA") if os.name == "nt" else None
+    return Path(base or (Path.home() / ".frameforge")) / "ui"
+
+
+def personal_presets_path() -> Path:
+    return frameforge_user_data_root() / "presets.json"
+
+
+def job_history_path() -> Path:
+    return frameforge_user_data_root() / "job_history.json"
+
+
+def read_json_list(path: Path) -> list[dict[str, object]]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, list) else []
+    except (OSError, ValueError, TypeError):
+        return []
+
+
+def current_personal_preset() -> dict[str, object]:
+    return {key: st.session_state.get(key, PRESET_CONFIGS["Cân bằng"].get(key)) for key in PERSONAL_PRESET_KEYS}
+
+
+def save_personal_preset(name: str) -> None:
+    clean_name = str(name).strip()[:80]
+    if not clean_name:
+        return
+    path = personal_presets_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    presets = [item for item in read_json_list(path) if item.get("name") != clean_name]
+    presets.append({"name": clean_name, "created_at": datetime.now().isoformat(timespec="seconds"), "config": current_personal_preset()})
+    path.write_text(json.dumps(presets, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def apply_personal_preset(preset: dict[str, object]) -> None:
+    config = preset.get("config") if isinstance(preset, dict) else None
+    if not isinstance(config, dict):
+        return
+    for key in PERSONAL_PRESET_KEYS:
+        if key in config:
+            st.session_state[key] = config[key]
+
+
+def export_ui_config() -> bytes:
+    payload = {"schema": 1, "app": "FrameForge", "version": "0.1.29", "config": current_personal_preset()}
+    return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def import_ui_config(uploaded_config: object) -> tuple[bool, str]:
+    try:
+        raw = uploaded_config.getvalue() if hasattr(uploaded_config, "getvalue") else b""
+        payload = json.loads(raw.decode("utf-8"))
+        config = payload.get("config", payload) if isinstance(payload, dict) else None
+        if not isinstance(config, dict):
+            return False, "File cấu hình không có object config hợp lệ."
+        changed = 0
+        for key in PERSONAL_PRESET_KEYS:
+            if key in config:
+                st.session_state[key] = config[key]
+                changed += 1
+        return changed > 0, f"Đã nhập {changed} trường cấu hình; giao diện sẽ tải lại để áp dụng."
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError) as exc:
+        return False, f"Không thể đọc file cấu hình: {exc}"
+
+
+def append_job_history(job: dict[str, object]) -> None:
+    path = job_history_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    reports = job.get("reports") or []
+    entry = {
+        "finished_at": datetime.now().isoformat(timespec="seconds"),
+        "status": job.get("status"),
+        "output_dir": str(job.get("output_dir", "")),
+        "video_count": len(job.get("input_paths") or []),
+        "saved": sum(int(item.get("saved", 0) or 0) for item in reports if isinstance(item, dict)),
+        "shortfall": sum(int(item.get("shortfall", 0) or 0) for item in reports if isinstance(item, dict)),
+        "error": job.get("error"),
+    }
+    history = (read_json_list(path) + [entry])[-50:]
+    path.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def render_personal_config_panel() -> None:
+    with st.expander("Preset cá nhân và cấu hình", expanded=False):
+        saved = read_json_list(personal_presets_path())
+        names = [str(item.get("name")) for item in saved if item.get("name")]
+        if names:
+            selected = st.selectbox("Preset cá nhân", names, key="personal_preset_choice")
+            if st.button("Áp dụng preset cá nhân", key="apply_personal_preset"):
+                apply_personal_preset(next(item for item in saved if item.get("name") == selected))
+                st.success(f"Đã áp dụng preset: {selected}")
+                st.rerun()
+        preset_name = st.text_input("Tên preset mới", key="personal_preset_name", placeholder="Ví dụ: Reels sắc nét")
+        if st.button("Lưu preset hiện tại", key="save_personal_preset"):
+            save_personal_preset(preset_name)
+            st.success("Đã lưu preset cá nhân.")
+            st.rerun()
+        st.download_button("Xuất cấu hình JSON", data=export_ui_config(), file_name="frameforge-config.json", mime="application/json", key="export_ui_config")
+        imported = st.file_uploader("Nhập cấu hình JSON", type=["json"], key="import_ui_config")
+        if imported is not None and st.session_state.get("last_imported_config") != imported.file_id:
+            ok, message = import_ui_config(imported)
+            st.session_state["last_imported_config"] = imported.file_id
+            (st.success if ok else st.error)(message)
+            if ok:
+                st.rerun()
+
+
+def render_job_history() -> None:
+    history = list(reversed(read_json_list(job_history_path())))
+    with st.expander(f"Lịch sử job ({len(history)})", expanded=False):
+        if not history:
+            st.caption("Chưa có job nào được lưu.")
+            return
+        st.dataframe(history[:20], use_container_width=True, hide_index=True)
+
+
 def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output_dir: Path, work_dir: Path) -> None:
     args.queue_db = Path(str(getattr(args, "queue_db", "") or output_dir / ".frameforge_queue.sqlite3"))
     cancel_event = threading.Event()
@@ -2235,6 +2356,7 @@ def _poll_processing_job() -> dict[str, object] | None:
         job["report_path"] = report_path
         job["status"] = "completed"
         job["message"] = "Đã xử lý xong queue."
+        append_job_history(job)
     except ProcessingCancelled as exc:
         job["status"] = "cancelled"
         job["error"] = str(exc)
@@ -2490,6 +2612,9 @@ if uploaded_files or downloaded_paths:
             st.success(f"Đã phân tích {len(actual_scene_marks)} scene marker thực tế.")
         else:
             st.info("Chưa có marker scene thật. Bấm ‘Phân tích scene thật’ để chạy phân tích nhanh.")
+
+render_personal_config_panel()
+render_job_history()
 
 st.markdown('<div class="section-heading"><span>→</span> Quy trình hoạt động</div>', unsafe_allow_html=True)
 step_a, step_b, step_c = st.columns(3)

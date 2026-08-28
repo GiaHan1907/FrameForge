@@ -1,5 +1,19 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.29
+
+## Preset cá nhân, job history và cấu hình portable
+
+Bổ sung khu vực **Preset cá nhân và cấu hình** cho phép lưu nhiều preset theo tên riêng, áp dụng lại ở các lần chạy sau và ghi dữ liệu vào thư mục UI per-user. Preset cá nhân chỉ lưu các tham số xử lý cần thiết, không lưu video nguồn, cookie, thông tin đăng nhập hoặc dữ liệu nhạy cảm.
+
+Người dùng có thể xuất cấu hình hiện tại thành `frameforge-config.json` để sao lưu hoặc chuyển sang máy khác, và nhập lại file JSON qua giao diện. File import được kiểm tra schema/object trước khi áp dụng; các giá trị hợp lệ được nạp vào session state rồi giao diện rerun để tránh trạng thái widget cũ.
+
+FrameForge bắt đầu lưu **job history** tối đa 50 job gần nhất, gồm thời gian hoàn tất, trạng thái, thư mục output, số video, số ảnh đã lưu, shortfall và lỗi tổng quát. Lịch sử hiển thị trong expander gọn, không làm che khuất workflow xử lý chính.
+
+Diagnostic action được chuẩn hóa thành payload JSON có version và lỗi rút gọn, hỗ trợ tải xuống khi queue thất bại. Payload không bao gồm cookie hoặc thông tin đăng nhập.
+
+Regression assertions bao phủ các helper lưu preset, import/export, job history và UI panel mới.
+
 # FrameForge v0.1.28
 
 ## Preview workspace: scene markers, frame gallery và crop tương tác
