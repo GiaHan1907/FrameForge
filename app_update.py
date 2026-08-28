@@ -11,6 +11,9 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from core.utils import atomic_write_json as _atomic_write_json
+from core.utils import read_json as _read_json
+from core.utils import hidden_windows_process_kwargs as _hidden_windows_process_kwargs
 from pathlib import Path
 
 DEFAULT_MANIFEST_URL = "https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest.json"
@@ -47,19 +50,6 @@ class AppUpdateStatus:
     rollback_available: bool = False
 
 
-def _atomic_write_json(path: Path, value: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
-
-
-def _read_json(path: Path) -> dict[str, object] | None:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        return None
-    return value if isinstance(value, dict) else None
 
 
 def app_data_dir() -> Path:

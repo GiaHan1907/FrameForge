@@ -29,6 +29,9 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from core.utils import atomic_write_json as _atomic_write_json
+from core.utils import read_json as _read_json
+from core.utils import format_bytes
 
 import cv2
 import numpy as np
@@ -151,14 +154,6 @@ def emit_progress(
         pass
 
 
-def format_bytes(value: int | float) -> str:
-    amount = float(max(0, value))
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if amount < 1024 or unit == "TB":
-            return f"{amount:.1f} {unit}"
-        amount /= 1024
-    return f"{amount:.1f} TB"
-
 
 def current_process_rss_bytes() -> int:
     """Đọc RSS của process hiện tại bằng stdlib, trả 0 nếu không đọc được."""
@@ -216,19 +211,6 @@ def ensure_free_disk_space(path: Path, required_bytes: int = 0, reserve_bytes: i
     return free
 
 
-def _atomic_write_json(path: Path, value: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
-
-
-def _read_json(path: Path) -> dict[str, object] | None:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        return None
-    return value if isinstance(value, dict) else None
 
 
 def scene_cache_path(video: Path, cache_root: Path) -> Path:

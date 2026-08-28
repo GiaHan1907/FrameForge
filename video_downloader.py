@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
+from core.utils import hidden_windows_process_kwargs as _hidden_windows_process_kwargs
 from urllib.parse import urlparse
 
 try:
@@ -228,12 +229,6 @@ def embedded_ffmpeg_paths() -> tuple[str | None, str | None]:
             return str(ffmpeg_path), str(ffprobe_path) if ffprobe_path.exists() else None
     return None, None
 
-
-def _hidden_windows_process_kwargs() -> dict[str, object]:
-    """Ẩn console của process con trên Windows; giữ tương thích các hệ khác."""
-    if os.name != "nt":
-        return {}
-    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
 
 
 def ffmpeg_health() -> dict[str, object]:
