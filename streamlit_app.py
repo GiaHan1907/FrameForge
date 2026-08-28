@@ -59,6 +59,7 @@ from video_screenshot_advanced import (
     ensure_free_disk_space,
     format_bytes,
     process_videos,
+    processing_signature,
     recommend_workers,
     recommended_extract_workers,
     timestamp_label,
@@ -249,6 +250,45 @@ def preview_video_duration(source: object) -> float | None:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
     return None
+
+
+def quick_scene_preview(source: object, threshold: float, start: float, end: float | None, analysis_fps: float, maximum: int = 32) -> list[float]:
+    temporary_path: Path | None = None
+    if isinstance(source, Path):
+        video_path = source
+    else:
+        data = source.getvalue() if hasattr(source, "getvalue") else b""
+        with tempfile.NamedTemporaryFile(prefix="frameforge_preview_", suffix=".mp4", delete=False) as handle:
+            handle.write(data)
+            temporary_path = Path(handle.name)
+        video_path = temporary_path
+    capture = cv2.VideoCapture(str(video_path))
+    try:
+        fps = max(float(capture.get(cv2.CAP_PROP_FPS) or analysis_fps or 4.0), 1.0)
+        duration = float(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0) / fps
+        actual_end = duration if end is None else min(float(end), duration)
+        interval = 1.0 / max(float(analysis_fps), 1.0)
+        next_sample = max(0.0, float(start))
+        previous: np.ndarray | None = None
+        markers: list[float] = []
+        while next_sample <= actual_end and len(markers) < maximum:
+            capture.set(cv2.CAP_PROP_POS_MSEC, next_sample * 1000.0)
+            ok, frame = capture.read()
+            if not ok:
+                break
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.resize(gray, (160, 90), interpolation=cv2.INTER_AREA)
+            if previous is not None:
+                difference = float(np.mean(cv2.absdiff(previous, gray))) / 255.0
+                if difference >= float(threshold):
+                    markers.append(round(next_sample, 3))
+            previous = gray
+            next_sample += interval
+        return markers
+    finally:
+        capture.release()
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def build_preview_timestamps(duration: float | None, mode: str, start: float, end: float | None, every: float | None, count: int, maximum: int) -> list[float]:
@@ -1635,6 +1675,8 @@ def build_args() -> SimpleNamespace:
         max_screenshots=int(max_screenshots),
         target_count_after_filter=bool(target_count_after_filter and mode_label != "Đúng N frame"),
         target_candidate_multiplier=3,
+        target_candidate_multiplier_max=5,
+        repair_manifest=False,
         min_free_ram_gb=float(min_free_ram_gb),
         scene_detection=mode_label in {"Best frame per scene", "Scene detection"},
         best_frame_per_scene=mode_label == "Best frame per scene",
@@ -2249,6 +2291,13 @@ if uploaded_files or downloaded_paths:
                 st.caption(f"Còn {len(preview_timestamps) - 24} mốc khác; preview này không chạy scene detection thật.")
         else:
             st.info("Chưa đọc được thời lượng video để tạo phân bố preview.")
+        if st.button("Phân tích nhanh scene thật", key="quick_scene_preview_button"):
+            st.session_state["quick_scene_preview_marks"] = quick_scene_preview(
+                preview_entry[2], float(scene_threshold), float(start), float(end) if limit_end else None, float(analysis_fps)
+            )
+        actual_scene_marks = st.session_state.get("quick_scene_preview_marks", [])
+        if actual_scene_marks:
+            st.caption("Scene marker thực tế sau phân tích nhanh: " + " · ".join(f"{value:.3f}s" for value in actual_scene_marks))
 
 st.markdown('<div class="section-heading"><span>→</span> Quy trình hoạt động</div>', unsafe_allow_html=True)
 step_a, step_b, step_c = st.columns(3)
@@ -2285,11 +2334,17 @@ if not job_running:
         ]
         recovery_index = st.selectbox("Chọn queue cũ", range(len(recovery_labels)), format_func=lambda index: recovery_labels[index], key="recovery_queue_choice")
         selected_recovery = recoverable_jobs[int(recovery_index)]
+        resume_args_preview = build_args()
+        stored_signature = str(selected_recovery["info"].get("run_signature", ""))
+        current_signature = processing_signature(resume_args_preview)
+        signature_matches = bool(stored_signature and stored_signature == current_signature)
         st.caption("Các item đã hoàn tất sẽ được bỏ qua theo checkpoint; item interrupted sẽ tiếp tục bằng stable item ID.")
-        if st.button("Tiếp tục queue đã gián đoạn", key="resume_persistent_queue", type="primary"):
+        if not signature_matches:
+            st.warning("Cấu hình hiện tại khác cấu hình của queue cũ. Hãy chọn lại preset/tham số cũ hoặc tạo job mới; không tự động resume để tránh sai cache và output.")
+        if st.button("Tiếp tục queue đã gián đoạn", key="resume_persistent_queue", type="primary", disabled=not signature_matches):
             recovery_info = selected_recovery["info"]
             recovery_items = selected_recovery["items"]
-            resume_args = build_args()
+            resume_args = resume_args_preview
             resume_args.resume = True
             resume_args.queue_db = Path(str(selected_recovery["database"]))
             resume_args.queue_run_signature = str(recovery_info.get("run_signature", ""))

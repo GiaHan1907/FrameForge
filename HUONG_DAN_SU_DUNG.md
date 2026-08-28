@@ -210,6 +210,22 @@ Nếu browser không phát được preview, hãy đổi video sang MP4/H.264. �
 
 Từ v0.1.16, mỗi URL và mỗi lần retry tải video vào staging riêng `.frameforge_download_*`, rồi mới chuyển file hoàn tất sang thư mục lưu video. Cách này tránh việc file cũ cùng video khiến yt-dlp bỏ qua download và FrameForge báo nhầm `yt-dlp không tạo được file video đầu ra`. Staging được dọn tự động sau cả thành công và lỗi.
 
+## v0.1.26 — P0: Adaptive target, manifest safety và resource back-pressure
+
+Ở chế độ scene/every, bật **Cố gắng đủ số ảnh sau khi lọc** để FrameForge tự tăng candidate budget khi nhiều frame bị loại. Budget ban đầu dùng `target_candidate_multiplier=3` và có thể tăng tối đa tới `target_candidate_multiplier_max=5`. Report phân biệt số ảnh mục tiêu, candidate đã xét, số ảnh lưu và shortfall; khi hết budget mà vẫn thiếu, hệ thống báo nguyên nhân thay vì retry vô hạn.
+
+Mỗi video có thể kiểm tra manifest bằng `verify_video_manifest()`. Nếu danh sách file trong manifest không khớp thư mục output, CLI hỗ trợ:
+
+```bash
+python video_screenshot_advanced.py video.mp4 --repair-manifest
+```
+
+Ảnh được encode qua file tạm rồi đổi tên an toàn. File tạm còn sót sau crash không được tính là output hoàn tất.
+
+Khi mở lại ứng dụng, khu vực **Queue có thể khôi phục** chỉ bật nút resume nếu run signature của cấu hình hiện tại khớp queue cũ. Nếu preset hoặc tham số đã thay đổi, hãy chọn lại cấu hình cũ; FrameForge không tự resume bằng config khác để tránh sai checkpoint/cache.
+
+Bounded scheduler kiểm tra RAM và dung lượng disk trước mỗi video mới. Khi tài nguyên thấp, item chuyển sang trạng thái chờ tài nguyên và không cấp thêm worker; có thể chờ tài nguyên hồi phục hoặc bấm hủy. Preview có nút **Phân tích nhanh scene thật**, dùng decode độ phân giải thấp và hiển thị marker scene thực tế; các timestamp trước đó chỉ là ước tính.
+
 ## v0.1.25 — Target count, manifest và resource guard
 
 Bật **Cố gắng đủ số ảnh sau khi lọc** nếu muốn FrameForge xét thêm candidate để cố gắng đạt số screenshot đã nhập sau khi loại frame mờ, motion blur và duplicate. Engine xét tối đa gấp 3 lần số mục tiêu để tránh xử lý vô hạn. Nếu không đủ, report hiển thị `target`, `saved`, `shortfall` và các lý do bị loại.

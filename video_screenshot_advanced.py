@@ -897,6 +897,21 @@ class InsufficientResources(RuntimeError):
     """Tài nguyên khả dụng thấp hơn ngưỡng an toàn của job."""
 
 
+def resource_admission_guard(output_root: Path, args: argparse.Namespace) -> dict[str, object]:
+    free_disk = ensure_free_disk_space(
+        output_root,
+        required_bytes=0,
+        reserve_bytes=int(getattr(args, "disk_reserve_bytes", 0) or 0),
+    )
+    available_ram = available_ram_gb()
+    minimum_ram = float(getattr(args, "min_free_ram_gb", 0.0) or 0.0)
+    if available_ram is not None and minimum_ram > 0 and available_ram < minimum_ram:
+        raise InsufficientResources(
+            f"RAM khả dụng chỉ còn {available_ram:.1f} GB, thấp hơn ngưỡng {minimum_ram:.1f} GB."
+        )
+    return {"free_disk_bytes": free_disk, "available_ram_gb": available_ram}
+
+
 def resource_guard(output_dir: Path, duration: float, args: argparse.Namespace) -> dict[str, object]:
     estimated_count = estimate_screenshot_count(duration, args)
     bytes_per_image = 4 * 1024**2 if getattr(args, "format", "jpg") == "png" else 2 * 1024**2
@@ -955,6 +970,35 @@ def finalize_report_diagnostics(reports: dict[str, object], args: argparse.Names
     else:
         reports["shortfall_message"] = None
     return reports
+
+
+def verify_video_manifest(video: Path, output_dir: Path, *, repair: bool = False) -> dict[str, object]:
+    manifest_path = output_dir / ".frameforge_manifest.json"
+    if not manifest_path.is_file():
+        return {"status": "missing", "path": str(manifest_path), "missing_files": [], "unexpected_files": []}
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {"status": "invalid", "path": str(manifest_path), "missing_files": [], "unexpected_files": []}
+    listed = payload.get("files", []) if isinstance(payload, dict) else []
+    listed = [str(item) for item in listed] if isinstance(listed, list) else []
+    missing = [item for item in listed if not (output_dir / item).is_file()]
+    unexpected = sorted(
+        str(path.relative_to(output_dir))
+        for path in output_dir.iterdir()
+        if path.is_file() and not path.name.startswith(".") and path.name not in listed
+    )
+    status = "valid" if not missing and not unexpected else "mismatch"
+    if repair and isinstance(payload, dict):
+        payload["files"] = sorted(
+            str(path.relative_to(output_dir))
+            for path in output_dir.iterdir()
+            if path.is_file() and path.name != manifest_path.name and not path.name.startswith(".")
+        )
+        payload["repaired_at"] = time.time()
+        _atomic_write_json(manifest_path, payload)
+        missing, unexpected, status = [], [], "repaired"
+    return {"status": status, "path": str(manifest_path), "missing_files": missing, "unexpected_files": unexpected}
 
 
 def write_video_manifest(video: Path, output_dir: Path, args: argparse.Namespace, reports: dict[str, object]) -> Path:
@@ -1231,6 +1275,28 @@ def candidate_limit(args: argparse.Namespace) -> int | None:
     return limit
 
 
+def candidate_budget_bounds(args: argparse.Namespace) -> tuple[int | None, int | None]:
+    initial = candidate_limit(args)
+    target = screenshot_limit(args)
+    if initial is None or target is None or not getattr(args, "target_count_after_filter", False):
+        return initial, initial
+    maximum_multiplier = max(
+        int(getattr(args, "target_candidate_multiplier", 3) or 3),
+        int(getattr(args, "target_candidate_multiplier_max", 5) or 5),
+    )
+    return initial, target * maximum_multiplier
+
+
+def expand_candidate_budget(current: int | None, maximum: int | None, target: int | None, considered: int, rejected: int) -> int | None:
+    if current is None or maximum is None or target is None or current >= maximum:
+        return current
+    if considered < current or considered <= 0 or rejected <= 0:
+        return current
+    if rejected / max(considered, 1) < 0.25:
+        return current
+    return min(maximum, current + max(target, current // 2))
+
+
 def process_fixed_mode(
     capture: cv2.VideoCapture,
     video: Path,
@@ -1263,9 +1329,11 @@ def process_fixed_mode(
 
     limit = screenshot_limit(args)
     target_mode = bool(getattr(args, "target_count_after_filter", False))
-    target_candidates = candidate_limit(args)
-    if target_candidates is not None and args.count is None:
+    target_candidates, maximum_candidates = candidate_budget_bounds(args)
+    if target_candidates is not None and args.count is None and not getattr(args, "target_count_after_filter", False):
         targets = targets[:target_candidates]
+    if target_candidates is not None and args.count is None and getattr(args, "target_count_after_filter", False):
+        target_candidates = min(len(targets), target_candidates)
 
     effective_extract_workers = adaptive_extract_workers(
         video_worker_count=int(getattr(args, "video_workers", 1)),
@@ -1299,7 +1367,7 @@ def process_fixed_mode(
     requirements = metric_requirements(args)
     previous_hash: int | None = None
     estimated_frames = max(1, int(max(0.0, actual_end - actual_start) * max(args.source_fps, 1.0)))
-    while target_index < len(targets):
+    while target_index < len(targets) and (target_candidates is None or target_index < target_candidates):
         check_cancelled(cancel_event)
         if target_mode and limit is not None and int(reports["saved"]) >= limit:
             break
@@ -1341,6 +1409,9 @@ def process_fixed_mode(
             f"Đã xử lý {target_index}/{len(targets)} mốc",
         )
         target_index += 1
+        if target_mode and limit is not None and target_candidates is not None:
+            rejected = target_index - int(reports["saved"])
+            target_candidates = expand_candidate_budget(target_candidates, maximum_candidates, limit, target_index, rejected)
         emit_progress(
             on_progress,
             video,
@@ -1396,7 +1467,8 @@ def process_scene_mode(
     }
     limit = screenshot_limit(args)
     target_mode = bool(getattr(args, "target_count_after_filter", False))
-    candidate_budget = candidate_limit(args)
+    candidate_budget, maximum_candidate_budget = candidate_budget_bounds(args)
+    candidate_count = 0
     selected_times: list[float] = []
     previous_gray: np.ndarray | None = None
     previous_histogram: np.ndarray | None = None
@@ -1424,7 +1496,7 @@ def process_scene_mode(
 
     while True:
         check_cancelled(cancel_event)
-        if (target_mode and limit is not None and int(reports["saved"]) >= limit) or (not target_mode and limit is not None and len(selected_times) >= limit) or (candidate_budget is not None and len(selected_times) >= candidate_budget):
+        if (target_mode and limit is not None and int(reports["saved"]) >= limit) or (not target_mode and limit is not None and len(selected_times) >= limit) or (candidate_budget is not None and candidate_count >= candidate_budget):
             break
         decode_started = time.perf_counter()
         ok, frame = capture.read()
@@ -1453,6 +1525,7 @@ def process_scene_mode(
         next_sample = timestamp + sample_interval
         analysis_started = time.perf_counter()
         candidate = frame_candidate(frame, timestamp, args.analysis_width, requirements)
+        candidate_count += 1
         record_stage_timing(getattr(args, "stage_timings", None), "analysis", analysis_started)
         emit_progress(
             on_progress,
@@ -1535,6 +1608,9 @@ def process_scene_mode(
                     getattr(args, "motion_blur_threshold", 0.0),
                 )
 
+        if target_mode and limit is not None and candidate_budget is not None:
+            rejected = max(0, candidate_count - int(reports["saved"]))
+            candidate_budget = expand_candidate_budget(candidate_budget, maximum_candidate_budget, limit, candidate_count, rejected)
         previous_gray = candidate.gray
         previous_histogram = candidate.histogram
         previous_brightness = candidate.brightness
@@ -1702,6 +1778,7 @@ def process_video(
     finalize_report_diagnostics(reports, args)
     manifest_path = write_video_manifest(video, output_dir, args, reports)
     reports["manifest_path"] = str(manifest_path)
+    reports["manifest_validation"] = verify_video_manifest(video, output_dir)
     print(
         f"  Kết quả: lưu={reports['saved']}, mờ={reports['rejected_blurry']}, "
         f"trùng={reports['rejected_duplicate']}, lỗi={reports['capture_errors']}"
@@ -1881,12 +1958,21 @@ def process_videos(
     ) as executor:
         future_map: dict[object, tuple[int, Path]] = {}
         next_pending = 0
+        resource_blocked = False
 
         def submit_available() -> None:
-            nonlocal next_pending
+            nonlocal next_pending, resource_blocked
             while next_pending < len(pending_videos) and len(future_map) < worker_count:
                 if pause_event is not None and pause_event.is_set():
                     return
+                try:
+                    resource_admission_guard(output_root, args)
+                except (InsufficientDiskSpace, InsufficientResources) as exc:
+                    resource_blocked = True
+                    index, video = pending_videos[next_pending]
+                    emit_progress(on_progress, video, "resource_wait", 0.0, f"Đang chờ tài nguyên: {exc}")
+                    return
+                resource_blocked = False
                 index, video = pending_videos[next_pending]
                 next_pending += 1
                 future_map[executor.submit(run_item, index, video)] = (index, video)
@@ -1894,10 +1980,12 @@ def process_videos(
         submit_available()
         while future_map or next_pending < len(pending_videos):
             if not future_map:
-                # Khi pause sau khi batch hiện tại hoàn tất, không submit thêm item.
+                # Khi pause hoặc thiếu tài nguyên, không submit thêm item.
                 wait_if_paused(pause_event, cancel_event)
                 check_cancelled(cancel_event)
                 submit_available()
+                if resource_blocked:
+                    time.sleep(0.5)
                 continue
             done, _ = wait(tuple(future_map), return_when=FIRST_COMPLETED)
             for future in done:
@@ -1950,8 +2038,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--target-count-after-filter",
         action="store_true",
-        help="Cố gắng lưu đủ --max-screenshots sau filter; xét tối đa gấp 3 lần số candidate.",
+        help="Cố gắng lưu đủ --max-screenshots sau filter; adaptive candidate budget tối đa theo multiplier.",
     )
+    parser.add_argument("--target-candidate-multiplier", type=positive_int, default=3, help="Candidate ban đầu trên mỗi screenshot mục tiêu.")
+    parser.add_argument("--target-candidate-multiplier-max", type=positive_int, default=5, help="Trần adaptive candidate multiplier.")
+    parser.add_argument("--repair-manifest", action="store_true", help="Dựng lại danh sách file trong manifest output hiện có.")
     parser.add_argument(
         "--min-free-ram-gb",
         type=non_negative_float,

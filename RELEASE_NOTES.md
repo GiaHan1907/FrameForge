@@ -1,5 +1,15 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.26
+
+## P0: Adaptive target, manifest safety và resource back-pressure
+
+Target count sau filter nay có candidate budget adaptive: bắt đầu theo `target_candidate_multiplier`, tăng khi tỷ lệ reject cao và dừng ở `target_candidate_multiplier_max`. Report phân biệt candidate đã xét, ảnh đã lưu, các nhóm bị loại và shortfall.
+
+Engine bổ sung `verify_video_manifest()` và CLI `--repair-manifest` để phát hiện file output thiếu/thừa sau crash và dựng lại danh sách file bằng atomic JSON write. Resume queue trong Streamlit kiểm tra run signature trước khi cho tiếp tục; nếu cấu hình hiện tại khác queue cũ, nút resume bị khóa để tránh dùng sai cache/checkpoint.
+
+Bounded scheduler kiểm tra RAM/disk trước mỗi item mới và chuyển item sang trạng thái chờ tài nguyên khi dưới ngưỡng, không admit thêm video cho đến khi tài nguyên hồi phục hoặc người dùng cancel. Preview có nút phân tích nhanh scene thật ở độ phân giải thấp, tách biệt với timestamp preview ước tính.
+
 # FrameForge v0.1.25
 
 ## Target count, manifest và resource guard

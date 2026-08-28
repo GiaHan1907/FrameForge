@@ -6,6 +6,14 @@ Trong sidebar, nhập **Số screenshot mỗi video** từ 1 đến 1000. Với 
 
 CLI cũng hỗ trợ `--max-screenshots N` cho scene/every mode; `--count N` vẫn giữ semantics cũ là lấy đúng N frame. Khi đổi số lượng trong scene mode, cache scene được invalidated bằng cache key mới để không dùng nhầm danh sách timestamp cũ.
 
+## Ghi chú v0.1.26
+
+P0 v0.1.26 nâng cấp target count bằng candidate budget adaptive: budget bắt đầu theo `target_candidate_multiplier`, tăng khi tỷ lệ frame bị loại cao và dừng ở `target_candidate_multiplier_max`. Report phân biệt candidate đã xét, ảnh đã lưu, nhóm bị loại và shortfall; không chạy vô hạn khi video không đủ frame hợp lệ.
+
+Engine có `verify_video_manifest()` và CLI `--repair-manifest` để phát hiện file output thiếu/thừa sau crash và dựng lại danh sách file bằng atomic JSON write. Resume queue trên Streamlit kiểm tra run signature trước khi cho tiếp tục; khi config hiện tại khác queue cũ, nút resume bị khóa để tránh dùng sai checkpoint hoặc cache.
+
+Bounded scheduler kiểm tra RAM/disk trước mỗi item mới. Khi tài nguyên dưới ngưỡng, queue chuyển sang `resource_wait` và không admit thêm video cho tới khi tài nguyên hồi phục hoặc người dùng cancel. Preview có nút **Phân tích nhanh scene thật**, dùng decode độ phân giải thấp và hiển thị marker scene thực tế tách biệt với timestamp ước tính.
+
 ## Ghi chú v0.1.25
 
 FrameForge bổ sung chế độ **Cố gắng đủ số ảnh sau khi lọc**. Với scene/every mode, engine xét thêm candidate trong budget giới hạn để bù ảnh bị loại bởi sharpness, motion blur hoặc duplicate. Report phân biệt `target_screenshots`, `saved`, `shortfall` và `shortfall_reasons`; nếu không đủ ảnh, giao diện nêu rõ lý do.

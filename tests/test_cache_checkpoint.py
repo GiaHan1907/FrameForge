@@ -163,6 +163,49 @@ class CacheCheckpointTests(unittest.TestCase):
         self.assertEqual(manifest["report"]["saved"], 3)
         self.assertEqual(manifest["config"]["target_count_after_filter"], True)
 
+    def test_adaptive_candidate_budget_expands_with_rejections(self) -> None:
+        args = copy.copy(self.args)
+        args.max_screenshots = 2
+        args.target_count_after_filter = True
+        args.target_candidate_multiplier = 3
+        args.target_candidate_multiplier_max = 5
+        initial, maximum = engine.candidate_budget_bounds(args)
+        self.assertEqual((initial, maximum), (6, 10))
+        self.assertEqual(engine.expand_candidate_budget(initial, maximum, 2, 6, 3), 9)
+        self.assertEqual(engine.expand_candidate_budget(10, maximum, 2, 10, 10), 10)
+
+    def test_manifest_verify_detects_missing_and_repairs_file_list(self) -> None:
+        args = copy.copy(self.args)
+        args.scene_detection = False
+        args.best_frame_per_scene = False
+        args.count = 2
+        args.every = None
+        args.max_screenshots = 0
+        args.min_sharpness = 0.0
+        args.motion_blur_threshold = 0.0
+        output = self.root / "manifest-verify"
+        report = engine.process_video(self.video, output, None, args)
+        manifest = Path(str(report["manifest_path"]))
+        manifest_dir = manifest.parent
+        self.assertEqual(engine.verify_video_manifest(self.video, manifest_dir)["status"], "valid")
+        image = next(manifest_dir.glob("*.jpg"))
+        image.unlink()
+        mismatch = engine.verify_video_manifest(self.video, manifest_dir)
+        self.assertEqual(mismatch["status"], "mismatch")
+        self.assertIn(image.name, mismatch["missing_files"])
+        repaired = engine.verify_video_manifest(self.video, manifest_dir, repair=True)
+        self.assertEqual(repaired["status"], "repaired")
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+        self.assertNotIn(image.name, payload["files"])
+
+    def test_resource_admission_guard_rejects_low_ram(self) -> None:
+        args = copy.copy(self.args)
+        args.disk_reserve_bytes = 0
+        args.min_free_ram_gb = 4.0
+        with patch.object(engine, "available_ram_gb", return_value=1.0):
+            with self.assertRaises(engine.InsufficientResources):
+                engine.resource_admission_guard(self.root / "admission", args)
+
     def test_resource_guard_rejects_insufficient_ram_threshold(self) -> None:
         args = copy.copy(self.args)
         args.format = "jpg"
