@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Iterable
+from core.errors import ErrorInfo, classify_error as _classify_error_impl
 
 
 class QueueStatus(str, Enum):
@@ -49,76 +50,14 @@ class ItemState:
         return asdict(self)
 
 
-@dataclass(frozen=True)
-class ErrorInfo:
-    code: str
-    label: str
-    retryable: bool
-    suggestion: str
-
-
 ProgressCallback = Callable[[Path, str, float, str], None]
 Processor = Callable[[Path, ProgressCallback, threading.Event], dict[str, Any]]
 
 
-_ERROR_RULES: tuple[tuple[str, tuple[str, ...], str, bool, str], ...] = (
-    (
-        "access_denied",
-        ("login", "sign in", "private", "permission", "403", "access denied"),
-        "URL không công khai hoặc bị từ chối truy cập",
-        False,
-        "Kiểm tra URL có mở công khai và bạn có quyền sử dụng nội dung.",
-    ),
-    (
-        "rate_limited",
-        ("429", "too many requests", "rate limit", "temporarily blocked"),
-        "Bị giới hạn tần suất",
-        True,
-        "Chờ một lúc rồi thử lại; tránh gửi quá nhiều URL cùng lúc.",
-    ),
-    (
-        "ffmpeg_missing",
-        ("ffmpeg", "ffprobe"),
-        "Thiếu hoặc không gọi được FFmpeg",
-        False,
-        "Cài FFmpeg hoặc đặt ffmpeg/ffprobe trong PATH rồi thử lại.",
-    ),
-    (
-        "format_unavailable",
-        ("requested format", "format is not available", "no video formats", "no formats"),
-        "Không có format video phù hợp",
-        False,
-        "Thử chất lượng khác hoặc kiểm tra Reel/video còn công khai.",
-    ),
-    (
-        "network_error",
-        ("timeout", "timed out", "connection reset", "temporary failure", "network", "503", "502"),
-        "Lỗi mạng tạm thời",
-        True,
-        "Kiểm tra kết nối mạng; hệ thống sẽ tự thử lại với thời gian chờ tăng dần.",
-    ),
-    (
-        "output_error",
-        ("permission denied", "no space", "disk full", "cannot write", "output"),
-        "Không ghi được file output",
-        False,
-        "Kiểm tra quyền ghi, dung lượng đĩa và thư mục output.",
-    ),
-)
-
 
 def classify_error(exc: BaseException) -> ErrorInfo:
     """Phân loại lỗi từ yt-dlp/FFmpeg thành mã ổn định cho UI."""
-    text = str(exc).lower()
-    for code, needles, label, retryable, suggestion in _ERROR_RULES:
-        if any(needle in text for needle in needles):
-            return ErrorInfo(code, label, retryable, suggestion)
-    return ErrorInfo(
-        "unknown",
-        "Lỗi không xác định",
-        True,
-        "Mở chi tiết lỗi, kiểm tra URL/FFmpeg/dung lượng rồi thử lại.",
-    )
+    return _classify_error_impl(exc, ffmpeg_available=True)
 
 
 class VideoQueueController:

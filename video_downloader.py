@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
+from core.errors import ErrorInfo as DownloadErrorInfo, classify_error as classify_download_error
 from core.utils import hidden_windows_process_kwargs as _hidden_windows_process_kwargs
 from urllib.parse import urlparse
 
@@ -51,14 +52,6 @@ class DownloadResult:
     playlist_index: int | None = None
 
 
-@dataclass(frozen=True)
-class DownloadErrorInfo:
-    code: str
-    label: str
-    retryable: bool
-    suggestion: str
-
-
 @dataclass
 class DownloadFailure(RuntimeError):
     url: str
@@ -81,73 +74,7 @@ class DownloadFailure(RuntimeError):
         )
 
 
-_ERROR_RULES: tuple[tuple[str, tuple[str, ...], str, bool, str], ...] = (
-    (
-        "access_denied",
-        ("login required", "sign in", "private", "not available in your country", "http error 401", "http error 403", "forbidden"),
-        "URL yêu cầu đăng nhập hoặc không truy cập được",
-        False,
-        "Kiểm tra URL còn công khai và bạn có quyền sử dụng nội dung; FrameForge không hỗ trợ cookie hoặc bypass đăng nhập.",
-    ),
-    (
-        "rate_limited",
-        ("too many requests", "rate limit", "http error 429", "temporarily blocked", "captcha"),
-        "Nguồn đang giới hạn tần suất truy cập",
-        True,
-        "Chờ một lúc rồi thử lại với số URL nhỏ hơn; không tăng retry quá cao.",
-    ),
-    (
-        "ffmpeg_missing",
-        ("ffmpeg", "ffprobe", "merging", "postprocess"),
-        "Thiếu FFmpeg để ghép video/audio",
-        False,
-        "Cài bản FrameForge có FFmpeg nhúng hoặc thêm ffmpeg.exe vào PATH.",
-    ),
-    (
-        "format_unavailable",
-        ("requested format is not available", "no video formats found", "format not available", "unable to extract", "no suitable format"),
-        "Không tìm thấy format video phù hợp",
-        False,
-        "Thử chất lượng thấp hơn hoặc kiểm tra Reel còn công khai; một số nội dung không cung cấp format cho yt-dlp.",
-    ),
-    (
-        "output_error",
-        ("permission denied", "access is denied", "no space left", "disk full", "cannot create", "could not write", "không tạo được file video"),
-        "Không ghi được file đầu ra",
-        False,
-        "Kiểm tra thư mục lưu, quyền ghi và dung lượng ổ đĩa.",
-    ),
-    (
-        "network_error",
-        ("timed out", "timeout", "connection reset", "connection refused", "temporary failure", "unable to download", "http error 5", "network"),
-        "Lỗi mạng hoặc nguồn tạm thời không phản hồi",
-        True,
-        "Kiểm tra kết nối mạng; FrameForge sẽ tự retry với thời gian chờ tăng dần.",
-    ),
-)
 
-
-def classify_download_error(exc: BaseException, ffmpeg_available: bool = True) -> DownloadErrorInfo:
-    """Phân loại lỗi yt-dlp thành nhóm có thể retry hoặc cần người dùng xử lý."""
-    message = str(exc or "").lower()
-    if not ffmpeg_available and any(token in message for token in ("ffmpeg", "ffprobe", "merging", "postprocess")):
-        return DownloadErrorInfo(
-            "ffmpeg_missing",
-            "Thiếu FFmpeg để ghép video/audio",
-            False,
-            "Cài bản FrameForge có FFmpeg nhúng hoặc thêm ffmpeg.exe vào PATH.",
-        )
-    for code, tokens, label, retryable, suggestion in _ERROR_RULES:
-        if code == "ffmpeg_missing" and ffmpeg_available:
-            continue
-        if any(token in message for token in tokens):
-            return DownloadErrorInfo(code, label, retryable, suggestion)
-    return DownloadErrorInfo(
-        "unknown",
-        "Lỗi downloader chưa xác định",
-        True,
-        "Kiểm tra URL và kết nối mạng; xem chi tiết lỗi rồi thử lại nếu lỗi có tính tạm thời.",
-    )
 
 
 def _download_failure(
