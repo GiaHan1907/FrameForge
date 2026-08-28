@@ -954,6 +954,12 @@ def finalize_report_diagnostics(reports: dict[str, object], args: argparse.Names
     shortfall = max(0, target - saved) if target > 0 else 0
     reports["target_screenshots"] = target
     reports["target_count_after_filter"] = target_mode
+    reports["forced_fallback_saved"] = int(reports.get("forced_fallback_saved", 0) or 0)
+    reports["forced_fallback_reasons"] = list(reports.get("forced_fallback_reasons", []) or [])
+    reports["force_fill_shortfall"] = max(
+        0,
+        int(reports.get("force_fill_shortfall", shortfall) or 0),
+    )
     reports["shortfall"] = shortfall
     reports["shortfall_reasons"] = {
         "rejected_blurry": int(reports.get("rejected_blurry", 0) or 0),
@@ -965,7 +971,12 @@ def finalize_report_diagnostics(reports: dict[str, object], args: argparse.Names
     if shortfall:
         reports["shortfall_message"] = (
             f"Thiếu {shortfall} screenshot so với mục tiêu {target}; "
-            "hãy nới bộ lọc, tăng phạm vi thời gian hoặc tắt duplicate/blur filter."
+            "không đủ candidate hợp lệ hoặc frame đọc được để fallback."
+        )
+    elif reports["forced_fallback_saved"]:
+        reports["shortfall_message"] = (
+            f"Đã đủ {target} screenshot; trong đó {reports['forced_fallback_saved']} ảnh "
+            "được lưu bằng fallback sau khi filter loại candidate."
         )
     else:
         reports["shortfall_message"] = None
@@ -1045,14 +1056,17 @@ def accept_and_save(
     previous_hash: int | None,
     existing_hashes: set[int] | None = None,
     duplicate_buckets: dict[str, set[int]] | None = None,
+    *,
+    force_fill: bool = False,
 ) -> tuple[str, int | None]:
-    if args.min_sharpness > 0 and candidate.sharpness < args.min_sharpness:
+    if not force_fill and args.min_sharpness > 0 and candidate.sharpness < args.min_sharpness:
         return "blurry", previous_hash
     motion_threshold = float(getattr(args, "motion_blur_threshold", 0.0))
-    if motion_threshold > 0 and candidate.motion_blur_score > motion_threshold:
+    if not force_fill and motion_threshold > 0 and candidate.motion_blur_score > motion_threshold:
         return "motion_blur", previous_hash
     if (
-        args.duplicate_threshold > 0
+        not force_fill
+        and args.duplicate_threshold > 0
         and previous_hash is not None
         and hamming_distance(candidate.hash_value, previous_hash) <= args.duplicate_threshold
     ):
@@ -1064,7 +1078,8 @@ def accept_and_save(
         for bucket_key in _dhash_bucket_keys(candidate.hash_value):
             comparison_hashes.update(duplicate_buckets.get(bucket_key, set()))
     if (
-        getattr(args, "cross_run_duplicates", True)
+        not force_fill
+        and getattr(args, "cross_run_duplicates", True)
         and cross_run_threshold > 0
         and comparison_hashes
         and any(hamming_distance(candidate.hash_value, item) <= cross_run_threshold for item in comparison_hashes)
@@ -1074,7 +1089,13 @@ def accept_and_save(
     filename = f"{timestamp_label(candidate.timestamp)}.{args.format}"
     output = output_dir / filename
     if output.exists() and not args.overwrite:
-        return "existing", candidate.hash_value
+        if not force_fill:
+            return "existing", candidate.hash_value
+        suffix = 1
+        while output.exists():
+            filename = f"{timestamp_label(candidate.timestamp)}_fallback_{index:04d}_{suffix}.{args.format}"
+            output = output_dir / filename
+            suffix += 1
     save_image(
         candidate.frame,
         output,
@@ -1092,6 +1113,67 @@ def accept_and_save(
             duplicate_buckets.setdefault(bucket_key, set()).add(candidate.hash_value)
     print(f"  lưu — {output.name} sharpness={candidate.sharpness:.1f}")
     return "saved", candidate.hash_value
+
+
+def force_fill_target(
+    fallback_candidates: list[tuple[FrameCandidate, str]],
+    output_dir: Path,
+    video_stem: str,
+    args: argparse.Namespace,
+    reports: dict[str, object],
+    previous_hash: int | None,
+    existing_hashes: set[int] | None,
+    duplicate_buckets: dict[str, set[int]] | None,
+) -> int | None:
+    """Bù target bằng candidate bị loại, theo thứ tự ít rủi ro nhất.
+
+    Filter vẫn chạy bình thường ở vòng chính. Chỉ khi bật target mode và còn thiếu
+    ảnh, vòng này mới nới filter; report ghi rõ số ảnh đã dùng fallback để người
+    dùng biết chất lượng có thể thấp hơn ngưỡng ban đầu.
+    """
+    target = screenshot_limit(args)
+    if not getattr(args, "target_count_after_filter", False) or target is None:
+        return previous_hash
+    missing = max(0, target - int(reports.get("saved", 0) or 0))
+    if missing <= 0 or not fallback_candidates:
+        return previous_hash
+    reason_rank = {
+        "duplicate_cross_run": 0,
+        "duplicate": 1,
+        "motion_blur": 2,
+        "blurry": 3,
+        "not_selected": 4,
+    }
+    ordered = sorted(
+        fallback_candidates,
+        key=lambda item: (reason_rank.get(item[1], 5), -float(item[0].sharpness), float(item[0].timestamp)),
+    )
+    used_timestamps: set[float] = set()
+    for candidate, reason in ordered:
+        if missing <= 0:
+            break
+        timestamp = round(float(candidate.timestamp), 3)
+        if timestamp in used_timestamps:
+            continue
+        status, previous_hash = accept_and_save(
+            candidate,
+            output_dir,
+            video_stem,
+            int(reports.get("saved", 0) or 0) + 1,
+            args,
+            previous_hash,
+            existing_hashes,
+            duplicate_buckets,
+            force_fill=True,
+        )
+        if status == "saved":
+            reports["saved"] = int(reports.get("saved", 0) or 0) + 1
+            reports["forced_fallback_saved"] = int(reports.get("forced_fallback_saved", 0) or 0) + 1
+            reports.setdefault("forced_fallback_reasons", []).append(reason)
+            missing -= 1
+            used_timestamps.add(timestamp)
+    reports["force_fill_shortfall"] = max(0, missing)
+    return previous_hash
 
 
 def recommended_extract_workers() -> int:
@@ -1351,6 +1433,9 @@ def process_fixed_mode(
         "rejected_duplicate_cross_run": 0,
         "skipped_existing": 0,
         "capture_errors": 0,
+        "forced_fallback_saved": 0,
+        "forced_fallback_reasons": [],
+        "force_fill_shortfall": 0,
         "scene_times": [],
         "extraction_mode": "sequential",
         "extraction_workers": effective_extract_workers,
@@ -1363,6 +1448,7 @@ def process_fixed_mode(
             video, output_dir, targets, multiprocessing_args, on_progress, cancel_event, existing_hashes, duplicate_buckets
         )
     target_index = 0
+    fallback_candidates: list[tuple[FrameCandidate, str]] = []
     frame_index = 0
     requirements = metric_requirements(args)
     previous_hash: int | None = None
@@ -1401,6 +1487,8 @@ def process_fixed_mode(
             candidate, output_dir, video.stem, target_index + 1, args, previous_hash, existing_hashes, duplicate_buckets
         )
         reports[status_key(status)] = int(reports[status_key(status)]) + 1
+        if target_mode and status != "saved":
+            fallback_candidates.append((candidate, status))
         emit_progress(
             on_progress,
             video,
@@ -1418,6 +1506,17 @@ def process_fixed_mode(
             "selecting",
             target_index / max(len(targets), 1),
             f"Đã xử lý {target_index}/{len(targets)} mốc",
+        )
+    if target_mode:
+        force_fill_target(
+            fallback_candidates,
+            output_dir,
+            video.stem,
+            args,
+            reports,
+            previous_hash,
+            existing_hashes,
+            duplicate_buckets,
         )
     emit_progress(on_progress, video, "saving", 1.0, "Đã hoàn tất ghi screenshot")
     return reports
@@ -1460,6 +1559,9 @@ def process_scene_mode(
         "rejected_duplicate_cross_run": 0,
         "skipped_existing": 0,
         "capture_errors": 0,
+        "forced_fallback_saved": 0,
+        "forced_fallback_reasons": [],
+        "force_fill_shortfall": 0,
         "scene_times": [],
         "selected_times": [],
         "scene_confirmations": args.scene_confirmations,
@@ -1470,6 +1572,7 @@ def process_scene_mode(
     candidate_budget, maximum_candidate_budget = candidate_budget_bounds(args)
     candidate_count = 0
     selected_times: list[float] = []
+    fallback_candidates: list[tuple[FrameCandidate, str]] = []
     previous_gray: np.ndarray | None = None
     previous_histogram: np.ndarray | None = None
     previous_brightness: float | None = None
@@ -1492,6 +1595,8 @@ def process_scene_mode(
         selected_times.append(round(float(candidate.timestamp), 3))
         status, updated_hash = accept_and_save(candidate, output_dir, video.stem, index, args, previous, existing_hashes, duplicate_buckets)
         reports[status_key(status)] = int(reports[status_key(status)]) + 1
+        if target_mode and status != "saved":
+            fallback_candidates.append((candidate, status))
         return updated_hash
 
     while True:
@@ -1630,7 +1735,18 @@ def process_scene_mode(
                 args.best_frame_per_scene,
                 getattr(args, "motion_blur_threshold", 0.0),
             )
-    flush(current_best, scene_index + 1, previous_hash)
+    previous_hash = flush(current_best, scene_index + 1, previous_hash)
+    if target_mode:
+        force_fill_target(
+            fallback_candidates,
+            output_dir,
+            video.stem,
+            args,
+            reports,
+            previous_hash,
+            existing_hashes,
+            duplicate_buckets,
+        )
     reports["selected_times"] = selected_times
     emit_progress(on_progress, video, "saving", 1.0, "Đã hoàn tất ghi screenshot")
     return reports
@@ -2038,7 +2154,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--target-count-after-filter",
         action="store_true",
-        help="Cố gắng lưu đủ --max-screenshots sau filter; adaptive candidate budget tối đa theo multiplier.",
+        help="Ép đủ --max-screenshots nếu có đủ candidate: adaptive budget trước, fallback nới filter cuối và ghi rõ trong report.",
     )
     parser.add_argument("--target-candidate-multiplier", type=positive_int, default=3, help="Candidate ban đầu trên mỗi screenshot mục tiêu.")
     parser.add_argument("--target-candidate-multiplier-max", type=positive_int, default=5, help="Trần adaptive candidate multiplier.")

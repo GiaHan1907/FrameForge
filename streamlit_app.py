@@ -1607,15 +1607,18 @@ with st.sidebar:
         step=1,
         key="max_screenshots",
         help=(
-            "Giới hạn tối đa cho scene detection/Mỗi N giây; "
-            "với Đúng N frame đây là số frame chính xác. Bộ lọc mờ/trùng có thể làm số ảnh lưu thực tế thấp hơn."
+            "Số ảnh mục tiêu mỗi video. Khi bật chế độ ép đủ, FrameForge sẽ dùng fallback có kiểm soát "
+            "nếu filter loại quá nhiều frame."
         ),
     )
     target_count_after_filter = st.checkbox(
-        "Cố gắng đủ số ảnh sau khi lọc",
+        "Ép đủ số ảnh yêu cầu (fallback cuối)",
         key="target_count_after_filter",
-        disabled=mode_label == "Đúng N frame",
-        help="Chỉ áp dụng cho scene/every mode; engine sẽ xét thêm candidate, tối đa gấp 3 lần mục tiêu, để bù ảnh bị loại bởi filter mờ/trùng.",
+        value=True,
+        help=(
+            "Áp dụng cho mọi mode. Filter vẫn chạy bình thường trước; nếu còn thiếu, hệ thống sẽ lưu "
+            "candidate bị loại ít rủi ro nhất và ghi rõ số ảnh fallback trong report."
+        ),
     )
 
     if mode_label in {"Best frame per scene", "Scene detection"}:
@@ -1811,7 +1814,7 @@ def build_args() -> SimpleNamespace:
         every=float(every) if every is not None else None,
         count=int(count) if count is not None else None,
         max_screenshots=int(max_screenshots),
-        target_count_after_filter=bool(target_count_after_filter and mode_label != "Đúng N frame"),
+        target_count_after_filter=bool(target_count_after_filter),
         target_candidate_multiplier=3,
         target_candidate_multiplier_max=5,
         repair_manifest=False,
@@ -2482,6 +2485,7 @@ def _render_processing_job() -> None:
     total_attempts = sum(int(item.get("attempts", 1)) for item in reports)
     total_target = sum(int(item.get("target_screenshots", 0) or 0) for item in reports)
     total_shortfall = sum(int(item.get("shortfall", 0) or 0) for item in reports)
+    total_fallback = sum(int(item.get("forced_fallback_saved", 0) or 0) for item in reports)
     failed_reports = [item for item in reports if isinstance(item, dict) and "error" in item]
     metric_a, metric_b, metric_c, metric_d, metric_e = st.columns(5)
     metric_a.metric("Đã lưu", total_saved)
@@ -2496,6 +2500,10 @@ def _render_processing_job() -> None:
     if total_target > 0:
         if total_shortfall:
             st.warning(f"Thiếu {total_shortfall} screenshot so với mục tiêu {total_target}. Xem từng video để biết lý do bị loại.")
+        elif total_fallback:
+            st.warning(
+                f"Đã đủ mục tiêu {total_target} screenshot; {total_fallback} ảnh được lấy bằng fallback sau filter."
+            )
         else:
             st.success(f"Đã đạt mục tiêu {total_target} screenshot sau filter.")
     st.caption(
@@ -2509,8 +2517,10 @@ def _render_processing_job() -> None:
             st.error(f"✕ {video_name} · thất bại · {report.get('error')}")
         else:
             shortfall = int(report.get("shortfall", 0) or 0)
-            suffix = f" · thiếu {shortfall}" if shortfall else ""
-            st.success(f"✓ {video_name} · hoàn tất · lưu {int(report.get('saved', 0))} ảnh{suffix} · {int(report.get('attempts', 1))} lần thử")
+            fallback = int(report.get("forced_fallback_saved", 0) or 0)
+            suffix = f" · thiếu {shortfall}" if shortfall else (f" · fallback {fallback}" if fallback else "")
+            state_label = "hoàn tất có fallback" if fallback else "hoàn tất"
+            st.success(f"✓ {video_name} · {state_label} · lưu {int(report.get('saved', 0))} ảnh{suffix} · {int(report.get('attempts', 1))} lần thử")
             if report.get("shortfall_message"):
                 st.caption(str(report["shortfall_message"]))
     download_col, report_col = st.columns([1, 1])

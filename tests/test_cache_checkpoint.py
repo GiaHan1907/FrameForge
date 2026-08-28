@@ -55,6 +55,33 @@ class CacheCheckpointTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.context.cleanup()
 
+    def test_force_fill_reaches_exact_requested_count(self) -> None:
+        args = copy.copy(self.args)
+        args.target_count_after_filter = True
+        args.max_screenshots = 10
+        args.min_sharpness = 9999.0
+        args.duplicate_threshold = 0
+        args.cross_run_duplicates = False
+        args.cross_run_duplicate_threshold = 0
+        output = self.root / "force-fill"
+        output.mkdir()
+        frame = np.zeros((80, 120, 3), dtype=np.uint8)
+        candidates = [
+            (engine.frame_candidate(frame + index, index / 10.0, 64, engine.metric_requirements(args)), "blurry")
+            for index in range(10)
+        ]
+        reports = {
+            "saved": 0,
+            "forced_fallback_saved": 0,
+            "forced_fallback_reasons": [],
+            "force_fill_shortfall": 0,
+        }
+        engine.force_fill_target(candidates, output, "sample", args, reports, None, set(), {})
+        self.assertEqual(reports["saved"], 10)
+        self.assertEqual(reports["forced_fallback_saved"], 10)
+        self.assertEqual(reports["force_fill_shortfall"], 0)
+        self.assertEqual(len(list(output.glob("*.jpg"))), 10)
+
     def test_crop_ratios_and_resize_preserve_aspect(self) -> None:
         frame = np.zeros((100, 200, 3), dtype=np.uint8)
         expected_shapes = {
