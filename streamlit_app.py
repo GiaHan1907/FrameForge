@@ -49,7 +49,6 @@ app_update_status = initialize_app_update()
 
 from video_screenshot_advanced import (
     InsufficientDiskSpace,
-    InsufficientResources,
     ProcessingCancelled,
     cleanup_frameforge_cache,
     cleanup_frameforge_temp_dirs,
@@ -68,6 +67,7 @@ from video_screenshot_advanced import (
     timestamp_label,
 )
 from timeline_utils import build_timeline_entries, filter_timeline_entries
+from core.resources import InsufficientResources
 from queue_per_video import classify_error, render_queue_per_video
 from persistent_queue import PersistentQueueStore
 from video_downloader import (

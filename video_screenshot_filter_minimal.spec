@@ -33,6 +33,8 @@ datas += [
     ("queue_per_video.py", "."),
     ("core/__init__.py", "core"),
     ("core/utils.py", "core"),
+    ("core/resources.py", "core"),
+    ("core/manifest.py", "core"),
     ("ui/styles.css", "ui"),
     ("frameforge_version.txt", "."),
 ]
