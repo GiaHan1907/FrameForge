@@ -229,6 +229,13 @@ def embedded_ffmpeg_paths() -> tuple[str | None, str | None]:
     return None, None
 
 
+def _hidden_windows_process_kwargs() -> dict[str, object]:
+    """Ẩn console của process con trên Windows; giữ tương thích các hệ khác."""
+    if os.name != "nt":
+        return {}
+    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+
+
 def ffmpeg_health() -> dict[str, object]:
     """Trả về trạng thái FFmpeg/ffprobe nhúng hoặc cài trong PATH."""
     embedded_ffmpeg, embedded_ffprobe = embedded_ffmpeg_paths()
@@ -252,6 +259,7 @@ def ffmpeg_health() -> dict[str, object]:
                 text=True,
                 timeout=5,
                 check=False,
+                **_hidden_windows_process_kwargs(),
             )
             first_line = (completed.stdout or completed.stderr).splitlines()
             result["version"] = first_line[0] if first_line else None

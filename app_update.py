@@ -21,6 +21,13 @@ PENDING_FILE_NAME = "pending.json"
 ROLLBACK_PENDING_FILE_NAME = "rollback_pending.json"
 CHANNEL_FILE_NAME = "update_channel.json"
 DEFAULT_BETA_MANIFEST_URL = "https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest-beta.json"
+
+
+def _hidden_windows_process_kwargs() -> dict[str, object]:
+    """Ẩn console của process con trên Windows; không truyền cờ này trên POSIX."""
+    if os.name != "nt":
+        return {}
+    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
 SUPPORTED_CHANNELS = {"stable", "beta"}
 
 
@@ -226,6 +233,7 @@ def _authenticode_valid(path: Path) -> bool:
             text=True,
             timeout=15,
             check=False,
+            **_hidden_windows_process_kwargs(),
         )
     except (OSError, subprocess.SubprocessError):
         return False
