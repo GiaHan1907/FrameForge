@@ -210,6 +210,12 @@ Nếu browser không phát được preview, hãy đổi video sang MP4/H.264. �
 
 Từ v0.1.16, mỗi URL và mỗi lần retry tải video vào staging riêng `.frameforge_download_*`, rồi mới chuyển file hoàn tất sang thư mục lưu video. Cách này tránh việc file cũ cùng video khiến yt-dlp bỏ qua download và FrameForge báo nhầm `yt-dlp không tạo được file video đầu ra`. Staging được dọn tự động sau cả thành công và lỗi.
 
+## v0.1.24 — Chọn số screenshot cho mỗi video
+
+Trong bước **Cách chọn frame**, nhập **Số screenshot mỗi video** từ 1 đến 1000. Với **Best frame per scene** và **Scene detection**, đây là số screenshot tối đa; scene ít hoặc bộ lọc mờ/trùng có thể làm số ảnh lưu thực tế thấp hơn. Với **Mỗi N giây**, giá trị này giới hạn số mốc đầu tiên được lấy. Với **Đúng N frame**, giá trị này là số frame chính xác được phân bố đều trong khoảng thời gian đã chọn.
+
+Khi dùng CLI, `--max-screenshots N` áp dụng cho scene/every mode. Tùy chọn `--count N` vẫn giữ nghĩa cũ là lấy đúng N frame. Đổi giới hạn screenshot trong scene mode sẽ tạo cache key mới, vì vậy FrameForge không dùng nhầm danh sách timestamp của cấu hình trước.
+
 ## v0.1.23 — SQLite state machine và resume sau crash
 
 Khi mở queue database được tạo từ v0.1.22, FrameForge tự chạy migration additive lên schema v0.1.23. Report, checkpoint và trạng thái cũ được giữ lại; hệ thống bổ sung `item_id` ổn định, `source_position`, phase/progress, heartbeat và timestamps. Không cần xóa file SQLite hoặc tạo database mới.

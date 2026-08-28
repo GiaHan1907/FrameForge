@@ -1,5 +1,13 @@
 # FrameForge Windows Release Notes
 
+# FrameForge v0.1.24
+
+## Chọn số screenshot cho mỗi video
+
+Streamlit bổ sung widget **Số screenshot mỗi video** với giới hạn 1–1000. Best frame per scene và Scene detection dùng giá trị này làm số ảnh tối đa; Mỗi N giây dùng làm giới hạn timestamp; Đúng N frame dùng làm số frame chính xác. CLI hỗ trợ `--max-screenshots N`, trong khi `--count N` tiếp tục giữ semantics cũ.
+
+Scene cache tăng version và đưa giới hạn screenshot vào cache key để thay đổi số lượng không dùng nhầm timestamp của cấu hình trước. Regression test xác nhận fixed mode không tạo vượt giới hạn và UI/CLI có đầy đủ option.
+
 # FrameForge v0.1.23
 
 ## SQLite state machine và crash-safe queue resume

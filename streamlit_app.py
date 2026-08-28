@@ -1355,6 +1355,18 @@ with st.sidebar:
     scene_confirmations = 2
     every = None
     count = None
+    max_screenshots = st.number_input(
+        "Số screenshot mỗi video",
+        min_value=1,
+        max_value=1000,
+        value=20,
+        step=1,
+        key="max_screenshots",
+        help=(
+            "Giới hạn tối đa cho scene detection/Mỗi N giây; "
+            "với Đúng N frame đây là số frame chính xác. Bộ lọc mờ/trùng có thể làm số ảnh lưu thực tế thấp hơn."
+        ),
+    )
 
     if mode_label in {"Best frame per scene", "Scene detection"}:
         with st.expander("Tinh chỉnh scene detection", expanded=True):
@@ -1402,7 +1414,7 @@ with st.sidebar:
             step=0.5,
         )
     else:
-        count = st.number_input("Số frame cần lấy", min_value=1, value=20, step=1)
+        count = int(max_screenshots)
 
     st.markdown('<div class="eyebrow">03 · Chất lượng & tốc độ</div>', unsafe_allow_html=True)
     recommended_workers = recommend_workers(len(uploaded_files) if uploaded_files else None)
@@ -1540,6 +1552,7 @@ def build_args() -> SimpleNamespace:
         end=float(end) if limit_end else None,
         every=float(every) if every is not None else None,
         count=int(count) if count is not None else None,
+        max_screenshots=int(max_screenshots),
         scene_detection=mode_label in {"Best frame per scene", "Scene detection"},
         best_frame_per_scene=mode_label == "Best frame per scene",
         scene_threshold=float(scene_threshold),

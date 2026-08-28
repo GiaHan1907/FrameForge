@@ -252,7 +252,7 @@ def processing_signature(args: argparse.Namespace) -> str:
 
 def scene_cache_key(video: Path, metadata: dict[str, float | int], args: argparse.Namespace) -> str:
     payload = {
-        "cache_version": 1,
+        "cache_version": 2,
         "video": str(video.resolve()),
         "size": video.stat().st_size,
         "mtime_ns": video.stat().st_mtime_ns,
@@ -267,6 +267,7 @@ def scene_cache_key(video: Path, metadata: dict[str, float | int], args: argpars
         "best_frame_per_scene": bool(args.best_frame_per_scene),
         "min_sharpness": float(args.min_sharpness),
         "motion_blur_threshold": float(getattr(args, "motion_blur_threshold", 0.0)),
+        "max_screenshots": int(getattr(args, "max_screenshots", 0) or 0),
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -274,7 +275,7 @@ def scene_cache_key(video: Path, metadata: dict[str, float | int], args: argpars
 
 def load_scene_cache(path: Path, key: str) -> dict[str, object] | None:
     value = _read_json(path)
-    if not value or value.get("cache_version") != 1 or value.get("cache_key") != key:
+    if not value or value.get("cache_version") != 2 or value.get("cache_key") != key:
         return None
     selected = value.get("selected_times")
     scene_times = value.get("scene_times")
@@ -287,7 +288,7 @@ def save_scene_cache(path: Path, key: str, video: Path, selected_times: list[flo
     _atomic_write_json(
         path,
         {
-            "cache_version": 1,
+            "cache_version": 2,
             "cache_key": key,
             "video": str(video),
             "created_at": time.time(),
@@ -1064,6 +1065,16 @@ def process_fixed_mode_multiprocess(
     return reports
 
 
+def screenshot_limit(args: argparse.Namespace) -> int | None:
+    """Trả về số screenshot tối đa mỗi video; None nghĩa là không giới hạn."""
+    raw = getattr(args, "max_screenshots", None)
+    try:
+        value = int(raw or 0)
+    except (TypeError, ValueError):
+        value = 0
+    return value if value > 0 else None
+
+
 def process_fixed_mode(
     capture: cv2.VideoCapture,
     video: Path,
@@ -1093,6 +1104,10 @@ def process_fixed_mode(
         while current < actual_end:
             targets.append(current)
             current += interval
+
+    limit = screenshot_limit(args)
+    if limit is not None and args.count is None:
+        targets = targets[:limit]
 
     effective_extract_workers = adaptive_extract_workers(
         video_worker_count=int(getattr(args, "video_workers", 1)),
@@ -1219,6 +1234,7 @@ def process_scene_mode(
         "scene_confirmations": args.scene_confirmations,
         "smart_scene_detection": True,
     }
+    limit = screenshot_limit(args)
     selected_times: list[float] = []
     previous_gray: np.ndarray | None = None
     previous_histogram: np.ndarray | None = None
@@ -1236,7 +1252,7 @@ def process_scene_mode(
 
     def flush(candidate: FrameCandidate | None, index: int, previous: int | None) -> int | None:
         check_cancelled(cancel_event)
-        if candidate is None:
+        if candidate is None or (limit is not None and len(selected_times) >= limit):
             return previous
         reports["requested"] = int(reports["requested"]) + 1
         selected_times.append(round(float(candidate.timestamp), 3))
@@ -1246,6 +1262,8 @@ def process_scene_mode(
 
     while True:
         check_cancelled(cancel_event)
+        if limit is not None and len(selected_times) >= limit:
+            break
         decode_started = time.perf_counter()
         ok, frame = capture.read()
         record_stage_timing(getattr(args, "stage_timings", None), "decode", decode_started)
@@ -1391,8 +1409,12 @@ def process_cached_scene_mode(
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
 ) -> dict[str, object]:
+    limit = screenshot_limit(args)
     selected_times = [float(item) for item in cached.get("selected_times", [])]
     scene_times = [float(item) for item in cached.get("scene_times", [])]
+    if limit is not None:
+        selected_times = selected_times[:limit]
+        scene_times = scene_times[:limit]
     reports: dict[str, object] = {
         "selection_mode": "best_frame_per_scene" if args.best_frame_per_scene else "scene_detection",
         "requested": len(selected_times),
@@ -1749,6 +1771,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--best-frame-per-scene", action="store_true", help="Giữ frame sắc nét nhất trong mỗi scene; tự bật scene detection.")
     parser.add_argument("--start", type=non_negative_float, default=0.0, help="Thời điểm bắt đầu, tính bằng giây.")
     parser.add_argument("--end", type=positive_float, default=None, help="Thời điểm kết thúc, tính bằng giây.")
+    parser.add_argument(
+        "--max-screenshots",
+        type=positive_int,
+        default=0,
+        help="Số screenshot tối đa cho mỗi video; 0 = không giới hạn. Với --count, --count vẫn là số chính xác.",
+    )
     parser.add_argument("--scene-threshold", type=threshold_01, default=0.30, help="Ngưỡng thay đổi cảnh 0–1; thấp hơn nhạy hơn.")
     parser.add_argument("--min-scene-gap", type=positive_float, default=0.5, help="Khoảng cách tối thiểu giữa scene, tính bằng giây.")
     parser.add_argument("--flash-return-ratio", type=threshold_01, default=0.55, help="Tỷ lệ nhận diện flash quay về cảnh cũ.")

@@ -120,6 +120,24 @@ class CacheCheckpointTests(unittest.TestCase):
             self.assertEqual(report["stage_timings"]["write_count"], 1)
             self.assertGreaterEqual(report["stage_timings"]["decode_ms"], 0.0)
 
+    def test_max_screenshots_limits_fixed_mode(self) -> None:
+        args = copy.copy(self.args)
+        args.scene_detection = False
+        args.best_frame_per_scene = False
+        args.count = None
+        args.every = 0.1
+        args.max_screenshots = 3
+        args.duplicate_threshold = 0
+        args.cross_run_duplicates = False
+        args.cross_run_duplicate_threshold = 0
+        args.min_sharpness = 0.0
+        args.motion_blur_threshold = 0.0
+        output = self.root / "limited"
+        report = engine.process_video(self.video, output, None, args)
+        self.assertEqual(int(report["requested"]), 3)
+        self.assertLessEqual(int(report["saved"]), 3)
+        self.assertLessEqual(len(list(output.rglob("*.jpg"))), 3)
+
     def test_scene_cache_hit_and_cross_run_duplicate_rejection(self) -> None:
         first_output = self.root / "first"
         second_output = self.root / "second"

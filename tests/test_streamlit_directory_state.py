@@ -58,6 +58,7 @@ class StreamlitDirectoryStateTests(unittest.TestCase):
         self.assertIn('pattern = f"*{timestamp_label(nearest)}.*"', self.source)
 
     def test_downloader_error_categories_and_backoff_are_present(self) -> None:
+        self.assertIn('--max-screenshots', (ROOT / 'video_screenshot_advanced.py').read_text(encoding='utf-8'))
         self.assertIn('DownloadFailure', self.source)
         self.assertIn('download_error_hook', self.source)
         self.assertIn('state == "retrying"', self.source)
@@ -73,6 +74,8 @@ class StreamlitDirectoryStateTests(unittest.TestCase):
         self.assertIn('CROP_RATIO_LABELS', self.source)
         self.assertIn('key="crop_ratio"', self.source)
         self.assertIn('Tỉ lệ crop screenshot', self.source)
+        self.assertIn('Số screenshot mỗi video', self.source)
+        self.assertIn('max_screenshots=int(max_screenshots)', self.source)
         self.assertIn('crop_ratio=crop_ratio', self.source)
         self.assertIn('ENCODE_PROFILE_LABELS', self.source)
         self.assertIn('key="encode_profile"', self.source)

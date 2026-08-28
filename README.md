@@ -1,5 +1,11 @@
 # Video Screenshot Filter — Optimized Streamlit Package
 
+## Chọn số screenshot cho mỗi video
+
+Trong sidebar, nhập **Số screenshot mỗi video** từ 1 đến 1000. Với **Best frame per scene** và **Scene detection**, đây là số ảnh tối đa; số thực tế có thể thấp hơn nếu video có ít scene hoặc frame bị loại bởi bộ lọc mờ/trùng. Với **Mỗi N giây**, đây là giới hạn trên của số mốc được lấy. Với **Đúng N frame**, giá trị này là số frame chính xác được phân bố đều trong khoảng thời gian đã chọn.
+
+CLI cũng hỗ trợ `--max-screenshots N` cho scene/every mode; `--count N` vẫn giữ semantics cũ là lấy đúng N frame. Khi đổi số lượng trong scene mode, cache scene được invalidated bằng cache key mới để không dùng nhầm danh sách timestamp cũ.
+
 ## Ghi chú v0.1.23
 
 SQLite queue nay dùng state machine có schema version và migration additive từ v0.1.22. Khi mở database cũ, FrameForge tự bổ sung stable `item_id`, `source_position`, phase/progress, heartbeat và timestamps mà không xóa report cũ. Item đang `running` hoặc `retrying` khi ứng dụng dừng bất thường được đánh dấu `interrupted`; resume đưa item về queue mà không đổi định danh.
