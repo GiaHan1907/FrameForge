@@ -24,7 +24,7 @@ import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from types import SimpleNamespace
+from core.config import FrameForgeConfig
 
 import streamlit as st
 
@@ -1224,8 +1224,8 @@ with st.sidebar:
     )
 
 
-def build_args() -> SimpleNamespace:
-    return SimpleNamespace(
+def build_args() -> FrameForgeConfig:
+    return FrameForgeConfig(
         start=float(start),
         end=float(end) if limit_end else None,
         every=float(every) if every is not None else None,

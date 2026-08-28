@@ -14,6 +14,7 @@ class PackagingSpecTests(unittest.TestCase):
             '("timeline_utils.py", ".")',
             '("core/__init__.py", "core")',
             '("core/utils.py", "core")',
+            '("core/config.py", "core")',
             '("ui/styles.css", "ui")',
         ]
         for spec_name in (

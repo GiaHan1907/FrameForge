@@ -33,10 +33,17 @@ from video_screenshot_advanced import (
     worker_value,
 )
 
+from core.config import FrameForgeConfig
 from core.resources import InsufficientResources
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments into a raw ``argparse.Namespace``.
+
+    Callers that need a ``FrameForgeConfig`` should use :func:`build_config`
+    instead, which handles the extra CLI-only fields (``input``, ``output``,
+    ``recursive``, etc.) and converts them.
+    """
     parser = argparse.ArgumentParser(
         description="Cắt screenshot bằng một lượt đọc video, có scene detection và lọc chất lượng."
     )
@@ -126,9 +133,67 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+def build_config(args: argparse.Namespace) -> FrameForgeConfig:
+    """Convert a raw ``argparse.Namespace`` into a typed :class:`FrameForgeConfig`.
+
+    This handles the field-name mapping (e.g. ``disk_reserve_mb`` →
+    ``disk_reserve_bytes``) and the extra CLI-only fields that live on the
+    namespace but are not part of the config dataclass.
+    """
+    extract_workers = (
+        recommended_extract_workers() if args.extract_workers == 0
+        else max(1, args.extract_workers)
+    )
+    return FrameForgeConfig(
+        start=args.start,
+        end=args.end,
+        every=args.every,
+        count=args.count,
+        max_screenshots=args.max_screenshots,
+        target_count_after_filter=args.target_count_after_filter,
+        target_candidate_multiplier=args.target_candidate_multiplier,
+        target_candidate_multiplier_max=args.target_candidate_multiplier_max,
+        repair_manifest=args.repair_manifest,
+        min_free_ram_gb=args.min_free_ram_gb,
+        scene_detection=args.scene_detection,
+        best_frame_per_scene=args.best_frame_per_scene,
+        scene_threshold=args.scene_threshold,
+        min_scene_gap=args.min_scene_gap,
+        flash_return_ratio=args.flash_return_ratio,
+        flash_brightness_threshold=args.flash_brightness_threshold,
+        scene_confirmations=args.scene_confirmations,
+        analysis_width=args.analysis_width,
+        analysis_fps=args.analysis_fps,
+        workers=args.workers,
+        extract_workers=extract_workers,
+        extract_min_targets=8,
+        min_sharpness=args.min_sharpness,
+        motion_blur_threshold=args.motion_blur_threshold,
+        duplicate_threshold=args.duplicate_threshold,
+        format=args.format,
+        quality=args.quality,
+        crop_ratio=args.crop_ratio,
+        encode_profile=args.encode_profile,
+        width=args.width,
+        overwrite=args.overwrite,
+        retries=args.retries,
+        retry_delay=args.retry_delay,
+        disk_reserve_bytes=int(args.disk_reserve_mb) * 1024**2,
+        use_scene_cache=args.use_scene_cache,
+        cross_run_duplicates=args.cross_run_duplicates,
+        cross_run_duplicate_threshold=args.duplicate_threshold,
+        resume=args.resume,
+        checkpoint_path=args.checkpoint,
+        cache_root=args.cache_dir,
+        duplicate_root=args.duplicate_index_dir,
+        queue_db=args.queue_db or args.output / ".frameforge_queue.sqlite3",
+    )
+
+
 def main() -> int:
     mp.freeze_support()
     args = parse_args()
+    config = build_config(args)
     cleanup_frameforge_temp_dirs(
         older_than_seconds=int(args.temp_cleanup_hours) * 60 * 60,
         max_total_bytes=int(args.temp_quota_mb) * 1024**2,
@@ -137,14 +202,6 @@ def main() -> int:
         args.cache_dir or args.output / ".frameforge_cache",
         max_total_bytes=int(args.cache_quota_mb) * 1024**2,
     )
-    args.disk_reserve_bytes = int(args.disk_reserve_mb) * 1024**2
-    args.cache_root = args.cache_dir
-    args.duplicate_root = args.duplicate_index_dir
-    args.checkpoint_path = args.checkpoint
-    args.queue_db = args.queue_db or args.output / ".frameforge_queue.sqlite3"
-    args.cross_run_duplicate_threshold = args.duplicate_threshold
-    args.extract_workers = recommended_extract_workers() if args.extract_workers == 0 else max(1, args.extract_workers)
-    args.extract_min_targets = 8
     if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
         print("Cảnh báo: không tìm thấy FFmpeg/ffprobe; pipeline hiện dùng OpenCV nhưng FFmpeg vẫn cần cho môi trường đầy đủ.", file=sys.stderr)
     try:
@@ -173,11 +230,11 @@ def main() -> int:
             videos,
             args.output,
             source_root,
-            args,
+            config,
             on_complete,
             on_progress,
-            max_retries=args.retries,
-            retry_delay_seconds=args.retry_delay,
+            max_retries=config.retries,
+            retry_delay_seconds=config.retry_delay,
         )
     except ProcessingCancelled as exc:
         print(str(exc), file=sys.stderr)
