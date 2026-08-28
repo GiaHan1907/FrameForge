@@ -26,11 +26,6 @@ CHANNEL_FILE_NAME = "update_channel.json"
 DEFAULT_BETA_MANIFEST_URL = "https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest-beta.json"
 
 
-def _hidden_windows_process_kwargs() -> dict[str, object]:
-    """Ẩn console của process con trên Windows; không truyền cờ này trên POSIX."""
-    if os.name != "nt":
-        return {}
-    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
 SUPPORTED_CHANNELS = {"stable", "beta"}
 
 

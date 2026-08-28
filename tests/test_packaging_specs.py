@@ -9,7 +9,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class PackagingSpecTests(unittest.TestCase):
     def test_all_specs_embed_runtime_source_modules(self) -> None:
-        required = ['("persistent_queue.py", ".")', '("timeline_utils.py", ".")']
+        required = [
+            '("persistent_queue.py", ".")',
+            '("timeline_utils.py", ".")',
+            '("core/__init__.py", "core")',
+            '("core/utils.py", "core")',
+            '("ui/styles.css", "ui")',
+        ]
         for spec_name in (
             "video_screenshot_filter.spec",
             "video_screenshot_filter_minimal.spec",

@@ -41,6 +41,9 @@ datas += [
     ("persistent_queue.py", "."),
     ("timeline_utils.py", "."),
     ("queue_per_video.py", "."),
+    ("core/__init__.py", "core"),
+    ("core/utils.py", "core"),
+    ("ui/styles.css", "ui"),
     ("frameforge_version.txt", "."),
 ]
 
