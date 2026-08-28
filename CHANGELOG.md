@@ -4,7 +4,13 @@ Lịch sử thay đổi của FrameForge. Các phiên bản tuân theo SemVer; b
 
 ## [Unreleased]
 
-Các cải tiến đang được cân nhắc cho v0.1.33 được ghi trong [ROADMAP_v0.1.33.md](ROADMAP_v0.1.33.md).
+Các cải tiến đang được cân nhắc cho v0.1.35 được ghi trong [ROADMAP_v0.1.33.md](ROADMAP_v0.1.33.md).
+
+## [0.1.34] — Security hardening and code cleanup
+
+- Thêm path traversal validation cho `_read_pending()` trong app update, chống tampered `pending.json` trỏ ra file ngoài update root.
+- Refactor `PersistentQueueStore.mark_cancelled()` bỏ dead code SQL computation bị ghi đè vô ích.
+- Cập nhật `frameforge_version.txt` và `FrameForge.iss`sync version 0.1.34.
 
 ## [0.1.32] — Desktop auto-shutdown watchdog
 
@@ -221,7 +227,8 @@ Các cải tiến đang được cân nhắc cho v0.1.33 được ghi trong [ROA
 
 - Bật cơ chế public one-click app updates.
 
-[Unreleased]: https://github.com/GiaHan1907/FrameForge/compare/v0.1.32...HEAD
+[Unreleased]: https://github.com/GiaHan1907/FrameForge/compare/v0.1.34...HEAD
+[0.1.34]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.34
 [0.1.32]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.32
 [0.1.31]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.31
 [0.1.30]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.30

@@ -1,6 +1,6 @@
 #define MyAppName "FrameForge"
 #ifndef MyAppVersion
-#define MyAppVersion "0.1.32"
+#define MyAppVersion "0.1.34"
 #endif
 #define MyAppPublisher "FrameForge"
 #define MyAppExeName "VideoScreenshotFilter.exe"
