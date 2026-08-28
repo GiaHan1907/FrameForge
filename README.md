@@ -1,5 +1,42 @@
 # Video Screenshot Filter — Optimized Streamlit Package
 
+## Chuẩn bị phát hành v0.1.31
+
+v0.1.31 tập trung vào silent Windows runtime và chẩn đoán launcher. EXE release dùng PyInstaller `console=False`; PowerShell Authenticode check và FFmpeg health check dùng `CREATE_NO_WINDOW` trên Windows để tránh cửa sổ console chớp tắt. Inno Setup tạo shortcut trực tiếp tới `VideoScreenshotFilter.exe` với `WorkingDir` là thư mục cài đặt.
+
+Bản build tự động có thể chạy từ GitHub Actions workflow `.github/workflows/build.yml` bằng **Actions → FrameForge Windows Installer Build → Run workflow**, chọn version `0.1.31` và profile `full` hoặc `minimal`. Workflow chạy Windows 2022, build PyInstaller onedir, tạo Inno Setup installer, chạy test suite, kiểm tra PE GUI subsystem, sinh SHA-256/metadata và upload artifact. Workflow này chỉ tạo artifact; việc publish GitHub Release vẫn cần release workflow sau khi kiểm tra artifact.
+
+Script build local tương ứng là `build_installer_v0131.bat`. Script sẽ build lại từ source hiện tại, kiểm tra FFmpeg/ffprobe nhúng và yêu cầu artifact cuối là `installer\\FrameForge-Setup-0.1.31.exe`.
+
+## Smoke test Windows và Process Monitor
+
+Kiểm tra installer, shortcut và PE subsystem bằng PowerShell:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\\tests\\windows_installer_smoke.ps1 -InstallerPath .\\installer\\FrameForge-Setup-0.1.31.exe
+```
+
+Chỉ kiểm tra shortcut/EXE đã cài mà không cài lại:
+
+```powershell
+.\\tests\\windows_installer_smoke.ps1 -SkipInstall
+```
+
+Khi cần bắt chi tiết process con lúc startup, tải [Process Monitor của Microsoft Sysinternals](https://learn.microsoft.com/sysinternals/downloads/procmon), rồi chạy:
+
+```powershell
+.\\tests\\process_monitor_startup.ps1 `
+  -ProcmonPath 'C:\\Tools\\Procmon64.exe' `
+  -ExecutablePath "$env:LOCALAPPDATA\\Programs\\FrameForge\\VideoScreenshotFilter.exe" `
+  -CaptureSeconds 20
+```
+
+Script tạo file `.pml`, CSV export nếu Procmon hỗ trợ, và snapshot process tree tại Desktop `FrameForge-Procmon`. Trong Procmon, lọc `Operation = Process Create`, kiểm tra `Process Name`, `Parent PID` và command line. Không gửi PML/CSV công khai trước khi xóa path local, tên tài khoản hoặc tham số nhạy cảm.
+
+Launcher log nằm tại `%LOCALAPPDATA%\\VideoScreenshotFilter\\launcher_error.log`. Có thể kiểm tra nhanh bằng `check_launcher_log.ps1` hoặc theo dõi liên tục bằng `-Watch`.
+
+
 ## Chọn số screenshot cho mỗi video
 
 Trong sidebar, nhập **Số screenshot mỗi video** từ 1 đến 1000. Với **Best frame per scene** và **Scene detection**, đây là số ảnh tối đa; số thực tế có thể thấp hơn nếu video có ít scene hoặc frame bị loại bởi bộ lọc mờ/trùng. Với **Mỗi N giây**, đây là giới hạn trên của số mốc được lấy. Với **Đúng N frame**, giá trị này là số frame chính xác được phân bố đều trong khoảng thời gian đã chọn.

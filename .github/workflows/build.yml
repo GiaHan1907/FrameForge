@@ -103,7 +103,7 @@ jobs:
           $setup = Join-Path "installer" "FrameForge-Setup-$env:FRAMEFORGE_VERSION.exe"
           if (-not (Test-Path $setup)) { throw "Installer not found: $setup" }
           if (-not (Test-Path "dist\VideoScreenshotFilter\VideoScreenshotFilter.exe")) { throw "Packaged EXE not found" }
-          & powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows_installer_smoke.ps1 -InstallerPath $setup -SkipInstall -SkipLaunch
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows_installer_smoke.ps1 -InstallerPath $setup
           if ($LASTEXITCODE -ne 0) { throw "Installer smoke validation failed" }
 
       - name: Generate checksums and build metadata
