@@ -507,15 +507,22 @@ class PersistentQueueStore:
     def mark_cancelled(self, job_id: str, position: int | None = None) -> None:
         with self._lock, self._connection:
             now = time.time()
-            statuses = tuple(RESUMABLE_ITEM_STATES | {ITEM_INTERRUPTED})
-            placeholders = ",".join("?" for _ in statuses)
-            sql = f"UPDATE queue_items SET status = 'cancelled', phase = 'cancelled', message = 'Đã hủy', updated_at = ?, finished_at = ?, last_heartbeat = ? WHERE job_id = ? AND status IN ({placeholders})"
-            # Keep the explicit position behavior of v0.1.22 while including interrupted rows.
             if position is not None:
-                sql = "UPDATE queue_items SET status = 'cancelled', phase = 'cancelled', message = 'Đã hủy', updated_at = ?, finished_at = ?, last_heartbeat = ? WHERE job_id = ? AND position = ? AND status != 'completed'"
-                params = [now, now, now, job_id, position]
+                # Keep the explicit position behavior of v0.1.22.
+                sql = (
+                    "UPDATE queue_items SET status = 'cancelled', phase = 'cancelled', message = 'Đã hủy', "
+                    "updated_at = ?, finished_at = ?, last_heartbeat = ? "
+                    "WHERE job_id = ? AND position = ? AND status != 'completed'"
+                )
+                params: list[object] = [now, now, now, job_id, position]
             else:
-                sql = f"UPDATE queue_items SET status = 'cancelled', phase = 'cancelled', message = 'Đã hủy', updated_at = ?, finished_at = ?, last_heartbeat = ? WHERE job_id = ? AND status IN ({placeholders})"
+                statuses = tuple(RESUMABLE_ITEM_STATES | {ITEM_INTERRUPTED})
+                placeholders = ",".join("?" for _ in statuses)
+                sql = (
+                    f"UPDATE queue_items SET status = 'cancelled', phase = 'cancelled', message = 'Đã hủy', "
+                    f"updated_at = ?, finished_at = ?, last_heartbeat = ? "
+                    f"WHERE job_id = ? AND status IN ({placeholders})"
+                )
                 params = [now, now, now, job_id, *statuses]
             self._connection.execute(sql, params)
             self._touch_job(job_id, "cancelled")

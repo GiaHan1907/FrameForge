@@ -266,7 +266,16 @@ def _read_pending() -> dict[str, object] | None:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         return None
-    return value if isinstance(value, dict) else None
+    if not isinstance(value, dict):
+        return None
+    installer_path = Path(str(value.get("installer_path") or ""))
+    update_root = _update_root().resolve()
+    try:
+        installer_path.resolve().relative_to(update_root)
+    except ValueError:
+        path.unlink(missing_ok=True)
+        return None
+    return value
 
 
 def read_app_update_status() -> AppUpdateStatus:
