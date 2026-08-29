@@ -108,6 +108,7 @@ from ui.wizard import (
 from video_screenshot_advanced import process_videos
 from ui.timeline import show_scene_timeline, render_personal_config_panel, render_job_history
 from ui.dashboard import render_resource_meter, render_queue_dashboard, error_actions
+from ui.processing_view import render_processing_job
 from core.resources import InsufficientResources
 from queue_per_video import render_queue_per_video
 from persistent_queue import PersistentQueueStore
@@ -652,33 +653,6 @@ def _start_processing_job(args: FrameForgeConfig, input_paths: list[Path], outpu
 
 
 
-def _retry_failed_processing(job: dict[str, object], positions: set[int] | None = None) -> bool:
-    reports = job.get("reports") or []
-    failed_paths: list[Path] = []
-    for position, report in enumerate(reports):
-        if positions is not None and position not in positions:
-            continue
-        if not isinstance(report, dict) or "error" not in report:
-            continue
-        candidate = Path(str(report.get("video", "")))
-        if candidate.is_file():
-            failed_paths.append(candidate)
-    if not failed_paths:
-        return False
-    args = job.get("args")
-    if args is None:
-        return False
-    retry_args = copy.copy(args)
-    retry_args.resume = False
-    _start_processing_job(
-        retry_args,
-        failed_paths,
-        Path(str(job["output_dir"])),
-        Path(str(job["work_dir"])),
-    )
-    return True
-
-
 def _start_desktop_session_watchdog() -> None:
     """Bật auto-shutdown chỉ cho launcher desktop, không ảnh hưởng `streamlit run`."""
     if os.environ.get("FRAMEFORGE_DESKTOP_LIFECYCLE", "0").lower() not in {"1", "true", "yes", "on"}:
@@ -710,141 +684,6 @@ def _start_desktop_session_watchdog() -> None:
         name="frameforge-session-watchdog",
         daemon=True,
     ).start()
-
-
-def _poll_processing_job() -> dict[str, object] | None:
-    """Thin wrapper: delegates to ui.processing with session_state."""
-    return _poll_processing_job_core(st.session_state)
-
-
-_start_desktop_session_watchdog()
-
-
-@st.fragment(run_every=1.0)
-def _render_processing_job() -> None:
-    job = _poll_processing_job()
-    if not job:
-        return
-    status = str(job.get("status"))
-    if status in {"running", "paused"}:
-        adapter = _ProcessingQueueAdapter(job)
-        snapshot = adapter.snapshot()
-        render_queue_dashboard(snapshot)
-        render_resource_meter(job.get("args"), Path(str(job.get("output_dir", ""))).parent)
-        render_queue_per_video(adapter, key_prefix="processing_queue")
-        return
-
-    if status == "cancelled":
-        st.warning(str(job.get("message", "Đã hủy xử lý.")))
-        work_dir = Path(str(job.get("work_dir", "")))
-        if job.get("resumable") and work_dir.exists():
-            if st.button("Tiếp tục từ checkpoint", key="resume_processing", type="primary"):
-                args = job.get("args")
-                if args is not None:
-                    args.resume = True
-                    _start_processing_job(
-                        args,
-                        list(job.get("input_paths", [])),
-                        Path(str(job["output_dir"])),
-                        work_dir,
-                    )
-                    st.rerun()
-        return
-    if status == "error":
-        message = str(job.get("message", "Có lỗi khi xử lý queue."))
-        st.error(message)
-        error_actions(message, key_prefix="queue_error")
-        return
-    reports = job.get("reports") or []
-    if status == "completed":
-        render_queue_per_video(_ProcessingQueueAdapter(job), key_prefix="processing_queue_done")
-    output_dir = Path(str(job["output_dir"]))
-    report_path = Path(str(job["report_path"]))
-    zip_bytes = make_zip(output_dir, report_path)
-    st.success(f"Đã lưu screenshot và report trực tiếp tại: {output_dir}")
-
-    total_saved = sum(int(item.get("saved", 0)) for item in reports)
-    total_blurry = sum(int(item.get("rejected_blurry", 0)) for item in reports)
-    total_duplicate = sum(int(item.get("rejected_duplicate", 0)) for item in reports)
-    total_motion_blur = sum(int(item.get("rejected_motion_blur", 0)) for item in reports)
-    total_errors = sum(int(item.get("capture_errors", 0)) for item in reports) + sum("error" in item for item in reports)
-    total_attempts = sum(int(item.get("attempts", 1)) for item in reports)
-    total_target = sum(int(item.get("target_screenshots", 0) or 0) for item in reports)
-    total_shortfall = sum(int(item.get("shortfall", 0) or 0) for item in reports)
-    total_fallback = sum(int(item.get("forced_fallback_saved", 0) or 0) for item in reports)
-    failed_reports = [item for item in reports if isinstance(item, dict) and "error" in item]
-    metric_a, metric_b, metric_c, metric_d, metric_e = st.columns(5)
-    metric_a.metric("Đã lưu", total_saved)
-    metric_b.metric("Loại vì mờ", total_blurry)
-    metric_c.metric("Motion blur", total_motion_blur)
-    metric_d.metric("Loại vì trùng", total_duplicate)
-    metric_e.metric("Lỗi / retry", f"{total_errors} / {max(0, total_attempts - len(reports))}")
-    adaptive_workers = sorted({int(item.get("adaptive_extract_workers", 1)) for item in reports if "error" not in item})
-    video_workers = sorted({int(item.get("video_workers", 1)) for item in reports if "error" not in item})
-    adaptive_label = ", ".join(str(value) for value in adaptive_workers) or "1"
-    video_label = ", ".join(str(value) for value in video_workers) or "1"
-    if total_target > 0:
-        if total_shortfall:
-            st.warning(f"Thiếu {total_shortfall} screenshot so với mục tiêu {total_target}. Xem từng video để biết lý do bị loại.")
-        elif total_fallback:
-            st.warning(
-                f"Đã đủ mục tiêu {total_target} screenshot; {total_fallback} ảnh được lấy bằng fallback sau filter."
-            )
-        else:
-            st.success(f"Đã đạt mục tiêu {total_target} screenshot sau filter.")
-    st.caption(
-        f"Tổng số lượt thử xử lý: {total_attempts} · retry tự động theo từng video · "
-        f"video worker: {video_label} · extraction worker thực tế/video: {adaptive_label}."
-    )
-    st.markdown("#### Queue theo video")
-    for report in reports:
-        video_name = Path(str(report.get("video", "video không xác định"))).name
-        if "error" in report:
-            st.error(f"✕ {video_name} · thất bại · {report.get('error')}")
-        else:
-            shortfall = int(report.get("shortfall", 0) or 0)
-            fallback = int(report.get("forced_fallback_saved", 0) or 0)
-            suffix = f" · thiếu {shortfall}" if shortfall else (f" · fallback {fallback}" if fallback else "")
-            state_label = "hoàn tất có fallback" if fallback else "hoàn tất"
-            st.success(f"✓ {video_name} · {state_label} · lưu {int(report.get('saved', 0))} ảnh{suffix} · {int(report.get('attempts', 1))} lần thử")
-            if report.get("shortfall_message"):
-                st.caption(str(report["shortfall_message"]))
-    download_col, report_col = st.columns([1, 1])
-    with download_col:
-        st.download_button(
-            "⬇  Tải screenshot + report ZIP",
-            data=zip_bytes,
-            file_name="screenshots_filtered.zip",
-            mime="application/zip",
-            type="primary",
-            use_container_width=True,
-            key="processing_zip_download",
-        )
-    with report_col:
-        st.download_button(
-            "Tải report JSON",
-            data=json.dumps(reports, ensure_ascii=False, indent=2),
-            file_name="report.json",
-            mime="application/json",
-            use_container_width=True,
-            key="processing_report_download",
-        )
-    show_scene_timeline(reports, output_dir)
-    image_files = sorted(output_dir.rglob("*.jpg")) + sorted(output_dir.rglob("*.png")) + sorted(output_dir.rglob("*.webp"))
-    if image_files:
-        st.markdown(
-            f'<div class="section-heading"><span>▦</span> Preview <small style="color:#8b95a7;font-family:DM Sans;font-size:.78rem;font-weight:500;">{len(image_files)} ảnh được tạo</small></div>',
-            unsafe_allow_html=True,
-        )
-        preview_files = image_files[:24]
-        columns = st.columns(4)
-        for index, image_path in enumerate(preview_files):
-            with columns[index % 4]:
-                st.image(str(image_path), caption=image_path.name, use_container_width=True)
-        if len(image_files) > len(preview_files):
-            st.info(f"Chỉ hiển thị {len(preview_files)} ảnh đầu tiên; toàn bộ ảnh nằm trong file ZIP.")
-    else:
-        st.warning("Không có frame nào vượt qua các bộ lọc đã chọn.")
 
 
 # Main overview
@@ -1047,7 +886,7 @@ if run_clicked:
             shutil.rmtree(work_dir, ignore_errors=True)
         st.error(f"Không thể tạo thư mục xử lý tạm: {exc}")
 
-_render_processing_job()
+render_processing_job()
 
 st.markdown(
     '<div style="margin-top:2.4rem;padding-top:1rem;border-top:1px solid #e6eaf0;color:#8b95a7;font-size:.78rem;">FrameForge · Scene-aware video screenshot studio · Pipeline đọc một lần, phân tích nhanh và lọc chất lượng tự động.</div>',

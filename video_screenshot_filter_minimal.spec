@@ -42,6 +42,7 @@ datas += [
                 ("core/errors.py", "core"),
     ("ui/logic.py", "ui"),
     ("ui/processing.py", "ui"),
+    ("ui/processing_view.py", "ui"),
     ("ui/session.py", "ui"),
     ("ui/wizard.py", "ui"),
     ("ui/widgets.py", "ui"),

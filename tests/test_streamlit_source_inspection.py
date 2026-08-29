@@ -107,7 +107,8 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
         self.assertIn("def preview_frame_at", self.all_source)
         preview_section_source = (ROOT / "ui" / "preview_section.py").read_text(encoding="utf-8")
         self.assertIn("def preview_scene_timeline", preview_section_source)
-        self.assertIn("Queue theo video", self.source)
+        processing_view_source = (ROOT / "ui" / "processing_view.py").read_text(encoding="utf-8")
+        self.assertIn("Queue theo video", processing_view_source)
         self.assertIn(
             "from queue_per_video import render_queue_per_video",
             self.source,
