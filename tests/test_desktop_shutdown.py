@@ -12,15 +12,18 @@ ROOT = Path(__file__).resolve().parents[1]
 class DesktopShutdownTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        source = (ROOT / "streamlit_app.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        function = next(
-            node for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "_terminate_desktop_process_tree"
-        )
-        namespace = {"os": os, "sys": sys, "subprocess": subprocess}
-        exec(compile(ast.Module(body=[function], type_ignores=[]), "streamlit_app.py", "exec"), namespace)
-        cls.terminate = namespace["_terminate_desktop_process_tree"]
+        # Function moved to ui/desktop.py; look in both locations
+        for filename in ["ui/desktop.py", "streamlit_app.py"]:
+            source = (ROOT / filename).read_text(encoding="utf-8")
+            tree = ast.parse(source)
+            for node in tree.body:
+                if isinstance(node, ast.FunctionDef) and node.name in ("_terminate_desktop_process_tree", "terminate_desktop_process_tree"):
+                    namespace = {"os": os, "sys": sys, "subprocess": subprocess}
+                    exec(compile(ast.Module(body=[node], type_ignores=[]), filename, "exec"), namespace)
+                    cls.terminate = namespace.get(node.name)
+                    if cls.terminate is not None:
+                        return
+        raise AssertionError("_terminate_desktop_process_tree not found")
 
     def test_non_windows_does_not_spawn_taskkill(self):
         original_platform = sys.platform
