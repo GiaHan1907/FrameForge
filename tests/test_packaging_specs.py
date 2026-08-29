@@ -21,6 +21,7 @@ class PackagingSpecTests(unittest.TestCase):
             '("core/errors.py", "core")',
             '("core/cv2_helpers.py", "core")',
             '("ui/logic.py", "ui")',
+            '("ui/processing.py", "ui")',
             '("ui/session.py", "ui")',
             '("ui/wizard.py", "ui")',
             '("ui/preview.py", "ui")',

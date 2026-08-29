@@ -47,6 +47,7 @@ datas += [
     ("core/manifest.py", "core"),
                 ("core/errors.py", "core"),
     ("ui/logic.py", "ui"),
+    ("ui/processing.py", "ui"),
     ("ui/session.py", "ui"),
     ("ui/wizard.py", "ui"),
     ("ui/preview.py", "ui"),

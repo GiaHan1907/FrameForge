@@ -124,10 +124,11 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
         self.assertIn("atexit.register", self.source)
 
     def test_completed_video_temp_input_is_removed(self) -> None:
-        self.assertIn('input_root = work_dir.resolve() / "input"', self.source)
-        self.assertIn("resolved_video.is_relative_to(input_root)", self.source)
-        self.assertIn("resolved_video.unlink(missing_ok=True)", self.source)
-        self.assertIn('if "error" not in report:', self.source)
+        processing_source = (ROOT / "ui" / "processing.py").read_text(encoding="utf-8")
+        self.assertIn('input_root = work_dir.resolve() / "input"', processing_source)
+        self.assertIn("resolved_video.is_relative_to(input_root)", processing_source)
+        self.assertIn("resolved_video.unlink(missing_ok=True)", processing_source)
+        self.assertIn('if "error" not in report:', processing_source)
 
     def test_widget_keys_are_not_assigned_directly(self) -> None:
         forbidden = {"video_dir_text", "screenshot_dir_text"}
