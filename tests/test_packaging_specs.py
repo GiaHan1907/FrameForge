@@ -15,6 +15,10 @@ class PackagingSpecTests(unittest.TestCase):
             '("core/__init__.py", "core")',
             '("core/utils.py", "core")',
             '("core/config.py", "core")',
+            '("core/pipeline.py", "core")',
+            '("core/resources.py", "core")',
+            '("core/manifest.py", "core")',
+            '("core/errors.py", "core")',
             '("ui/styles.css", "ui")',
         ]
         for spec_name in (

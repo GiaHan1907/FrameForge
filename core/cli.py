@@ -14,7 +14,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from video_screenshot_advanced import (
+from core.pipeline import (
     CROP_RATIO_LABELS,
     ENCODE_PROFILE_LABELS,
     InsufficientDiskSpace,
@@ -26,12 +26,12 @@ from video_screenshot_advanced import (
     non_negative_int,
     positive_float,
     positive_int,
-    process_videos,
     recommended_extract_workers,
     recommend_workers,
     threshold_01,
     worker_value,
 )
+from video_screenshot_advanced import process_videos
 
 from core.config import FrameForgeConfig
 from core.resources import InsufficientResources

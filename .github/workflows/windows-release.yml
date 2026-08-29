@@ -159,7 +159,7 @@ jobs:
           if (-not (Test-Path "dist\VideoScreenshotFilter\VideoScreenshotFilter.exe")) {
             throw "PyInstaller executable was not found"
           }
-          foreach ($requiredModule in @("persistent_queue.py", "timeline_utils.py", "queue_per_video.py", "video_screenshot_advanced.py", "streamlit_app.py", "core/utils.py")) {
+          foreach ($requiredModule in @("persistent_queue.py", "timeline_utils.py", "queue_per_video.py", "video_screenshot_advanced.py", "streamlit_app.py", "core/utils.py", "core/config.py", "core/pipeline.py", "core/resources.py", "core/manifest.py", "core/errors.py")) {
             $modulePath = Get-ChildItem -Path "dist\VideoScreenshotFilter" -Filter $requiredModule -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
             if (-not $modulePath) {
               throw "Required runtime module was not packaged: $requiredModule"

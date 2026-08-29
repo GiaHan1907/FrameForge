@@ -47,25 +47,25 @@ update_status = initialize_yt_dlp(
 )
 app_update_status = initialize_app_update()
 
-from video_screenshot_advanced import (
+from core.pipeline import (
     InsufficientDiskSpace,
     ProcessingCancelled,
     cleanup_frameforge_cache,
     cleanup_frameforge_temp_dirs,
     current_process_rss_bytes,
-    available_ram_gb,
     free_disk_bytes,
     CROP_RATIO_LABELS,
     CROP_RATIO_VALUES,
     ENCODE_PROFILE_LABELS,
     ensure_free_disk_space,
-    format_bytes,
-    process_videos,
     processing_signature,
     recommend_workers,
     recommended_extract_workers,
     timestamp_label,
 )
+from core.resources import available_ram_gb
+from core.utils import format_bytes
+from video_screenshot_advanced import process_videos
 from timeline_utils import build_timeline_entries, filter_timeline_entries
 from core.resources import InsufficientResources
 from queue_per_video import classify_error, render_queue_per_video
@@ -1392,7 +1392,7 @@ def render_job_history() -> None:
         st.dataframe(history[:20], use_container_width=True, hide_index=True)
 
 
-def _start_processing_job(args: SimpleNamespace, input_paths: list[Path], output_dir: Path, work_dir: Path) -> None:
+def _start_processing_job(args: FrameForgeConfig, input_paths: list[Path], output_dir: Path, work_dir: Path) -> None:
     args.queue_db = Path(str(getattr(args, "queue_db", "") or output_dir / ".frameforge_queue.sqlite3"))
     cancel_event = threading.Event()
     pause_event = threading.Event()

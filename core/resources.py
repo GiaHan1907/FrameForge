@@ -49,6 +49,36 @@ def available_ram_gb() -> float | None:
     return None
 
 
+def available_memory_gb() -> float | None:
+    """Ước lượng RAM tổng cộng của hệ thống bằng stdlib, trả None nếu không đọc được."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            class MemoryStatusEx(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            status = MemoryStatusEx()
+            status.dwLength = ctypes.sizeof(MemoryStatusEx)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                return status.ullTotalPhys / (1024**3)
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        page_count = os.sysconf("SC_PHYS_PAGES")
+        return (page_size * page_count) / (1024**3)
+    except (AttributeError, OSError, ValueError, TypeError):
+        return None
+
+
 def estimate_screenshot_count(duration: float, args: argparse.Namespace) -> int:
     """Ước tính số screenshot sẽ tạo từ duration và cấu hình."""
     configured = int(getattr(args, "max_screenshots", 0) or 0)
@@ -64,8 +94,7 @@ def estimate_screenshot_count(duration: float, args: argparse.Namespace) -> int:
 
 def resource_admission_guard(output_root: Path, args: argparse.Namespace) -> dict[str, object]:
     """Kiểm tra RAM/disk trước khi cấp thêm video vào queue."""
-    # Import locally to avoid circular dependency
-    from video_screenshot_advanced import ensure_free_disk_space
+    from core.pipeline import ensure_free_disk_space
 
     free_disk = ensure_free_disk_space(
         output_root,
@@ -83,7 +112,7 @@ def resource_admission_guard(output_root: Path, args: argparse.Namespace) -> dic
 
 def resource_guard(output_dir: Path, duration: float, args: argparse.Namespace) -> dict[str, object]:
     """Kiểm tra RAM/disk trước khi bắt đầu xử lý một video."""
-    from video_screenshot_advanced import ensure_free_disk_space
+    from core.pipeline import ensure_free_disk_space
 
     estimated_count = estimate_screenshot_count(duration, args)
     bytes_per_image = 4 * 1024**2 if getattr(args, "format", "jpg") == "png" else 2 * 1024**2
