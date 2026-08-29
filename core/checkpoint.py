@@ -18,17 +18,29 @@ from core.utils import read_json as _read_json
 # ── Signature helpers ─────────────────────────────────────────────────
 
 
+_SIGNATURE_EXCLUDE = frozenset({
+    "workers", "retries", "retry_delay", "resume",
+    "checkpoint_path", "cache_root", "duplicate_root", "queue_db",
+})
+
+# Manual memoization — FrameForgeConfig is unhashable (mutable stage_timings),
+# so functools.lru_cache cannot be used directly.  The key is a sorted tuple
+# of (field, str(value)) pairs — O(n) and avoids json.dumps overhead.
+_sig_cache: dict[tuple[tuple[str, str],], str] = {}
+
 def processing_signature(args) -> str:
-    values = {
-        key: str(value)
-        for key, value in vars(args).items()
-        if key not in {
-            "workers", "retries", "retry_delay", "resume",
-            "checkpoint_path", "cache_root", "duplicate_root", "queue_db",
-        }
-    }
-    encoded = json.dumps(values, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    key = tuple(
+        sorted(
+            (k, str(v)) for k, v in vars(args).items() if k not in _SIGNATURE_EXCLUDE
+        )
+    )
+    cached = _sig_cache.get(key)
+    if cached is not None:
+        return cached
+    encoded = json.dumps(dict(key), sort_keys=True, separators=(",", ":")).encode("utf-8")
+    result = hashlib.sha256(encoded).hexdigest()
+    _sig_cache[key] = result
+    return result
 
 
 def scene_cache_key(video: Path, metadata: dict[str, float | int], args) -> str:
