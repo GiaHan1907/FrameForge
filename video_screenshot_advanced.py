@@ -32,6 +32,7 @@ from pathlib import Path
 from core.utils import atomic_write_json as _atomic_write_json
 from core.utils import read_json as _read_json
 from core.utils import format_bytes
+from core.config import FrameForgeConfig
 from core.resources import (
     InsufficientResources,
     available_ram_gb,
@@ -364,7 +365,7 @@ def accept_and_save(
     output_dir: Path,
     video_stem: str,
     index: int,
-    args: argparse.Namespace,
+    args: FrameForgeConfig,
     previous_hash: int | None,
     existing_hashes: set[int] | None = None,
     duplicate_buckets: dict[str, set[int]] | None = None,
@@ -373,7 +374,7 @@ def accept_and_save(
 ) -> tuple[str, int | None]:
     if not force_fill and args.min_sharpness > 0 and candidate.sharpness < args.min_sharpness:
         return "blurry", previous_hash
-    motion_threshold = float(getattr(args, "motion_blur_threshold", 0.0))
+    motion_threshold = float(args.motion_blur_threshold)
     if not force_fill and motion_threshold > 0 and candidate.motion_blur_score > motion_threshold:
         return "motion_blur", previous_hash
     if (
@@ -383,7 +384,7 @@ def accept_and_save(
         and hamming_distance(candidate.hash_value, previous_hash) <= args.duplicate_threshold
     ):
         return "duplicate", previous_hash
-    cross_run_threshold = int(getattr(args, "cross_run_duplicate_threshold", args.duplicate_threshold))
+    cross_run_threshold = int(args.cross_run_duplicate_threshold)
     comparison_hashes = existing_hashes
     if duplicate_buckets is not None and cross_run_threshold <= 6:
         comparison_hashes = set()
@@ -391,7 +392,7 @@ def accept_and_save(
             comparison_hashes.update(duplicate_buckets.get(bucket_key, set()))
     if (
         not force_fill
-        and getattr(args, "cross_run_duplicates", True)
+        and args.cross_run_duplicates
         and cross_run_threshold > 0
         and comparison_hashes
         and any(hamming_distance(candidate.hash_value, item) <= cross_run_threshold for item in comparison_hashes)
@@ -414,9 +415,9 @@ def accept_and_save(
         args.format,
         args.quality,
         args.width,
-        getattr(args, "crop_ratio", "Không crop"),
-        getattr(args, "encode_profile", "Chất lượng cao"),
-        getattr(args, "stage_timings", None),
+        args.crop_ratio,
+        args.encode_profile,
+        args.stage_timings,
     )
     if existing_hashes is not None:
         existing_hashes.add(candidate.hash_value)
@@ -431,7 +432,7 @@ def force_fill_target(
     fallback_candidates: list[tuple[FrameCandidate, str]],
     output_dir: Path,
     video_stem: str,
-    args: argparse.Namespace,
+    args: FrameForgeConfig,
     reports: dict[str, object],
     previous_hash: int | None,
     existing_hashes: set[int] | None,
@@ -444,7 +445,7 @@ def force_fill_target(
     dùng biết chất lượng có thể thấp hơn ngưỡng ban đầu.
     """
     target = screenshot_limit(args)
-    if not getattr(args, "target_count_after_filter", False) or target is None:
+    if not args.target_count_after_filter or target is None:
         return previous_hash
     missing = max(0, target - int(reports.get("saved", 0) or 0))
     if missing <= 0 or not fallback_candidates:
@@ -572,7 +573,7 @@ def process_fixed_mode_multiprocess(
     video: Path,
     output_dir: Path,
     targets: list[float],
-    args: argparse.Namespace,
+    args: FrameForgeConfig,
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
     existing_hashes: set[int] | None = None,
@@ -590,11 +591,11 @@ def process_fixed_mode_multiprocess(
         "capture_errors": 0,
         "scene_times": [],
         "extraction_mode": "multiprocessing",
-        "extraction_workers": int(getattr(args, "extract_workers", 1)),
-        "stage_timings": getattr(args, "stage_timings", None),
+        "extraction_workers": max(1, args.extract_workers),
+        "stage_timings": args.stage_timings,
     }
     temp_dir = Path(tempfile.mkdtemp(prefix="frameforge_extract_", dir=str(output_dir)))
-    worker_count = min(max(2, int(getattr(args, "extract_workers", 2))), len(targets))
+    worker_count = min(max(2, max(2, args.extract_workers)), len(targets))
     chunk_size = max(1, math.ceil(len(targets) / worker_count))
     chunks = [
         [(index, timestamp) for index, timestamp in enumerate(targets[start:start + chunk_size], start=start)]
@@ -618,13 +619,13 @@ def process_fixed_mode_multiprocess(
                 else:
                     decode_started = time.perf_counter()
                     frame = cv2.imread(frame_path)
-                    record_stage_timing(getattr(args, "stage_timings", None), "decode", decode_started)
+                    record_stage_timing(args.stage_timings, "decode", decode_started)
                     if frame is None:
                         reports["capture_errors"] = int(reports["capture_errors"]) + 1
                     else:
                         analysis_started = time.perf_counter()
                         candidate = frame_candidate(frame, timestamp, args.analysis_width, requirements)
-                        record_stage_timing(getattr(args, "stage_timings", None), "analysis", analysis_started)
+                        record_stage_timing(args.stage_timings, "analysis", analysis_started)
                         status, previous_hash = accept_and_save(
                             candidate, output_dir, video.stem, index + 1, args, previous_hash, existing_hashes, duplicate_buckets
                         )
@@ -649,9 +650,9 @@ def process_fixed_mode_multiprocess(
     return reports
 
 
-def screenshot_limit(args: argparse.Namespace) -> int | None:
+def screenshot_limit(args: FrameForgeConfig) -> int | None:
     """Trả về số screenshot tối đa mỗi video; None nghĩa là không giới hạn."""
-    raw = getattr(args, "max_screenshots", None)
+    raw = args.max_screenshots
     try:
         value = int(raw or 0)
     except (TypeError, ValueError):
@@ -659,24 +660,24 @@ def screenshot_limit(args: argparse.Namespace) -> int | None:
     return value if value > 0 else None
 
 
-def candidate_limit(args: argparse.Namespace) -> int | None:
+def candidate_limit(args: FrameForgeConfig) -> int | None:
     limit = screenshot_limit(args)
     if limit is None:
         return None
-    if getattr(args, "target_count_after_filter", False):
-        multiplier = max(1, int(getattr(args, "target_candidate_multiplier", 3) or 3))
+    if args.target_count_after_filter:
+        multiplier = max(1, int(args.target_candidate_multiplier or 3))
         return limit * multiplier
     return limit
 
 
-def candidate_budget_bounds(args: argparse.Namespace) -> tuple[int | None, int | None]:
+def candidate_budget_bounds(args: FrameForgeConfig) -> tuple[int | None, int | None]:
     initial = candidate_limit(args)
     target = screenshot_limit(args)
-    if initial is None or target is None or not getattr(args, "target_count_after_filter", False):
+    if initial is None or target is None or not args.target_count_after_filter:
         return initial, initial
     maximum_multiplier = max(
-        int(getattr(args, "target_candidate_multiplier", 3) or 3),
-        int(getattr(args, "target_candidate_multiplier_max", 5) or 5),
+        int(args.target_candidate_multiplier or 3),
+        int(args.target_candidate_multiplier_max or 5),
     )
     return initial, target * maximum_multiplier
 
@@ -696,7 +697,7 @@ def process_fixed_mode(
     video: Path,
     output_dir: Path,
     duration: float,
-    args: argparse.Namespace,
+    args: FrameForgeConfig,
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
     existing_hashes: set[int] | None = None,
@@ -722,16 +723,16 @@ def process_fixed_mode(
             current += interval
 
     limit = screenshot_limit(args)
-    target_mode = bool(getattr(args, "target_count_after_filter", False))
+    target_mode = bool(args.target_count_after_filter)
     target_candidates, maximum_candidates = candidate_budget_bounds(args)
-    if target_candidates is not None and args.count is None and not getattr(args, "target_count_after_filter", False):
+    if target_candidates is not None and args.count is None and not args.target_count_after_filter:
         targets = targets[:target_candidates]
-    if target_candidates is not None and args.count is None and getattr(args, "target_count_after_filter", False):
+    if target_candidates is not None and args.count is None and args.target_count_after_filter:
         target_candidates = min(len(targets), target_candidates)
 
     effective_extract_workers = adaptive_extract_workers(
-        video_worker_count=int(getattr(args, "video_workers", 1)),
-        requested_workers=getattr(args, "extract_workers", 1),
+        video_worker_count=int(args.video_workers or 1),
+        requested_workers=args.extract_workers or 1,
         target_count=len(targets),
         duration_seconds=duration,
     )
@@ -751,9 +752,9 @@ def process_fixed_mode(
         "scene_times": [],
         "extraction_mode": "sequential",
         "extraction_workers": effective_extract_workers,
-        "stage_timings": getattr(args, "stage_timings", None),
+        "stage_timings": args.stage_timings,
     }
-    if effective_extract_workers > 1 and len(targets) >= int(getattr(args, "extract_min_targets", 8)) and not target_mode:
+    if effective_extract_workers > 1 and len(targets) >= int(args.extract_min_targets) and not target_mode:
         multiprocessing_args = copy.copy(args)
         multiprocessing_args.extract_workers = effective_extract_workers
         return process_fixed_mode_multiprocess(
@@ -771,7 +772,7 @@ def process_fixed_mode(
             break
         decode_started = time.perf_counter()
         ok, frame = capture.read()
-        record_stage_timing(getattr(args, "stage_timings", None), "decode", decode_started)
+        record_stage_timing(args.stage_timings, "decode", decode_started)
         if not ok:
             reports["capture_errors"] = int(reports["capture_errors"]) + (len(targets) - target_index)
             break
@@ -794,7 +795,7 @@ def process_fixed_mode(
             break
         analysis_started = time.perf_counter()
         candidate = frame_candidate(frame, timestamp, args.analysis_width, requirements)
-        record_stage_timing(getattr(args, "stage_timings", None), "analysis", analysis_started)
+        record_stage_timing(args.stage_timings, "analysis", analysis_started)
         status, previous_hash = accept_and_save(
             candidate, output_dir, video.stem, target_index + 1, args, previous_hash, existing_hashes, duplicate_buckets
         )
@@ -850,7 +851,7 @@ def process_scene_mode(
     video: Path,
     output_dir: Path,
     duration: float,
-    args: argparse.Namespace,
+    args: FrameForgeConfig,
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
     existing_hashes: set[int] | None = None,
@@ -880,7 +881,7 @@ def process_scene_mode(
         "smart_scene_detection": True,
     }
     limit = screenshot_limit(args)
-    target_mode = bool(getattr(args, "target_count_after_filter", False))
+    target_mode = bool(args.target_count_after_filter)
     candidate_budget, maximum_candidate_budget = candidate_budget_bounds(args)
     candidate_count = 0
     selected_times: list[float] = []
@@ -917,7 +918,7 @@ def process_scene_mode(
             break
         decode_started = time.perf_counter()
         ok, frame = capture.read()
-        record_stage_timing(getattr(args, "stage_timings", None), "decode", decode_started)
+        record_stage_timing(args.stage_timings, "decode", decode_started)
         if not ok:
             break
         timestamp = capture.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
@@ -943,7 +944,7 @@ def process_scene_mode(
         analysis_started = time.perf_counter()
         candidate = frame_candidate(frame, timestamp, args.analysis_width, requirements)
         candidate_count += 1
-        record_stage_timing(getattr(args, "stage_timings", None), "analysis", analysis_started)
+        record_stage_timing(args.stage_timings, "analysis", analysis_started)
         emit_progress(
             on_progress,
             video,
@@ -972,7 +973,7 @@ def process_scene_mode(
                     current_best,
                     candidate,
                     args.best_frame_per_scene,
-                    getattr(args, "motion_blur_threshold", 0.0),
+                    args.motion_blur_threshold,
                 )
             else:
                 pending.confirmations += 1
@@ -989,7 +990,7 @@ def process_scene_mode(
                     current_best,
                     candidate,
                     args.best_frame_per_scene,
-                    getattr(args, "motion_blur_threshold", 0.0),
+                    args.motion_blur_threshold,
                 )
         else:
             difference = smart_scene_difference(
@@ -1002,7 +1003,7 @@ def process_scene_mode(
             quality_ok = (
                 (args.min_sharpness <= 0 or candidate.sharpness >= args.min_sharpness)
                 and (
-                    getattr(args, "motion_blur_threshold", 0.0) <= 0
+                    args.motion_blur_threshold <= 0
                     or candidate.motion_blur_score <= args.motion_blur_threshold
                 )
             )
@@ -1022,7 +1023,7 @@ def process_scene_mode(
                     current_best,
                     candidate,
                     args.best_frame_per_scene,
-                    getattr(args, "motion_blur_threshold", 0.0),
+                    args.motion_blur_threshold,
                 )
 
         if target_mode and limit is not None and candidate_budget is not None:
@@ -1045,7 +1046,7 @@ def process_scene_mode(
                 current_best,
                 pending.candidate,
                 args.best_frame_per_scene,
-                getattr(args, "motion_blur_threshold", 0.0),
+                args.motion_blur_threshold,
             )
     previous_hash = flush(current_best, scene_index + 1, previous_hash)
     if target_mode:
@@ -1068,7 +1069,7 @@ def process_cached_scene_mode(
     capture: cv2.VideoCapture,
     video: Path,
     output_dir: Path,
-    args: argparse.Namespace,
+    args: FrameForgeConfig,
     cached: dict[str, object],
     existing_hashes: set[int],
     duplicate_buckets: dict[str, set[int]] | None = None,
@@ -1076,7 +1077,7 @@ def process_cached_scene_mode(
     cancel_event=None,
 ) -> dict[str, object]:
     limit = screenshot_limit(args)
-    target_mode = bool(getattr(args, "target_count_after_filter", False))
+    target_mode = bool(args.target_count_after_filter)
     selected_times = [float(item) for item in cached.get("selected_times", [])]
     scene_times = [float(item) for item in cached.get("scene_times", [])]
     if limit is not None:
@@ -1098,7 +1099,7 @@ def process_cached_scene_mode(
         "scene_confirmations": args.scene_confirmations,
         "smart_scene_detection": True,
         "cache_hit": True,
-        "stage_timings": getattr(args, "stage_timings", None),
+        "stage_timings": args.stage_timings,
     }
     previous_hash: int | None = None
     requirements = metric_requirements(args)
@@ -1109,13 +1110,13 @@ def process_cached_scene_mode(
         capture.set(cv2.CAP_PROP_POS_MSEC, timestamp * 1000.0)
         decode_started = time.perf_counter()
         ok, frame = capture.read()
-        record_stage_timing(getattr(args, "stage_timings", None), "decode", decode_started)
+        record_stage_timing(args.stage_timings, "decode", decode_started)
         if not ok:
             reports["capture_errors"] = int(reports["capture_errors"]) + 1
             continue
         analysis_started = time.perf_counter()
         candidate = frame_candidate(frame, timestamp, args.analysis_width, requirements)
-        record_stage_timing(getattr(args, "stage_timings", None), "analysis", analysis_started)
+        record_stage_timing(args.stage_timings, "analysis", analysis_started)
         status, previous_hash = accept_and_save(
             candidate, output_dir, video.stem, index, args, previous_hash, existing_hashes, duplicate_buckets
         )
@@ -1135,7 +1136,7 @@ def process_video(
     video: Path,
     output_root: Path,
     source_root: Path | None,
-    args: argparse.Namespace,
+    args: FrameForgeConfig,
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
 ) -> dict[str, object]:
@@ -1149,12 +1150,12 @@ def process_video(
         output_dir = output_root / video.stem
     output_dir.mkdir(parents=True, exist_ok=True)
     resource_info = resource_guard(output_dir, duration, args)
-    duplicate_root_value = getattr(args, "duplicate_root", None)
+    duplicate_root_value = args.duplicate_root
     duplicate_root = Path(duplicate_root_value) if duplicate_root_value else output_root / ".frameforge_hashes"
     duplicate_root.mkdir(parents=True, exist_ok=True)
     duplicate_path = duplicate_index_path(video, duplicate_root)
     existing_hashes, duplicate_buckets = load_duplicate_index(duplicate_path)
-    cache_root_value = getattr(args, "cache_root", None)
+    cache_root_value = args.cache_root
     cache_root = Path(cache_root_value) if cache_root_value else output_root / ".frameforge_cache"
     cache_path: Path | None = None
     cache_key: str | None = None
@@ -1163,7 +1164,7 @@ def process_video(
         cache_root.mkdir(parents=True, exist_ok=True)
         cache_path = scene_cache_path(video, cache_root)
         cache_key = scene_cache_key(video, metadata, args)
-        if getattr(args, "use_scene_cache", True):
+        if args.use_scene_cache:
             cached = load_scene_cache(cache_path, cache_key)
     cache_message = "cache scene hợp lệ" if cached else ("cần phân tích scene mới" if args.scene_detection else "không dùng scene cache")
     emit_progress(on_progress, video, "preparing", 0.0, f"Đã mở video, kiểm tra disk, nạp {len(existing_hashes)} hash cũ; {cache_message}")
@@ -1218,7 +1219,7 @@ def process_one_video(
     video: Path,
     output_root: Path,
     source_root: Path | None,
-    args: argparse.Namespace,
+    args: FrameForgeConfig,
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
 ) -> dict[str, object]:
@@ -1231,7 +1232,7 @@ def process_videos(
     videos: list[Path],
     output_root: Path,
     source_root: Path | None,
-    args: argparse.Namespace,
+    args: FrameForgeConfig,
     on_complete: Callable[[Path, dict[str, object]], None] | None = None,
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
@@ -1243,32 +1244,32 @@ def process_videos(
     if not videos:
         return []
 
-    requested_workers = getattr(args, "workers", 1)
+    requested_workers = args.workers
     if isinstance(requested_workers, str) and requested_workers.lower() == "auto":
         requested_workers = recommend_workers(len(videos))
     worker_count = min(max(1, int(requested_workers)), len(videos))
     retry_count = max(0, int(max_retries))
-    extract_worker_request = getattr(args, "extract_workers", 1)
+    extract_worker_request = args.extract_workers or 1
     extract_worker_count = adaptive_extract_workers(worker_count, extract_worker_request)
     runtime_args = copy.copy(args)
     runtime_args.extract_workers = extract_worker_count
     runtime_args.video_workers = worker_count
-    runtime_args.extract_min_targets = max(1, int(getattr(args, "extract_min_targets", 8)))
+    runtime_args.extract_min_targets = max(1, int(args.extract_min_targets))
     results: dict[int, dict[str, object]] = {}
     checkpoint_file = checkpoint_path(output_root, args)
-    run_signature = str(getattr(args, "queue_run_signature", "") or processing_signature(args))
+    run_signature = str(args.queue_run_signature or processing_signature(args))
     checkpoint = load_checkpoint(checkpoint_file)
-    completed_checkpoint = checkpoint.get("completed", {}) if getattr(args, "resume", False) and checkpoint.get("run_signature") == run_signature else {}
+    completed_checkpoint = checkpoint.get("completed", {}) if args.resume and checkpoint.get("run_signature") == run_signature else {}
     if not isinstance(completed_checkpoint, dict):
         completed_checkpoint = {}
     save_checkpoint(checkpoint_file, run_signature, completed_checkpoint)
     queue_store: PersistentQueueStore | None = None
     queue_job_id: str | None = None
-    queue_db_value = getattr(args, "queue_db", None)
+    queue_db_value = args.queue_db
     if queue_db_value:
         queue_store = PersistentQueueStore(Path(queue_db_value))
-        queue_job_id = queue_store.open_job(videos, run_signature, resume=bool(getattr(args, "resume", False)))
-        if getattr(args, "resume", False):
+        queue_job_id = queue_store.open_job(videos, run_signature, resume=bool(args.resume))
+        if args.resume:
             completed_checkpoint.update(queue_store.completed_reports(queue_job_id))
             save_checkpoint(checkpoint_file, run_signature, completed_checkpoint)
 
