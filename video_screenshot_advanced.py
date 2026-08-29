@@ -27,7 +27,6 @@ import time
 import uuid
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from core.utils import atomic_write_json as _atomic_write_json
 from core.utils import read_json as _read_json
@@ -40,6 +39,7 @@ from core.targets import (
     expand_candidate_budget,
 )
 from core.cv2_helpers import laplacian_variance, motion_blur_score, dhash, hamming_distance
+from core.analysis import (FrameCandidate, probe_video, resized_for_analysis, resize_for_analysis, color_histogram, frame_candidate, normalized_difference, histogram_difference, smart_scene_difference, better_frame, crop_to_aspect_ratio)
 from core.resources import (
     InsufficientResources,
     available_ram_gb,
@@ -116,170 +116,6 @@ CropRatioValues = CROP_RATIO_VALUES
 EncodeProfileLabels = ENCODE_PROFILE_LABELS
 EncodeProfiles = ENCODE_PROFILES
 
-
-@dataclass(frozen=True)
-class FrameCandidate:
-    frame: np.ndarray
-    timestamp: float
-    sharpness: float
-    motion_blur_score: float
-    hash_value: int
-    brightness: float
-    gray: np.ndarray
-    histogram: np.ndarray
-
-
-
-def probe_video(video: Path) -> dict[str, float | int]:
-    capture = cv2.VideoCapture(str(video))
-    if not capture.isOpened():
-        raise RuntimeError(f"OpenCV không mở được video: {video}")
-    fps = float(capture.get(cv2.CAP_PROP_FPS))
-    frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
-    width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    capture.release()
-    if not math.isfinite(fps) or fps <= 0:
-        fps = 30.0
-    duration = frame_count / fps if frame_count > 0 else 0.0
-    if duration <= 0:
-        raise RuntimeError("Video không có thời lượng hợp lệ.")
-    return {
-        "fps": fps,
-        "frame_count": frame_count,
-        "width": width,
-        "height": height,
-        "duration": duration,
-    }
-
-
-def resized_for_analysis(frame: np.ndarray, analysis_width: int) -> np.ndarray:
-    height, width = frame.shape[:2]
-    target_width = min(width, analysis_width)
-    if target_width == width:
-        return frame
-    target_height = max(1, round(height * target_width / width))
-    return cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_AREA)
-
-
-def resize_for_analysis(frame: np.ndarray, analysis_width: int) -> np.ndarray:
-    return cv2.cvtColor(resized_for_analysis(frame, analysis_width), cv2.COLOR_BGR2GRAY)
-
-
-def color_histogram(frame: np.ndarray, analysis_width: int) -> np.ndarray:
-    small = resized_for_analysis(frame, analysis_width)
-    hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
-    histogram = cv2.calcHist([hsv], [0, 1], None, [16, 8], [0, 180, 0, 256])
-    histogram = cv2.normalize(histogram, histogram).flatten()
-    return histogram.astype(np.float32)
-
-
-def frame_candidate(
-    frame: np.ndarray,
-    timestamp: float,
-    analysis_width: int,
-    requirements: MetricRequirements | None = None,
-) -> FrameCandidate:
-    requirements = requirements or MetricRequirements(True, True, True, True)
-    # Tạo ảnh nhỏ đúng một lần; mọi metric phân tích dùng chung buffer này.
-    small = resized_for_analysis(frame, analysis_width)
-    need_gray = (
-        requirements.need_sharpness
-        or requirements.need_motion_blur
-        or requirements.need_hash
-        or requirements.need_histogram
-    )
-    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if need_gray else np.empty((0, 0), dtype=np.uint8)
-    raw_sharpness = laplacian_variance(gray) if requirements.need_sharpness else 0.0
-    blur_score = motion_blur_score(gray) if requirements.need_motion_blur else 0.0
-    histogram = np.empty((0,), dtype=np.float32)
-    if requirements.need_histogram:
-        hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
-        histogram = cv2.calcHist([hsv], [0, 1], None, [16, 8], [0, 180, 0, 256])
-        histogram = cv2.normalize(histogram, histogram).flatten().astype(np.float32)
-    # Quy về cùng mốc 640 px để threshold ổn định hơn giữa các độ phân giải.
-    width_scale = (REFERENCE_ANALYSIS_WIDTH / max(gray.shape[1], 1)) ** 2 if need_gray else 1.0
-    normalized_sharpness = raw_sharpness * width_scale
-    return FrameCandidate(
-        frame=frame.copy(),
-        timestamp=timestamp,
-        sharpness=normalized_sharpness,
-        motion_blur_score=blur_score,
-        hash_value=dhash(gray) if requirements.need_hash else 0,
-        brightness=float(np.mean(gray)) / 255.0 if need_gray else 0.0,
-        gray=gray,
-        histogram=histogram,
-    )
-
-
-def normalized_difference(left: np.ndarray, right: np.ndarray) -> float:
-    return float(np.mean(cv2.absdiff(left, right))) / 255.0
-
-
-def histogram_difference(left: np.ndarray, right: np.ndarray) -> float:
-    # Correlation is robust to small illumination changes; map [-1, 1] to [0, 1].
-    correlation = float(cv2.compareHist(left, right, cv2.HISTCMP_CORREL))
-    return min(1.0, max(0.0, (1.0 - correlation) / 2.0))
-
-
-def smart_scene_difference(
-    gray: np.ndarray,
-    histogram: np.ndarray,
-    previous_gray: np.ndarray | None,
-    previous_histogram: np.ndarray | None,
-) -> float:
-    if previous_gray is None or previous_histogram is None:
-        return 0.0
-    pixel_difference = normalized_difference(gray, previous_gray)
-    color_difference = histogram_difference(histogram, previous_histogram)
-    return 0.70 * pixel_difference + 0.30 * color_difference
-
-
-def better_frame(
-    current: FrameCandidate | None,
-    candidate: FrameCandidate,
-    choose_best: bool = True,
-    motion_threshold: float = 0.0,
-) -> FrameCandidate:
-    if current is None:
-        return candidate
-    if motion_threshold > 0:
-        candidate_ok = candidate.motion_blur_score <= motion_threshold
-        current_ok = current.motion_blur_score <= motion_threshold
-        if candidate_ok and not current_ok:
-            return candidate
-        if not candidate_ok and current_ok:
-            return current
-    if not choose_best:
-        return current
-    if candidate.sharpness > current.sharpness:
-        return candidate
-    return current
-
-
-
-def crop_to_aspect_ratio(
-    frame: np.ndarray,
-    crop_ratio: str | None,
-) -> np.ndarray:
-    if crop_ratio is None or str(crop_ratio).strip() in ('', 'none', 'Khong crop'):
-        return frame
-    target_ratio = CROP_RATIO_VALUES.get(str(crop_ratio))
-    if target_ratio is None:
-        raise ValueError(f"Tỉ lệ crop không hợp lệ: {crop_ratio}")
-    height, width = frame.shape[:2]
-    if height <= 0 or width <= 0:
-        return frame
-    current_ratio = width / height
-    if abs(current_ratio - target_ratio) < 1e-6:
-        return frame
-    if current_ratio > target_ratio:
-        cropped_width = max(1, min(width, round(height * target_ratio)))
-        left = max(0, (width - cropped_width) // 2)
-        return frame[:, left:left + cropped_width]
-    cropped_height = max(1, min(height, round(width / target_ratio)))
-    top = max(0, (height - cropped_height) // 2)
-    return frame[top:top + cropped_height, :]
 
 def save_image(
     frame: np.ndarray,
