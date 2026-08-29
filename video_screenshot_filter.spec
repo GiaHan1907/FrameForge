@@ -55,6 +55,7 @@ datas += [
     ("ui/session.py", "ui"),
     ("ui/wizard.py", "ui"),
     ("ui/preview.py", "ui"),
+    ("ui/preview_section.py", "ui"),
     ("ui/presets.py", "ui"),
     ("ui/desktop.py", "ui"),
     ("ui/queue_ui.py", "ui"),

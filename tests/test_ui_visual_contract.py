@@ -26,7 +26,10 @@ class UIVisualContractTests(unittest.TestCase):
         self.assertIn(".timeline-legend { flex-wrap: wrap; }", combined)
 
     def test_preview_and_v0129_contracts_remain_present(self):
-        for marker in ("Preview workspace", "Frame gallery", "Lịch sử job", "Xuất cấu hình JSON", "Queue dashboard"):
+        preview_section = (ROOT / "ui" / "preview_section.py").read_text(encoding="utf-8")
+        for marker in ("Preview workspace", "Frame gallery"):
+            self.assertIn(marker, preview_section)
+        for marker in ("Lịch sử job", "Xuất cấu hình JSON", "Queue dashboard"):
             self.assertIn(marker, self.source)
 
 

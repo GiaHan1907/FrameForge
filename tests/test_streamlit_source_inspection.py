@@ -68,7 +68,8 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
     def test_video_preview_is_compact_and_timestamp_lookup_is_supported(self) -> None:
         self.assertIn("max-width: 560px !important", self.all_source)
         self.assertIn("aspect-ratio: 16 / 9", self.all_source)
-        self.assertIn("width=560", self.source)
+        preview_section_source = (ROOT / "ui" / "preview_section.py").read_text(encoding="utf-8")
+        self.assertIn("width=560", preview_section_source)
         self.assertIn('pattern = f"*{timestamp_label(nearest)}.*"', self.source)
 
     def test_downloader_error_categories_and_backoff_are_present(self) -> None:
@@ -102,7 +103,8 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
         self.assertIn('"rss": telemetry["rss"]', self.all_source)
         self.assertIn("WIZARD_STEPS", self.source)
         self.assertIn("def preview_frame_at", self.all_source)
-        self.assertIn("def preview_scene_timeline", self.source)
+        preview_section_source = (ROOT / "ui" / "preview_section.py").read_text(encoding="utf-8")
+        self.assertIn("def preview_scene_timeline", preview_section_source)
         self.assertIn("Queue theo video", self.source)
         self.assertIn(
             "from queue_per_video import render_queue_per_video",
