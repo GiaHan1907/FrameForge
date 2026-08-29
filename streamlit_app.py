@@ -602,275 +602,39 @@ if download_clicked:
             st.caption("Ứng dụng vẫn giữ các file đã tải thành công trước khi xảy ra lỗi.")
 
 # Sidebar controls
+from ui.sidebar import build_sidebar_entries
+from ui.widgets import render_entries
+
+# Sidebar controls (declarative)
 with st.sidebar:
-    st.markdown(
-        """
-        <div class="sidebar-brand">
-          <span class="mark">✦</span><strong>FrameForge</strong>
-          <p>Video screenshot studio<br>Scene-aware · Fast · Clean</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown('<div class="eyebrow">01 · Nguồn video</div>', unsafe_allow_html=True)
-    uploaded_files = st.file_uploader(
-        "Chọn một hoặc nhiều video",
-        type=["mp4", "mov", "mkv", "avi", "webm", "m4v", "ts", "mts"],
-        accept_multiple_files=True,
-        key="uploaded_files",
-        help="Có thể chọn nhiều video để xử lý trong cùng một lần.",
-    )
-    if uploaded_files:
-        st.caption(f"✓ Đã chọn {len(uploaded_files)} video tải lên")
-    if downloaded_paths:
-        st.caption(f"✓ Có {len(downloaded_paths)} video đã tải từ URL")
-    if not uploaded_files and not downloaded_paths:
-        st.caption("Chưa có video nào được chọn")
+    render_entries(build_sidebar_entries(
+        uploaded_files=st.session_state.get("uploaded_files"),
+        downloaded_paths=downloaded_paths,
+        mode_label=st.session_state.get("mode_label", "Best frame per scene"),
+        limit_end=st.session_state.get("limit_end", False),
+        image_format=st.session_state.get("image_format", "jpg"),
+        max_screenshots=st.session_state.get("max_screenshots", 20),
+        worker_count=len(uploaded_files) if uploaded_files else None,
+        preset_options=list(PRESET_CONFIGS),
+        on_change_preset=apply_selected_preset,
+    ))
 
-    st.markdown('<div class="eyebrow">02 · Cách chọn frame</div>', unsafe_allow_html=True)
-    st.selectbox(
-        "Preset cấu hình",
-        list(PRESET_CONFIGS),
-        key="preset_choice",
-        on_change=apply_selected_preset,
-        help="Áp dụng nhanh nhóm thông số; bạn vẫn có thể tinh chỉnh từng trường sau đó.",
-    )
-    if st.session_state.get("preset_status"):
-        st.caption(st.session_state.pop("preset_status"))
-    mode_label = st.radio(
-        "Chế độ xử lý",
-        ["Best frame per scene", "Scene detection", "Mỗi N giây", "Đúng N frame"],
-        index=0,
-        key="mode_label",
-        help="Best frame per scene giữ ảnh sắc nét nhất trong từng cảnh; Scene detection giữ frame đầu của từng cảnh.",
-    )
-
-    start = st.number_input("Bắt đầu từ giây", min_value=0.0, value=0.0, step=1.0, key="start")
-    limit_end = st.checkbox("Giới hạn thời điểm kết thúc", key="limit_end")
-    end = st.number_input(
-        "Kết thúc ở giây",
-        min_value=0.1,
-        value=60.0,
-        step=1.0,
-        key="end",
-        disabled=not limit_end,
-    )
-
-    scene_threshold = 0.30
-    min_scene_gap = 0.5
-    flash_return_ratio = 0.55
-    flash_brightness_threshold = 0.18
-    scene_confirmations = 2
-    every = None
-    count = None
-    max_screenshots = st.number_input(
-        "Số screenshot mỗi video",
-        min_value=1,
-        max_value=1000,
-        value=20,
-        step=1,
-        key="max_screenshots",
-        help=(
-            "Số ảnh mục tiêu mỗi video. Khi bật chế độ ép đủ, FrameForge sẽ dùng fallback có kiểm soát "
-            "nếu filter loại quá nhiều frame."
-        ),
-    )
-    target_count_after_filter = st.checkbox(
-        "Ép đủ số ảnh yêu cầu (fallback cuối)",
-        key="target_count_after_filter",
-        value=True,
-        help=(
-            "Áp dụng cho mọi mode. Filter vẫn chạy bình thường trước; nếu còn thiếu, hệ thống sẽ lưu "
-            "candidate bị loại ít rủi ro nhất và ghi rõ số ảnh fallback trong report."
-        ),
-    )
-
-    if mode_label in {"Best frame per scene", "Scene detection"}:
-        with st.expander("Tinh chỉnh scene detection", expanded=True):
-            scene_threshold = st.slider(
-                "Độ nhạy thay đổi cảnh",
-                0.05,
-                0.95,
-                step=0.05,
-                key="scene_threshold",
-                help="Thấp hơn sẽ nhạy hơn và có thể tạo nhiều scene hơn.",
-            )
-            min_scene_gap = st.number_input(
-                "Khoảng cách tối thiểu giữa scene (giây)",
-                min_value=0.1,
-                step=0.1,
-                key="min_scene_gap",
-            )
-            flash_return_ratio = st.slider(
-                "Ngưỡng chống flash",
-                0.10,
-                0.95,
-                step=0.05,
-                key="flash_return_ratio",
-                help="Thấp hơn giúp bỏ các thay đổi ngắn quay lại cảnh cũ.",
-            )
-            flash_brightness_threshold = st.slider(
-                "Độ lệch sáng tối đa khi nhận diện flash",
-                0.01,
-                0.50,
-                step=0.01,
-                key="flash_brightness_threshold",
-            )
-            scene_confirmations = st.slider(
-                "Số frame xác nhận thay đổi cảnh",
-                1,
-                5,
-                key="scene_confirmations",
-                help="Tăng lên để chống nhiễu/flash; giảm xuống 1 cho chuyển cảnh rất nhanh.",
-            )
-    elif mode_label == "Mỗi N giây":
-        every = st.number_input(
-            "Khoảng cách giữa các frame (giây)",
-            min_value=0.05,
-            value=5.0,
-            step=0.5,
-            key="every",
-        )
-    else:
-        count = int(max_screenshots)
-
-    st.markdown('<div class="eyebrow">03 · Chất lượng & tốc độ</div>', unsafe_allow_html=True)
-    recommended_workers = recommend_workers(len(uploaded_files) if uploaded_files else None)
-    worker_choice = st.selectbox(
-        "Video xử lý song song",
-        ["Auto (khuyến nghị)", 1, 2, 3, 4],
-        index=0,
-        key="worker_choice",
-        help="Auto tự cân bằng theo CPU/RAM. Mỗi worker xử lý một video độc lập.",
-    )
-    workers = "auto" if worker_choice == "Auto (khuyến nghị)" else int(worker_choice)
-    st.caption(f"Đề xuất hiện tại: **{recommended_workers} worker** theo cấu hình máy.")
-    with st.expander("Hiệu năng phân tích", expanded=False):
-        analysis_width = st.number_input(
-            "Chiều rộng phân tích",
-            min_value=160,
-            max_value=1920,
-            step=80,
-            key="analysis_width",
-            help="Frame được thu nhỏ trước khi đo scene, độ nét và trùng lặp.",
-        )
-        min_free_ram_gb = st.number_input(
-            "RAM khả dụng tối thiểu (GB)",
-            min_value=0.0,
-            max_value=64.0,
-            step=0.5,
-            key="min_free_ram_gb",
-            help="Tạm dừng/không bắt đầu job nếu RAM khả dụng thấp hơn ngưỡng; 0 để tắt.",
-        )
-        analysis_fps = st.number_input(
-            "FPS phân tích scene",
-            min_value=1.0,
-            max_value=30.0,
-            step=1.0,
-            key="analysis_fps",
-            help="Giảm FPS để tăng tốc; tăng FPS nếu cảnh thay đổi rất nhanh.",
-        )
-        extract_worker_choice = st.selectbox(
-            "Process trích frame fixed/count",
-            ["Auto (khuyến nghị)", 1, 2, 3, 4],
-            index=0,
-            key="extract_worker_choice",
-            help="Chỉ áp dụng cho Mỗi N giây/Đúng N frame khi có từ 8 timestamp. Scene mode vẫn decode tuần tự để giữ cache scene chính xác.",
-        )
-
-    min_sharpness = st.number_input(
-        "Ngưỡng độ nét tối thiểu",
-        min_value=0.0,
-        step=10.0,
-        key="min_sharpness",
-        help="Điểm đã chuẩn hóa về chiều rộng tham chiếu 640 px. Đặt 0 để tắt lọc mờ.",
-    )
-    duplicate_threshold = st.slider(
-        "Ngưỡng trùng dHash",
-        0,
-        32,
-        key="duplicate_threshold",
-        help="Khoảng cách càng nhỏ thì frame càng giống. Đặt 0 để tắt lọc trùng.",
-    )
-    motion_blur_threshold = st.slider(
-        "Ngưỡng motion blur",
-        0.0,
-        1.0,
-        step=0.05,
-        key="motion_blur_threshold",
-        help="Điểm càng cao càng có nguy cơ nhòe chuyển động. Đặt 0 để tắt.",
-    )
-
-    st.markdown('<div class="eyebrow">04 · Đầu ra</div>', unsafe_allow_html=True)
-    encode_profile = st.selectbox(
-        "Profile encode",
-        list(ENCODE_PROFILE_LABELS),
-        key="encode_profile",
-        help="Nhanh giảm chi phí encode; Chất lượng cao ưu tiên tối ưu kích thước/chất lượng file.",
-    )
-    image_format = st.selectbox(
-        "Định dạng ảnh",
-         ["jpg", "png", "webp"],
-        key="image_format",
-
-    )
-    crop_ratio = st.selectbox(
-        "Tỉ lệ crop screenshot",
-        list(CROP_RATIO_LABELS),
-        key="crop_ratio",
-        help="Crop chính giữa, không kéo giãn hình. Chiều rộng đầu ra áp dụng sau khi crop.",
-    )
-    quality = st.slider(
-        "Chất lượng JPG/WebP",
-        1,
-        100,
-        key="quality",
-        disabled=image_format == "png",
-    )
-    width = st.number_input(
-        "Chiều rộng đầu ra (0 = giữ nguyên)",
-        min_value=0,
-        step=64,
-        key="width",
-    )
-    overwrite = st.checkbox(
-        "Ghi đè file đầu ra đã tồn tại",
-        key="overwrite",
-    )
-    retry_count = st.number_input(
-        "Số lần retry mỗi video",
-        min_value=0,
-        max_value=5,
-        step=1,
-        key="retries",
-        help="Nếu một video lỗi tạm thời, FrameForge sẽ tự thử lại trước khi chuyển sang video kế tiếp.",
-    )
-    retry_delay = st.number_input(
-        "Thời gian chờ retry (giây)",
-        min_value=0.0,
-        max_value=30.0,
-        step=0.5,
-        key="retry_delay",
-    )
-    disk_reserve_mb = st.number_input(
-        "Vùng đệm dung lượng tối thiểu (MB)",
-        min_value=0,
-        max_value=8192,
-        step=128,
-        key="disk_reserve_mb",
-        help="Không bắt đầu hoặc tiếp tục ghi khi dung lượng trống thấp hơn vùng đệm này.",
-    )
-    use_scene_cache = st.checkbox(
-        "Dùng cache phân tích scene",
-        key="use_scene_cache",
-        help="Lần chạy sau sẽ seek tới các timestamp đã chọn thay vì phân tích lại toàn bộ video.",
-    )
-    cross_run_duplicates = st.checkbox(
-        "Loại duplicate giữa các lần chạy",
-        key="cross_run_duplicates",
-        help="Dùng dHash index trong thư mục screenshot để tránh lưu lại frame gần giống đã xuất trước đó.",
-    )
-
+# Read widget values from session_state (populated by declarative sidebar)
+uploaded_files = st.session_state.get("uploaded_files")
+mode_label = st.session_state.get("mode_label", "Best frame per scene")
+start = float(st.session_state.get("start", 0.0))
+end = float(st.session_state.get("end", 60.0))
+limit_end = bool(st.session_state.get("limit_end", False))
+every = st.session_state.get("every")
+max_screenshots = int(st.session_state.get("max_screenshots", 20))
+scene_threshold = float(st.session_state.get("scene_threshold", 0.30))
+analysis_fps = float(st.session_state.get("analysis_fps", 1.0))
+analysis_width = int(st.session_state.get("analysis_width", 640))
+min_free_ram_gb = float(st.session_state.get("min_free_ram_gb", 0.0))
+crop_ratio = st.session_state.get("crop_ratio", "Không crop")
+image_format = st.session_state.get("image_format", "jpg")
+width = int(st.session_state.get("width", 0))
+quality = int(st.session_state.get("quality", 95))
 
 def build_args() -> FrameForgeConfig:
     """Thin wrapper: reads widget values from session_state and delegates to ui.wizard."""

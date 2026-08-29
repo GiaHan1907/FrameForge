@@ -44,6 +44,8 @@ datas += [
     ("ui/processing.py", "ui"),
     ("ui/session.py", "ui"),
     ("ui/wizard.py", "ui"),
+    ("ui/widgets.py", "ui"),
+    ("ui/sidebar.py", "ui"),
     ("ui/preview.py", "ui"),
     ("ui/preview_section.py", "ui"),
     ("ui/presets.py", "ui"),

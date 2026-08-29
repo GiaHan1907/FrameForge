@@ -86,7 +86,7 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
         self.assertIn("PRESET_CONFIGS = {", self.source)
         for name in ("Nhanh", "C\u00e2n b\u1eb1ng", "Ch\u1ea5t l\u01b0\u1ee3ng cao"):
             self.assertIn(f'"{name}"', self.source)
-        self.assertIn("on_change=apply_selected_preset", self.source)
+        self.assertIn("apply_selected_preset", self.all_source)
         self.assertIn('CROP_RATIO_LABELS', self.all_source)
         self.assertIn("def validate_ui_configuration", self.source)
         self.assertIn("def render_queue_dashboard", self.source)
