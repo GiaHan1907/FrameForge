@@ -65,6 +65,22 @@ from core.pipeline import (
 )
 from core.resources import available_ram_gb
 from core.utils import format_bytes
+from ui.logic import (
+    format_eta,
+    parse_progress_units,
+    progress_telemetry,
+    build_preview_timestamps,
+    normalize_output_dir,
+    frameforge_user_data_root,
+    personal_presets_path,
+    job_history_path,
+    read_json_list,
+    make_zip,
+    make_download_zip,
+    append_job_history,
+    _pause_processing_job,
+    _resume_processing_job,
+)
 from video_screenshot_advanced import process_videos
 from timeline_utils import build_timeline_entries, filter_timeline_entries
 from core.resources import InsufficientResources
@@ -194,42 +210,6 @@ def apply_selected_preset() -> None:
     apply_preset(str(st.session_state.get("preset_choice", "Cân bằng")))
 
 
-def format_eta(seconds: float | None) -> str:
-    if seconds is None or not math.isfinite(float(seconds)) or seconds < 0:
-        return "—"
-    total = int(round(float(seconds)))
-    minutes, secs = divmod(total, 60)
-    hours, minutes = divmod(minutes, 60)
-    if hours:
-        return f"{hours}g {minutes:02d}p"
-    if minutes:
-        return f"{minutes}p {secs:02d}s"
-    return f"{secs}s"
-
-
-def parse_progress_units(message: str) -> tuple[int, int] | None:
-    match = re.search(r"(\d+)\s*/\s*(\d+)\s*(?:mốc|frame)", message)
-    if not match:
-        return None
-    return int(match.group(1)), max(1, int(match.group(2)))
-
-
-def progress_telemetry(item: dict[str, object]) -> dict[str, float | int | None]:
-    done = int(item.get("units_done", 0) or 0)
-    total = int(item.get("units_total", 0) or 0)
-    started_at = float(item.get("started_at", 0.0) or 0.0)
-    elapsed = max(0.0, time.monotonic() - started_at) if started_at else 0.0
-    fps = done / elapsed if done > 0 and elapsed > 0.2 else None
-    eta = ((total - done) / fps) if fps and total > done else None
-    return {
-        "fps": fps,
-        "eta": eta,
-        "rss": int(item.get("rss_bytes", 0) or 0),
-        "done": done,
-        "total": total,
-    }
-
-
 def preview_video_duration(source: object) -> float | None:
     temporary_path: Path | None = None
     try:
@@ -292,28 +272,6 @@ def quick_scene_preview(source: object, threshold: float, start: float, end: flo
         capture.release()
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
-
-
-def build_preview_timestamps(duration: float | None, mode: str, start: float, end: float | None, every: float | None, count: int, maximum: int) -> list[float]:
-    actual_end = min(float(duration), float(end)) if duration and end is not None else float(duration or end or 0.0)
-    actual_start = max(0.0, min(float(start), actual_end))
-    if actual_end <= actual_start:
-        return []
-    if mode == "Đúng N frame":
-        total = max(1, int(count))
-        if total == 1:
-            return [round((actual_start + actual_end) / 2, 3)]
-        safe_end = max(actual_start, actual_end - 0.1)
-        return [round(actual_start + index * (safe_end - actual_start) / (total - 1), 3) for index in range(total)]
-    interval = float(every or 5.0)
-    timestamps = []
-    current = actual_start
-    while current < actual_end and len(timestamps) < max(1, int(maximum)):
-        timestamps.append(round(current, 3))
-        current += interval
-    if mode in {"Best frame per scene", "Scene detection"} and maximum > 0:
-        timestamps = timestamps[:maximum]
-    return timestamps
 
 
 def preview_crop_overlay(source: object, crop_ratio: str) -> bytes | None:
@@ -504,14 +462,6 @@ def choose_and_store_directory(directory_key: str, widget_key: str, title: str) 
         st.session_state[widget_key] = selected
 
 
-def normalize_output_dir(value: str, fallback: Path) -> Path:
-    raw = (value or "").strip()
-    path = Path(os.path.expandvars(os.path.expanduser(raw))) if raw else fallback
-    path = path.resolve()
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
 def find_recoverable_queue_jobs(root: Path) -> list[dict[str, object]]:
     jobs: list[dict[str, object]] = []
     if not root.exists():
@@ -527,25 +477,6 @@ def find_recoverable_queue_jobs(root: Path) -> list[dict[str, object]]:
         except (OSError, ValueError, TypeError):
             continue
     return jobs[:10]
-
-
-def make_zip(directory: Path, report_path: Path) -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(directory.rglob("*")):
-            if path.is_file() and path != report_path:
-                archive.write(path, path.relative_to(directory))
-        archive.write(report_path, report_path.name)
-    return buffer.getvalue()
-
-
-def make_download_zip(paths: list[Path]) -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in paths:
-            if path.exists() and path.is_file():
-                archive.write(path, path.name)
-    return buffer.getvalue()
 
 
 def show_scene_timeline(reports: list[dict[str, object]], output_dir: Path | None = None) -> None:
@@ -1274,27 +1205,6 @@ def build_args() -> FrameForgeConfig:
 PERSONAL_PRESET_KEYS = tuple(PRESET_CONFIGS["Cân bằng"].keys())
 
 
-def frameforge_user_data_root() -> Path:
-    base = os.environ.get("APPDATA") if os.name == "nt" else None
-    return Path(base or (Path.home() / ".frameforge")) / "ui"
-
-
-def personal_presets_path() -> Path:
-    return frameforge_user_data_root() / "presets.json"
-
-
-def job_history_path() -> Path:
-    return frameforge_user_data_root() / "job_history.json"
-
-
-def read_json_list(path: Path) -> list[dict[str, object]]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-        return value if isinstance(value, list) else []
-    except (OSError, ValueError, TypeError):
-        return []
-
-
 def current_personal_preset() -> dict[str, object]:
     return {key: st.session_state.get(key, PRESET_CONFIGS["Cân bằng"].get(key)) for key in PERSONAL_PRESET_KEYS}
 
@@ -1339,23 +1249,6 @@ def import_ui_config(uploaded_config: object) -> tuple[bool, str]:
         return changed > 0, f"Đã nhập {changed} trường cấu hình; giao diện sẽ tải lại để áp dụng."
     except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError) as exc:
         return False, f"Không thể đọc file cấu hình: {exc}"
-
-
-def append_job_history(job: dict[str, object]) -> None:
-    path = job_history_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    reports = job.get("reports") or []
-    entry = {
-        "finished_at": datetime.now().isoformat(timespec="seconds"),
-        "status": job.get("status"),
-        "output_dir": str(job.get("output_dir", "")),
-        "video_count": len(job.get("input_paths") or []),
-        "saved": sum(int(item.get("saved", 0) or 0) for item in reports if isinstance(item, dict)),
-        "shortfall": sum(int(item.get("shortfall", 0) or 0) for item in reports if isinstance(item, dict)),
-        "error": job.get("error"),
-    }
-    history = (read_json_list(path) + [entry])[-50:]
-    path.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def render_personal_config_panel() -> None:
@@ -1484,22 +1377,6 @@ def _start_processing_job(args: FrameForgeConfig, input_paths: list[Path], outpu
     if isinstance(shutdown_state, dict):
         shutdown_state["job"] = job
 
-
-
-def _pause_processing_job(job: dict[str, object]) -> None:
-    pause_event = job.get("pause_event")
-    if pause_event is not None:
-        pause_event.set()
-    job["status"] = "paused"
-    job["message"] = "Đã tạm dừng queue; video hiện tại sẽ hoàn tất rồi chờ tiếp tục."
-
-
-def _resume_processing_job(job: dict[str, object]) -> None:
-    pause_event = job.get("pause_event")
-    if pause_event is not None:
-        pause_event.clear()
-    job["status"] = "running"
-    job["message"] = "Đã tiếp tục queue."
 
 
 def _retry_failed_processing(job: dict[str, object], positions: set[int] | None = None) -> bool:

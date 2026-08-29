@@ -45,6 +45,7 @@ datas += [
     ("core/resources.py", "core"),
     ("core/manifest.py", "core"),
                 ("core/errors.py", "core"),
+    ("ui/logic.py", "ui"),
     ("ui/styles.css", "ui"),
     ("frameforge_version.txt", "."),
 ]

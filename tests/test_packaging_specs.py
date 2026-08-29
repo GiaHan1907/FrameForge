@@ -19,6 +19,7 @@ class PackagingSpecTests(unittest.TestCase):
             '("core/resources.py", "core")',
             '("core/manifest.py", "core")',
             '("core/errors.py", "core")',
+            '("ui/logic.py", "ui")',
             '("ui/styles.css", "ui")',
         ]
         for spec_name in (
