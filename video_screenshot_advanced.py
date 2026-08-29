@@ -99,7 +99,7 @@ from core.pipeline import (
     new_stage_timings,
     record_stage_timing,
 )
-from core.resources import available_memory_gb
+
 
 import cv2
 import numpy as np
@@ -448,61 +448,8 @@ def force_fill_target(
     return previous_hash
 
 
-def recommended_extract_workers() -> int:
-    cpu_count = os.cpu_count() or 1
-    return max(1, min(4, max(1, cpu_count // 2)))
-
-
-def adaptive_extract_workers(
-    video_worker_count: int = 1,
-    requested_workers: int | str | None = 0,
-    target_count: int | None = None,
-    duration_seconds: float | None = None,
-) -> int:
-    """Chọn số process trích frame theo CPU/RAM, duration và số timestamp.
-
-    Video ngắn hoặc job ít timestamp ưu tiên tuần tự để tránh chi phí spawn/seek.
-    Tham số duration có default để giữ tương thích với caller cũ.
-    """
-    outer_workers = max(1, int(video_worker_count))
-    if target_count is not None and int(target_count) < 8:
-        return 1
-    if isinstance(requested_workers, str) and requested_workers.lower() == "auto":
-        requested = recommended_extract_workers()
-    else:
-        try:
-            requested = int(requested_workers or 0)
-        except (TypeError, ValueError):
-            requested = 1
-        if requested <= 0:
-            requested = recommended_extract_workers()
-    cpu_budget = max(1, math.ceil((os.cpu_count() or 2) / outer_workers))
-    memory_budget = 4
-    duration_budget = 4
-    if duration_seconds is not None:
-        try:
-            duration = max(0.0, float(duration_seconds))
-        except (TypeError, ValueError):
-            duration = 0.0
-        samples = max(0, int(target_count or 0))
-        # Spawn/seek overhead dominates short fixed/count jobs.
-        if duration < 30.0 and samples < 96:
-            duration_budget = 1
-        elif duration < 90.0 and samples < 160:
-            duration_budget = 1
-        elif duration < 180.0 and samples < 240:
-            duration_budget = 2
-        elif duration < 300.0 and samples < 360:
-            duration_budget = 3
-    memory_gb = available_memory_gb()
-    if memory_gb is not None:
-        if memory_gb < 8:
-            memory_budget = 1
-        elif memory_gb < 16:
-            memory_budget = 2
-        elif memory_gb < 32:
-            memory_budget = 3
-    return max(1, min(4, requested, cpu_budget, memory_budget, duration_budget))
+# recommended_extract_workers and adaptive_extract_workers
+# → core/pipeline.py (canonical implementations)
 
 
 def _extract_frame_chunk(task: tuple[str, list[tuple[int, float]], str]) -> list[tuple[int, float, str | None, str | None]]:
