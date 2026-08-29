@@ -109,7 +109,22 @@ def read_widgets() -> dict[str, Any]:
 
     The returned dict uses *variable names* as keys (not session-state keys)
     so that callers can access ``widgets["start"]`` etc.
+
+    Special handling:
+    * ``downloaded_paths`` — derived from session_state (list of Path objects
+      filtered to existing files), not a direct widget value.
     """
     if st is None:  # pragma: no cover
-        return {var: None for var in WIDGET_KEYS}
-    return {var: st.session_state.get(ss_key) for var, ss_key in WIDGET_KEYS.items()}
+        result = {var: None for var in WIDGET_KEYS}
+        result["downloaded_paths"] = []
+        return result
+    result = {var: st.session_state.get(ss_key) for var, ss_key in WIDGET_KEYS.items()}
+    # downloaded_paths is not a widget — it's a list of Path objects derived
+    # from session_state["downloaded_paths"] (list of strings), filtered to
+    # files that still exist on disk.
+    from pathlib import Path
+    raw = st.session_state.get("downloaded_paths", [])
+    result["downloaded_paths"] = [
+        Path(item) for item in raw if Path(item).exists()
+    ]
+    return result

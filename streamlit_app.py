@@ -243,7 +243,7 @@ def apply_selected_preset() -> None:
 def validate_ui_configuration() -> dict[str, list[str]]:
     """Thin wrapper: reads widget values from session_state and delegates to ui.wizard."""
     widgets = read_widgets()
-    source_count = len(uploaded_files or []) + len(downloaded_paths)
+    source_count = len(widgets.get("uploaded_files") or []) + len(widgets.get("downloaded_paths") or [])
     screenshot_dir_value = str(st.session_state.get("screenshot_dir", "") or "").strip()
     worker_choice = widgets.get("worker_choice", "Auto (khuyến nghị)")
     workers_value = "auto" if worker_choice == "Auto (khuyến nghị)" else worker_choice
@@ -275,7 +275,7 @@ def preview_scene_timeline(duration: float, estimated: list[float], actual: list
 def wizard_summary() -> dict[str, str]:
     """Thin wrapper: reads widget values from session_state and delegates to ui.wizard."""
     widgets = read_widgets()
-    source_count = len(uploaded_files or []) + len(downloaded_paths)
+    source_count = len(widgets.get("uploaded_files") or []) + len(widgets.get("downloaded_paths") or [])
     return _wizard_summary(widgets, source_count=source_count)
 
 
@@ -1034,7 +1034,7 @@ with st.sidebar:
 def build_args() -> FrameForgeConfig:
     """Thin wrapper: reads widget values from session_state and delegates to ui.wizard."""
     widgets = read_widgets()
-    source_count = len(uploaded_files or []) + len(downloaded_paths)
+    source_count = len(widgets.get("uploaded_files") or []) + len(widgets.get("downloaded_paths") or [])
     return _build_args(widgets, source_count=source_count)
 
 
