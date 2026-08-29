@@ -33,6 +33,7 @@ from core.utils import atomic_write_json as _atomic_write_json
 from core.utils import read_json as _read_json
 from core.utils import format_bytes
 from core.config import FrameForgeConfig
+from core.cv2_helpers import laplacian_variance, motion_blur_score, dhash, hamming_distance
 from core.resources import (
     InsufficientResources,
     available_ram_gb,
@@ -165,54 +166,6 @@ def color_histogram(frame: np.ndarray, analysis_width: int) -> np.ndarray:
     histogram = cv2.calcHist([hsv], [0, 1], None, [16, 8], [0, 180, 0, 256])
     histogram = cv2.normalize(histogram, histogram).flatten()
     return histogram.astype(np.float32)
-
-
-def laplacian_variance(gray: np.ndarray) -> float:
-    if min(gray.shape) < 3:
-        return 0.0
-    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
-
-
-def motion_blur_score(gray: np.ndarray) -> float:
-    """Ước lượng motion blur trong [0, 1], điểm càng cao càng có nguy cơ bị nhòe chuyển động.
-
-    Motion blur thường làm năng lượng gradient tập trung theo một hướng và làm
-    giảm chi tiết cao tần. Đây là heuristic nhanh để lọc frame, không phải bộ
-    ước lượng vận tốc chuyển động tuyệt đối.
-    """
-    if min(gray.shape) < 8:
-        return 0.0
-    gray_float = gray.astype(np.float32) / 255.0
-    grad_x = cv2.Scharr(gray_float, cv2.CV_32F, 1, 0)
-    grad_y = cv2.Scharr(gray_float, cv2.CV_32F, 0, 1)
-    energy_x = float(np.mean(np.abs(grad_x)))
-    energy_y = float(np.mean(np.abs(grad_y)))
-    directional_imbalance = abs(energy_x - energy_y) / (energy_x + energy_y + 1e-6)
-
-    grad_energy = float(np.mean(np.sqrt(grad_x * grad_x + grad_y * grad_y)))
-    lap_energy = float(np.var(cv2.Laplacian(gray_float, cv2.CV_32F)))
-    # Motion blur preserves broad edges but suppresses fine detail, so the
-    # Laplacian-to-gradient ratio falls even when the frame has strong edges.
-    detail_ratio = math.sqrt(max(lap_energy, 0.0)) / (math.sqrt(max(lap_energy, 0.0)) + grad_energy + 1e-6)
-    detail_deficit = 1.0 - min(1.0, detail_ratio * 3.0)
-
-    # Directionality is the main signal; detail deficit reduces false positives
-    # on naturally directional scenes that are still sharp.
-    score = 0.62 * directional_imbalance + 0.38 * detail_deficit
-    return float(min(1.0, max(0.0, score)))
-
-
-def dhash(gray: np.ndarray) -> int:
-    small = cv2.resize(gray, (9, 8), interpolation=cv2.INTER_AREA)
-    differences = small[:, 1:] > small[:, :-1]
-    hash_value = 0
-    for bit in differences.flatten():
-        hash_value = (hash_value << 1) | int(bool(bit))
-    return hash_value
-
-
-def hamming_distance(left: int, right: int) -> int:
-    return (left ^ right).bit_count()
 
 
 def frame_candidate(

@@ -41,6 +41,7 @@ datas += [
     ("core/__init__.py", "core"),
     ("core/utils.py", "core"),
             ("core/config.py", "core"),
+    ("core/cv2_helpers.py", "core"),
                 ("core/pipeline.py", "core")
     ("core/resources.py", "core"),
     ("core/manifest.py", "core"),
