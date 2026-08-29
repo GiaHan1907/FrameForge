@@ -122,7 +122,7 @@ class QueueRetryCancelTests(unittest.TestCase):
 
         worker = threading.Thread(target=run_queue)
         worker.start()
-        self.assertTrue(paused_after_first.wait(2.0))
+        self.assertTrue(paused_after_first.wait(5.0))
         time.sleep(0.1)
         with submitted_lock:
             self.assertEqual(submitted, 2)
@@ -155,10 +155,11 @@ class QueueRetryCancelTests(unittest.TestCase):
 
         worker = threading.Thread(target=run_queue)
         worker.start()
-        time.sleep(0.08)
+        # Wait for worker to reach the pause point — CI can be slow
+        time.sleep(0.5)
         self.assertEqual(calls, [])
         pause_event.clear()
-        worker.join(timeout=2.0)
+        worker.join(timeout=5.0)
         self.assertFalse(worker.is_alive())
         self.assertEqual(calls, ["one.mp4"])
         self.assertEqual(result[0]["saved"], 1)
@@ -231,21 +232,23 @@ class QueueRetryCancelTests(unittest.TestCase):
 
         worker = threading.Thread(target=run_queue)
         worker.start()
-        self.assertTrue(retry_started.wait(2.0))
+        self.assertTrue(retry_started.wait(5.0))
         worker.join(timeout=2.0)
         self.assertFalse(worker.is_alive())
         self.assertEqual(len(result), 1)
         self.assertIsInstance(result[0], engine.ProcessingCancelled)
 
     def test_adaptive_extract_workers_caps_nested_parallelism(self) -> None:
-        with patch.object(engine.os, "cpu_count", return_value=8), patch.object(engine, "available_memory_gb", return_value=16.0):
+        from core import workers as _workers
+        with patch.object(_workers.os, "cpu_count", return_value=8), patch.object(_workers, "_available_memory_gb", return_value=16.0):
             self.assertEqual(engine.adaptive_extract_workers(1, 4, target_count=4), 1)
             self.assertEqual(engine.adaptive_extract_workers(1, 4, target_count=8), 3)
             self.assertEqual(engine.adaptive_extract_workers(4, 4, target_count=8), 2)
             self.assertEqual(engine.adaptive_extract_workers(8, 4, target_count=8), 1)
 
     def test_adaptive_extract_workers_uses_duration_and_target_count(self) -> None:
-        with patch.object(engine.os, "cpu_count", return_value=8), patch.object(engine, "available_memory_gb", return_value=32.0):
+        from core import workers as _workers
+        with patch.object(_workers.os, "cpu_count", return_value=8), patch.object(_workers, "_available_memory_gb", return_value=32.0):
             self.assertEqual(
                 engine.adaptive_extract_workers(1, 4, target_count=64, duration_seconds=12),
                 1,

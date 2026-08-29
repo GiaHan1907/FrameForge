@@ -32,7 +32,9 @@ def _has_cv2():
 )
 class StreamlitCv2Tests(unittest.TestCase):
     def setUp(self) -> None:
-        self.source = (ROOT / "streamlit_app.py").read_text(encoding="utf-8")
+        # preview_crop_overlay moved to ui/preview.py during refactor
+        preview_path = ROOT / "ui" / "preview.py"
+        self.source = preview_path.read_text(encoding="utf-8")
         self.tree = ast.parse(self.source)
 
     def test_crop_overlay_function_behavior(self) -> None:
