@@ -85,6 +85,7 @@ from core.pipeline import (
     recommended_extract_workers,
     adaptive_extract_workers,
     find_videos,
+    _dhash_bucket_keys,
     metric_requirements,
     timestamp_label,
     new_stage_timings,
