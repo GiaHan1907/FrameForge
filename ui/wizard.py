@@ -26,16 +26,26 @@ def build_args(widgets: dict[str, Any], *, source_count: int = 0) -> FrameForgeC
         stored in config).
     """
     mode_label = widgets.get("mode_label", "Best frame per scene")
-    every = widgets.get("every")
     _ms_raw = widgets.get("max_screenshots")
     max_screenshots = int(_ms_raw) if _ms_raw is not None else 20
     extract_worker_choice = widgets.get("extract_worker_choice", "Auto (khuyến nghị)")
     worker_choice = widgets.get("worker_choice", "Auto (khuyến nghị)")
 
-    # Derived: count and workers
+    # Derived: count and workers.
+    # CRITICAL: reset conditional fields to defaults BEFORE reading from
+    # widgets, because session_state persists old widget values even when
+    # the widget is no longer rendered (mode changed).  Without this reset,
+    # a stale ``every`` from "Mỗi N giây" mode would leak into
+    # "Best frame per scene" mode and cause interval-based targeting.
     if mode_label == "Đúng N frame":
         count = max_screenshots
+        every = None  # not used in count mode
+    elif mode_label == "Mỗi N giây":
+        every = widgets.get("every")
+        count = None
     else:
+        # Scene detection modes: every and count are irrelevant
+        every = None
         count = None
 
     workers = "auto" if worker_choice == "Auto (khuyến nghị)" else int(worker_choice)

@@ -141,6 +141,34 @@ class BuildArgsTests(unittest.TestCase):
         self.assertEqual(config.max_screenshots, 20)
         self.assertEqual(config.analysis_width, 640)
 
+    def test_stale_every_does_not_leak_into_scene_mode(self) -> None:
+        """Regression: session_state persists old widget values.
+
+        When user switches from "Mỗi N giây" (every=5.0) to
+        "Best frame per scene", the stale every=5.0 must NOT leak
+        into the config — it should be None.
+        """
+        w = self._make_defaults()
+        w["mode_label"] = "Best frame per scene"
+        w["every"] = 5.0  # stale from previous mode
+        config = build_args(w)
+        self.assertIsNone(config.every, "stale every must not leak into scene mode")
+
+    def test_count_mode_uses_max_screenshots(self) -> None:
+        w = self._make_defaults()
+        w["mode_label"] = "Đúng N frame"
+        w["max_screenshots"] = 15
+        config = build_args(w)
+        self.assertEqual(config.count, 15)
+        self.assertIsNone(config.every)
+
+    def test_scene_mode_sets_count_none(self) -> None:
+        w = self._make_defaults()
+        w["mode_label"] = "Best frame per scene"
+        config = build_args(w)
+        self.assertIsNone(config.count)
+        self.assertIsNone(config.every)
+
 
 class ValidateUiConfigurationTests(unittest.TestCase):
     """Test validate_ui_configuration() with a plain dict."""
