@@ -50,9 +50,15 @@ datas += [
     ("core/manifest.py", "core"),
                 ("core/errors.py", "core"),
     ("ui/logic.py", "ui"),
+    ("ui/session.py", "ui"),
+    ("ui/wizard.py", "ui"),
+    ("ui/preview.py", "ui"),
+    ("ui/presets.py", "ui"),
+    ("ui/desktop.py", "ui"),
+    ("ui/queue_ui.py", "ui"),
+    ("ui/styles.css", "ui"),
     ("frameforge/__init__.py", "frameforge"),
     ("frameforge/__main__.py", "frameforge"),
-    ("ui/styles.css", "ui"),
     ("frameforge_version.txt", "."),
 ]
 

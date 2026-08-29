@@ -104,6 +104,12 @@ from ui.desktop import (
     desktop_session_watchdog as _desktop_session_watchdog,
 )
 from ui.queue_ui import ProcessingQueueAdapter as _ProcessingQueueAdapter
+from ui.session import read_widgets
+from ui.wizard import (
+    build_args as _build_args,
+    validate_ui_configuration as _validate_ui_configuration,
+    wizard_summary as _wizard_summary,
+)
 from video_screenshot_advanced import process_videos
 from timeline_utils import build_timeline_entries, filter_timeline_entries
 from core.resources import InsufficientResources
@@ -235,31 +241,18 @@ def apply_selected_preset() -> None:
 
 
 def validate_ui_configuration() -> dict[str, list[str]]:
-    errors: list[str] = []
-    warnings: list[str] = []
+    """Thin wrapper: reads widget values from session_state and delegates to ui.wizard."""
+    widgets = read_widgets()
     source_count = len(uploaded_files or []) + len(downloaded_paths)
-    if source_count == 0:
-        errors.append("Hãy chọn ít nhất một video upload hoặc tải video công khai.")
     screenshot_dir_value = str(st.session_state.get("screenshot_dir", "") or "").strip()
-    if not screenshot_dir_value:
-        errors.append("Chưa chọn thư mục lưu screenshot.")
-    if float(start) < 0:
-        errors.append("Thời điểm bắt đầu không được nhỏ hơn 0 giây.")
-    if limit_end and float(end) <= float(start):
-        errors.append("Thời điểm kết thúc phải lớn hơn thời điểm bắt đầu.")
-    if int(max_screenshots) < 1:
-        errors.append("Số screenshot mỗi video phải từ 1 trở lên.")
-    if float(analysis_fps) <= 0 or int(analysis_width) < 64:
-        errors.append("Độ phân giải phân tích phải từ 64 px và FPS phải lớn hơn 0.")
-    if float(min_sharpness) > 300:
-        warnings.append("Ngưỡng sharpness rất cao; video có thể tạo shortfall lớn.")
-    if int(max_screenshots) > 300:
-        warnings.append("Số screenshot lớn có thể làm tăng thời gian xử lý và dung lượng output.")
-    if int(workers) if isinstance(workers, int) else str(workers).isdigit():
-        worker_count = int(workers)
-        if worker_count > 1 and float(min_free_ram_gb) <= 0:
-            warnings.append("Nhiều worker nhưng chưa đặt RAM reserve; nên đặt ngưỡng RAM tối thiểu để queue tự back-pressure.")
-    return {"errors": errors, "warnings": warnings}
+    worker_choice = widgets.get("worker_choice", "Auto (khuyến nghị)")
+    workers_value = "auto" if worker_choice == "Auto (khuyến nghị)" else worker_choice
+    return _validate_ui_configuration(
+        widgets,
+        source_count=source_count,
+        screenshot_dir=screenshot_dir_value,
+        workers_value=workers_value,
+    )
 
 
 def preview_scene_timeline(duration: float, estimated: list[float], actual: list[float]) -> None:
@@ -280,15 +273,10 @@ def preview_scene_timeline(duration: float, estimated: list[float], actual: list
 
 
 def wizard_summary() -> dict[str, str]:
+    """Thin wrapper: reads widget values from session_state and delegates to ui.wizard."""
+    widgets = read_widgets()
     source_count = len(uploaded_files or []) + len(downloaded_paths)
-    output_format = "PNG" if image_format == "png" else image_format.upper()
-    crop_label = crop_ratio if crop_ratio != "Không crop" else "Giữ nguyên"
-    return {
-        "Nguồn": f"{source_count} video",
-        "Chọn frame": str(mode_label),
-        "Chất lượng": f"{int(analysis_width)} px · {float(analysis_fps):g} FPS",
-        "Đầu ra": f"{output_format} · {crop_label} · {encode_profile}",
-    }
+    return _wizard_summary(widgets, source_count=source_count)
 
 
 st.session_state.setdefault("preset_choice", "Cân bằng")
@@ -649,6 +637,7 @@ with st.container(border=True):
             "URL video hoặc playlist",
             placeholder="Mỗi dòng một URL video hoặc playlist...",
             height=116,
+            key="download_urls_text",
             help="Dán URL công khai; mỗi dòng là một video hoặc một playlist.",
         )
     with quality_col:
@@ -656,6 +645,7 @@ with st.container(border=True):
             "Chất lượng tải",
             list(QUALITY_FORMATS),
             index=0,
+            key="download_quality",
         )
         st.caption("Nguồn công khai được hỗ trợ bởi yt-dlp.")
 
@@ -667,11 +657,13 @@ with st.container(border=True):
             max_value=500,
             value=50,
             step=1,
+            key="playlist_max_items",
             help="Giới hạn số video lấy từ mỗi playlist.",
         )
     with retry_col:
         download_retry_count = st.number_input(
             "Số lần retry",
+            key="download_retry_count",
             min_value=0,
             max_value=5,
             value=2,
@@ -784,6 +776,7 @@ with st.sidebar:
         "Chọn một hoặc nhiều video",
         type=["mp4", "mov", "mkv", "avi", "webm", "m4v", "ts", "mts"],
         accept_multiple_files=True,
+        key="uploaded_files",
         help="Có thể chọn nhiều video để xử lý trong cùng một lần.",
     )
     if uploaded_files:
@@ -811,13 +804,14 @@ with st.sidebar:
         help="Best frame per scene giữ ảnh sắc nét nhất trong từng cảnh; Scene detection giữ frame đầu của từng cảnh.",
     )
 
-    start = st.number_input("Bắt đầu từ giây", min_value=0.0, value=0.0, step=1.0)
-    limit_end = st.checkbox("Giới hạn thời điểm kết thúc")
+    start = st.number_input("Bắt đầu từ giây", min_value=0.0, value=0.0, step=1.0, key="start")
+    limit_end = st.checkbox("Giới hạn thời điểm kết thúc", key="limit_end")
     end = st.number_input(
         "Kết thúc ở giây",
         min_value=0.1,
         value=60.0,
         step=1.0,
+        key="end",
         disabled=not limit_end,
     )
 
@@ -894,6 +888,7 @@ with st.sidebar:
             min_value=0.05,
             value=5.0,
             step=0.5,
+            key="every",
         )
     else:
         count = int(max_screenshots)
@@ -1037,50 +1032,10 @@ with st.sidebar:
 
 
 def build_args() -> FrameForgeConfig:
-    return FrameForgeConfig(
-        start=float(start),
-        end=float(end) if limit_end else None,
-        every=float(every) if every is not None else None,
-        count=int(count) if count is not None else None,
-        max_screenshots=int(max_screenshots),
-        target_count_after_filter=bool(target_count_after_filter),
-        target_candidate_multiplier=3,
-        target_candidate_multiplier_max=5,
-        repair_manifest=False,
-        min_free_ram_gb=float(min_free_ram_gb),
-        scene_detection=mode_label in {"Best frame per scene", "Scene detection"},
-        best_frame_per_scene=mode_label == "Best frame per scene",
-        scene_threshold=float(scene_threshold),
-        min_scene_gap=float(min_scene_gap),
-        flash_return_ratio=float(flash_return_ratio),
-        flash_brightness_threshold=float(flash_brightness_threshold),
-        scene_confirmations=int(scene_confirmations),
-        analysis_width=int(analysis_width),
-        analysis_fps=float(analysis_fps),
-        extract_workers=(recommended_extract_workers() if extract_worker_choice == "Auto (khuyến nghị)" else int(extract_worker_choice)),
-        extract_min_targets=8,
-        min_sharpness=float(min_sharpness),
-        motion_blur_threshold=float(motion_blur_threshold),
-        duplicate_threshold=int(duplicate_threshold),
-        format=image_format,
-        quality=int(quality),
-        crop_ratio=crop_ratio,
-        encode_profile=encode_profile,
-        width=int(width) if width else None,
-        overwrite=bool(overwrite),
-        workers=workers,
-        retries=int(retry_count),
-        retry_delay=float(retry_delay),
-        disk_reserve_bytes=int(disk_reserve_mb) * 1024**2,
-        use_scene_cache=bool(use_scene_cache),
-        cross_run_duplicates=bool(cross_run_duplicates),
-        cross_run_duplicate_threshold=int(duplicate_threshold),
-        resume=False,
-        checkpoint_path=None,
-        cache_root=None,
-        duplicate_root=None,
-        queue_db=None,
-    )
+    """Thin wrapper: reads widget values from session_state and delegates to ui.wizard."""
+    widgets = read_widgets()
+    source_count = len(uploaded_files or []) + len(downloaded_paths)
+    return _build_args(widgets, source_count=source_count)
 
 
 
@@ -1241,6 +1196,7 @@ def _retry_failed_processing(job: dict[str, object], positions: set[int] | None 
 
 
 def render_resource_meter(args: object | None = None, output_root: Path | None = None) -> None:
+    """Render system resource meter.  Uses read_widgets() for fallback values."""
     if output_root is None:
         output_root = normalize_output_dir(
             st.session_state.get("screenshot_dir", ""),
@@ -1251,8 +1207,11 @@ def render_resource_meter(args: object | None = None, output_root: Path | None =
     except OSError:
         free_disk = 0
     ram_available = available_ram_gb()
-    ram_threshold = float(getattr(args, "min_free_ram_gb", min_free_ram_gb) or 0.0) if args is not None else float(min_free_ram_gb)
-    disk_threshold = float(getattr(args, "disk_reserve_bytes", disk_reserve_mb * 1024 * 1024) or 0.0) if args is not None else float(disk_reserve_mb * 1024 * 1024)
+    _w = read_widgets()
+    _fallback_ram = float(_w.get("min_free_ram_gb") or 0.0)
+    _fallback_disk_mb = float(_w.get("disk_reserve_mb") or 500)
+    ram_threshold = float(getattr(args, "min_free_ram_gb", _fallback_ram) or 0.0) if args is not None else _fallback_ram
+    disk_threshold = float(getattr(args, "disk_reserve_bytes", _fallback_disk_mb * 1024 * 1024) or 0.0) if args is not None else _fallback_disk_mb * 1024 * 1024
     ram_label = "Không đọc được" if ram_available is None else f"{ram_available:.1f} GB"
     disk_label = format_bytes(free_disk)
     ram_ok = ram_available is None or ram_available >= ram_threshold
@@ -1567,7 +1526,7 @@ if uploaded_files or downloaded_paths:
     preview_entries = [(Path(item.name).name, "upload", item) for item in (uploaded_files or [])]
     preview_entries += [(path.name, "download", path) for path in downloaded_paths]
     preview_names = [entry[0] for entry in preview_entries]
-    preview_name = st.selectbox("Chọn video để xem preview", preview_names, label_visibility="collapsed")
+    preview_name = st.selectbox("Chọn video để xem preview", preview_names, label_visibility="collapsed", key="preview_name")
     preview_entry = next(entry for entry in preview_entries if entry[0] == preview_name)
     preview_mime = mimetypes.guess_type(preview_name)[0] or "video/mp4"
     preview_duration = preview_video_duration(preview_entry[2])
