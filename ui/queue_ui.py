@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import streamlit as st
 
-from core.pipeline import progress_telemetry, timestamp_label, current_process_rss_bytes
+from core.pipeline import timestamp_label, current_process_rss_bytes
 from core.utils import format_bytes
 from core.resources import available_ram_gb
 from core.errors import classify_error
-from ui.logic import format_eta
+from ui.logic import format_eta, progress_telemetry
 
 
 class ProcessingQueueAdapter:
