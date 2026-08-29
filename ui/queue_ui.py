@@ -109,7 +109,7 @@ class ProcessingQueueAdapter:
         if cancel_event is not None:
             cancel_event.set()
         self.job["status"] = "cancelling"
-        self.job["message"] = "\u0110ang h\u1ee7y..."
+        self.job["message"] = "\u0110ang h\u1ee7y\u2026"
 
     def retry_failed(self, positions: set[int] | None = None) -> int:
         from ui.logic import _pause_processing_job  # noqa: avoid circular

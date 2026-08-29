@@ -101,7 +101,7 @@ def render_preview_section(widgets: dict[str, Any]) -> None:
             st.markdown(f"**Crop overlay · {crop_ratio}**")
             overlay = preview_crop_overlay(preview_entry[2], crop_ratio)
             if overlay is not None:
-                st.image(overlay, use_container_width=True)
+                st.image(overlay, caption=f"Crop overlay · {crop_ratio}", use_container_width=True)
                 st.caption("Vùng sáng có viền xanh là phần được giữ lại.")
             else:
                 st.info("Không thể tạo frame preview cho codec này; engine vẫn có thể xử lý video.")

@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
 :root {
+    color-scheme: dark;
     --ink: #f0f4f8;
     --muted: #8896a8;
     --line: #253040;
@@ -16,6 +17,7 @@
 
 html, body, [class*="css"] {
     font-family: 'DM Sans', sans-serif;
+    touch-action: manipulation;
 }
 
 html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
@@ -24,7 +26,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
 }
 
 [data-testid="stAppViewContainer"] {
-    min-height: 100vh;
+    min-height: 100dvh;
 }
 
 /* v0.1.30 accessibility and responsive polish */

@@ -356,7 +356,7 @@ if app_update_status.available:
             if app_update_status.release_notes_url:
                 st.markdown(f"[Mở release notes trên GitHub]({app_update_status.release_notes_url})")
     if st.button("Cập nhật ngay", type="primary", use_container_width=False):
-        with st.spinner("Đang tải, xác minh SHA-256 và mở Setup..."):
+        with st.spinner("Đang tải, xác minh SHA-256 và mở Setup…"):
             app_update_status = update_app_now(timeout=30.0)
         if app_update_status.downloaded and app_update_status.installer_path:
             st.success(app_update_status.message)
@@ -367,7 +367,7 @@ if app_update_status.rollback_available and app_update_status.rollback_version:
     with st.expander(f"Rollback về FrameForge {app_update_status.rollback_version}", expanded=False):
         st.caption("Chỉ dùng rollback khi bản hiện tại gặp lỗi. Installer rollback vẫn được kiểm tra HTTPS và SHA-256 trước khi mở.")
         if st.button("Tải bản rollback", key="download_rollback"):
-            with st.spinner("Đang tải và xác minh installer rollback..."):
+            with st.spinner("Đang tải và xác minh installer rollback…"):
                 rollback_status = rollback_app_now(timeout=30.0)
             if rollback_status.downloaded:
                 st.success(rollback_status.message)
@@ -478,7 +478,7 @@ with st.container(border=True):
     with download_input_col:
         download_urls_text = st.text_area(
             "URL video hoặc playlist",
-            placeholder="Mỗi dòng một URL video hoặc playlist...",
+            placeholder="Mỗi dòng một URL video hoặc playlist…",
             height=116,
             key="download_urls_text",
             help="Dán URL công khai; mỗi dòng là một video hoặc một playlist.",
@@ -530,7 +530,7 @@ if download_clicked:
         if not health["ready_for_merge"]:
             st.warning("Chưa tìm thấy FFmpeg. Video/audio tách riêng có thể không ghép được ở chất lượng cao nhất.")
         try:
-            download_progress = st.progress(0.0, text="Đang chuẩn bị queue tải...")
+            download_progress = st.progress(0.0, text="Đang chuẩn bị queue tải…")
             download_errors: list[DownloadFailure] = []
 
             def download_hook(data: dict[str, object]) -> None:
@@ -559,7 +559,7 @@ if download_clicked:
             def download_error_hook(error: DownloadFailure) -> None:
                 download_errors.append(error)
 
-            with st.spinner(f"Đang tải queue gồm {len(download_urls)} URL..."):
+            with st.spinner(f"Đang tải queue gồm {len(download_urls)} URL…"):
 
                 download_results = download_public_videos(
                     download_urls,
@@ -583,11 +583,11 @@ if download_clicked:
                 for error in download_errors[:10]:
                     st.error(f"[{error.code}] {error.label}\nURL: {error.url}\n{error.message}\nGợi ý: {error.suggestion}")
                 if len(download_errors) > 10:
-                    st.caption(f"... và {len(download_errors) - 10} lỗi khác trong queue.")
+                    st.caption(f"… và {len(download_errors) - 10} lỗi khác trong queue.")
             for result in download_results[:10]:
                 st.caption(f"✓ {result_summary(result)}")
             if len(download_results) > 10:
-                st.caption(f"... và {len(download_results) - 10} video khác trong queue.")
+                st.caption(f"… và {len(download_results) - 10} video khác trong queue.")
             if download_results:
                 st.download_button(
                     "Tải toàn bộ video queue (.zip)",
