@@ -23,6 +23,7 @@ html, body, [class*="css"] {
 html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
     background: var(--canvas) !important;
     color: var(--ink);
+    overscroll-behavior: contain;
 }
 
 [data-testid="stAppViewContainer"] {
