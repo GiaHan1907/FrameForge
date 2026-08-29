@@ -105,7 +105,7 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
         self.assertIn("def preview_scene_timeline", self.source)
         self.assertIn("Queue theo video", self.source)
         self.assertIn(
-            "from queue_per_video import classify_error, render_queue_per_video",
+            "from queue_per_video import render_queue_per_video",
             self.source,
         )
         self.assertIn("from persistent_queue import PersistentQueueStore", self.source)

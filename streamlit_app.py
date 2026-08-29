@@ -113,7 +113,7 @@ from ui.wizard import (
 from video_screenshot_advanced import process_videos
 from timeline_utils import build_timeline_entries, filter_timeline_entries
 from core.resources import InsufficientResources
-from queue_per_video import classify_error, render_queue_per_video
+from queue_per_video import render_queue_per_video
 from persistent_queue import PersistentQueueStore
 from video_downloader import (
     QUALITY_FORMATS,

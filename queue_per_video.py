@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Iterable
-from core.errors import ErrorInfo, classify_error as _classify_error_impl
+from core.errors import ErrorInfo, classify_error
 
 
 class QueueStatus(str, Enum):
@@ -54,10 +54,6 @@ ProgressCallback = Callable[[Path, str, float, str], None]
 Processor = Callable[[Path, ProgressCallback, threading.Event], dict[str, Any]]
 
 
-
-def classify_error(exc: BaseException) -> ErrorInfo:
-    """Phân loại lỗi từ yt-dlp/FFmpeg thành mã ổn định cho UI."""
-    return _classify_error_impl(exc, ffmpeg_available=True)
 
 
 class VideoQueueController:
@@ -294,7 +290,7 @@ class VideoQueueController:
                         raise
                     except Exception as exc:  # noqa: BLE001 - boundary của từng video
                         last_exc = exc
-                        info = classify_error(exc)
+                        info = classify_error(exc, ffmpeg_available=True)
                         with self._lock:
                             item.error_code = info.code
                             item.error = str(exc)
