@@ -29,8 +29,10 @@ class UIVisualContractTests(unittest.TestCase):
         preview_section = (ROOT / "ui" / "preview_section.py").read_text(encoding="utf-8")
         for marker in ("Preview workspace", "Frame gallery"):
             self.assertIn(marker, preview_section)
-        for marker in ("Lịch sử job", "Xuất cấu hình JSON", "Queue dashboard"):
-            self.assertIn(marker, self.source)
+        timeline_source = (ROOT / "ui" / "timeline.py").read_text(encoding="utf-8")
+        for marker in ("Lịch sử job", "Xuất cấu hình JSON"):
+            self.assertIn(marker, timeline_source)
+        self.assertIn("Queue dashboard", self.source)
 
 
 if __name__ == "__main__":

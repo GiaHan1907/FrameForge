@@ -70,7 +70,8 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
         self.assertIn("aspect-ratio: 16 / 9", self.all_source)
         preview_section_source = (ROOT / "ui" / "preview_section.py").read_text(encoding="utf-8")
         self.assertIn("width=560", preview_section_source)
-        self.assertIn('pattern = f"*{timestamp_label(nearest)}.*"', self.source)
+        timeline_source = (ROOT / "ui" / "timeline.py").read_text(encoding="utf-8")
+        self.assertIn('pattern = f"*{timestamp_label(nearest)}.*"', timeline_source)
 
     def test_downloader_error_categories_and_backoff_are_present(self) -> None:
         cli_source = (ROOT / "core" / "cli.py").read_text(encoding="utf-8")
