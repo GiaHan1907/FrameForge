@@ -32,7 +32,8 @@ class UIVisualContractTests(unittest.TestCase):
         timeline_source = (ROOT / "ui" / "timeline.py").read_text(encoding="utf-8")
         for marker in ("Lịch sử job", "Xuất cấu hình JSON"):
             self.assertIn(marker, timeline_source)
-        self.assertIn("Queue dashboard", self.source)
+        dashboard_source = (ROOT / "ui" / "dashboard.py").read_text(encoding="utf-8")
+        self.assertIn("Queue dashboard", dashboard_source)
 
 
 if __name__ == "__main__":

@@ -58,6 +58,7 @@ datas += [
     ("ui/presets.py", "ui"),
     ("ui/desktop.py", "ui"),
     ("ui/queue_ui.py", "ui"),
+    ("ui/dashboard.py", "ui"),
     ("ui/styles.css", "ui"),
     ("frameforge/__init__.py", "frameforge"),
     ("frameforge/__main__.py", "frameforge"),
