@@ -151,9 +151,21 @@ def emit_progress(
 
 # ── System helpers ────────────────────────────────────────────────────
 
+_rss_cache: tuple[int, float] = (0, 0.0)
+_RSS_CACHE_TTL: float = 5.0  # seconds — RSS changes slowly, 5s is plenty
+
 
 def current_process_rss_bytes() -> int:
-    """Đọc RSS của process hiện tại bằng stdlib, trả 0 nếu không đọc được."""
+    """Đọc RSS của process hiện tại bằng stdlib, trả 0 nếu không đọc được.
+
+    Results are cached for 5 seconds to avoid repeated ctypes FFI calls
+    (~45us each on Windows).  RSS changes slowly enough for this TTL.
+    """
+    global _rss_cache
+    now = time.time()
+    cached, ts = _rss_cache
+    if now - ts < _RSS_CACHE_TTL:
+        return cached
     try:
         if sys.platform == "win32":
             import ctypes
@@ -188,7 +200,9 @@ def current_process_rss_bytes() -> int:
         value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         return value if sys.platform == "darwin" else value * 1024
     except (AttributeError, ImportError, OSError, TypeError, ValueError, IndexError):
-        return 0
+        result = 0
+    _rss_cache = (result, time.time())
+    return result
 
 
 def free_disk_bytes(path: Path) -> int:

@@ -10,14 +10,28 @@ import argparse
 import math
 import os
 import sys
+import time
 from dataclasses import dataclass
 
 
 # ── Memory helper ─────────────────────────────────────────────────────
 
 
+_memory_cache: tuple[float | None, float] = (None, 0.0)
+_MEMORY_CACHE_TTL: float = 30.0  # seconds — system RAM doesn't change mid-session
+
+
 def _available_memory_gb() -> float | None:
-    """Ước lượng RAM hệ thống bằng stdlib, trả None nếu không đọc được."""
+    """Ước lượng RAM hệ thống bằng stdlib, trả None nếu không đọc được.
+
+    Results are cached for 30 seconds to avoid repeated ctypes FFI calls
+    (~45us each on Windows).  System RAM doesn't change during a session.
+    """
+    global _memory_cache
+    now = time.time()
+    cached, ts = _memory_cache
+    if now - ts < _MEMORY_CACHE_TTL:
+        return cached
     try:
         if sys.platform == "win32":
             import ctypes
@@ -43,7 +57,9 @@ def _available_memory_gb() -> float | None:
         page_count = os.sysconf("SC_PHYS_PAGES")
         return (page_size * page_count) / (1024**3)
     except (AttributeError, OSError, ValueError, TypeError):
-        return None
+        result = None
+    _memory_cache = (result, time.time())
+    return result
 
 
 # ── Worker helpers ────────────────────────────────────────────────────
