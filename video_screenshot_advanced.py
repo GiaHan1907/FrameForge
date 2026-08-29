@@ -33,6 +33,12 @@ from core.utils import atomic_write_json as _atomic_write_json
 from core.utils import read_json as _read_json
 from core.utils import format_bytes
 from core.config import FrameForgeConfig
+from core.targets import (
+    screenshot_limit,
+    candidate_limit,
+    candidate_budget_bounds,
+    expand_candidate_budget,
+)
 from core.cv2_helpers import laplacian_variance, motion_blur_score, dhash, hamming_distance
 from core.resources import (
     InsufficientResources,
@@ -603,46 +609,8 @@ def process_fixed_mode_multiprocess(
     return reports
 
 
-def screenshot_limit(args: FrameForgeConfig) -> int | None:
-    """Trả về số screenshot tối đa mỗi video; None nghĩa là không giới hạn."""
-    raw = args.max_screenshots
-    try:
-        value = int(raw or 0)
-    except (TypeError, ValueError):
-        value = 0
-    return value if value > 0 else None
-
-
-def candidate_limit(args: FrameForgeConfig) -> int | None:
-    limit = screenshot_limit(args)
-    if limit is None:
-        return None
-    if args.target_count_after_filter:
-        multiplier = max(1, int(args.target_candidate_multiplier or 3))
-        return limit * multiplier
-    return limit
-
-
-def candidate_budget_bounds(args: FrameForgeConfig) -> tuple[int | None, int | None]:
-    initial = candidate_limit(args)
-    target = screenshot_limit(args)
-    if initial is None or target is None or not args.target_count_after_filter:
-        return initial, initial
-    maximum_multiplier = max(
-        int(args.target_candidate_multiplier or 3),
-        int(args.target_candidate_multiplier_max or 5),
-    )
-    return initial, target * maximum_multiplier
-
-
-def expand_candidate_budget(current: int | None, maximum: int | None, target: int | None, considered: int, rejected: int) -> int | None:
-    if current is None or maximum is None or target is None or current >= maximum:
-        return current
-    if considered < current or considered <= 0 or rejected <= 0:
-        return current
-    if rejected / max(considered, 1) < 0.25:
-        return current
-    return min(maximum, current + max(target, current // 2))
+# screenshot_limit, candidate_limit, candidate_budget_bounds,
+# expand_candidate_budget → core/targets.py
 
 
 def process_fixed_mode(

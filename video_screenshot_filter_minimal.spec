@@ -37,6 +37,7 @@ datas += [
     ("core/cv2_helpers.py", "core"),
                 ("core/pipeline.py", "core")
     ("core/resources.py", "core"),
+    ("core/targets.py", "core"),
     ("core/manifest.py", "core"),
                 ("core/errors.py", "core"),
     ("ui/logic.py", "ui"),
