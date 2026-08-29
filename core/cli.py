@@ -31,8 +31,6 @@ from core.pipeline import (
     threshold_01,
     worker_value,
 )
-from video_screenshot_advanced import process_videos
-
 from core.config import FrameForgeConfig
 from core.resources import InsufficientResources
 
@@ -190,6 +188,12 @@ def build_config(args: argparse.Namespace) -> FrameForgeConfig:
     )
 
 
+def _import_process_videos():
+    """Lazy-import process_videos to avoid cv2 dependency at module load time."""
+    from video_screenshot_advanced import process_videos
+    return process_videos
+
+
 def main() -> int:
     mp.freeze_support()
     args = parse_args()
@@ -226,6 +230,7 @@ def main() -> int:
         print(f"[{video.name}] {phase} {fraction:.0%} · {message}")
 
     try:
+        process_videos = _import_process_videos()
         reports = process_videos(
             videos,
             args.output,

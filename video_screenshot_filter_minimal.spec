@@ -39,6 +39,8 @@ datas += [
     ("core/manifest.py", "core"),
                 ("core/errors.py", "core"),
     ("ui/logic.py", "ui"),
+    ("frameforge/__init__.py", "frameforge"),
+    ("frameforge/__main__.py", "frameforge"),
     ("ui/styles.css", "ui"),
     ("frameforge_version.txt", "."),
 ]

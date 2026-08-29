@@ -21,6 +21,8 @@ class PackagingSpecTests(unittest.TestCase):
             '("core/errors.py", "core")',
             '("ui/logic.py", "ui")',
             '("ui/styles.css", "ui")',
+            '("frameforge/__init__.py", "frameforge")',
+            '("frameforge/__main__.py", "frameforge")',
         ]
         for spec_name in (
             "video_screenshot_filter.spec",
