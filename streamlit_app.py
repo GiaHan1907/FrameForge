@@ -609,6 +609,10 @@ from ui.widgets import render_entries
 
 # Sidebar controls (declarative)
 with st.sidebar:
+    # Image search page link
+    st.page_link("ui/image_search.py", label="🔍 Tìm ảnh theo địa điểm", icon="🔍")
+    st.divider()
+
     render_entries(build_sidebar_entries(
         uploaded_files=st.session_state.get("uploaded_files"),
         downloaded_paths=downloaded_paths,
