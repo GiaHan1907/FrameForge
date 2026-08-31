@@ -56,6 +56,7 @@ datas += [
     ("core/workers.py", "core"),
     ("core/cleanup.py", "core"),
     ("ui/logic.py", "ui"),
+    ("ui/download_section.py", "ui"),
     ("ui/processing.py", "ui"),
     ("ui/processing_view.py", "ui"),
     ("ui/session.py", "ui"),

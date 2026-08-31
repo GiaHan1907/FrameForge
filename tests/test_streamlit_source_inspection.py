@@ -27,7 +27,7 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
         # Include all ui/ module sources for assertions that check functions
         # extracted from streamlit_app.py into ui/logic.py, ui/presets.py, etc.
         ui_sources = []
-        for name in ("logic.py", "presets.py", "preview.py", "desktop.py", "queue_ui.py"):
+        for name in ("logic.py", "presets.py", "preview.py", "desktop.py", "queue_ui.py", "download_section.py"):
             p = ROOT / "ui" / name
             if p.exists():
                 ui_sources.append(p.read_text(encoding="utf-8"))
@@ -56,10 +56,10 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
             self.assertIn("args", keyword_names)
 
     def test_downloader_uses_dark_responsive_panel(self) -> None:
-        self.assertIn("with st.container(border=True):", self.source)
+        self.assertIn("with st.container(border=True):", self.all_source)
         self.assertIn(
             'download_input_col, quality_col = st.columns([2.35, 1.0], gap="large")',
-            self.source,
+            self.all_source,
         )
         self.assertIn("--canvas: #", self.all_source)
         self.assertIn("--surface: #", self.all_source)
@@ -76,11 +76,11 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
     def test_downloader_error_categories_and_backoff_are_present(self) -> None:
         cli_source = (ROOT / "core" / "cli.py").read_text(encoding="utf-8")
         self.assertIn("--max-screenshots", cli_source)
-        self.assertIn("DownloadFailure", self.source)
-        self.assertIn("download_error_hook", self.source)
-        self.assertIn('state == "retrying"', self.source)
-        self.assertIn("retry_delay_seconds=1.0", self.source)
-        self.assertIn("error_code", self.source)
+        self.assertIn("DownloadFailure", self.all_source)
+        self.assertIn("download_error_hook", self.all_source)
+        self.assertIn('state == "retrying"', self.all_source)
+        self.assertIn("retry_delay_seconds=1.0", self.all_source)
+        self.assertIn("error_code", self.all_source)
 
     def test_presets_and_progress_telemetry_are_present(self) -> None:
         self.assertIn("PRESET_CONFIGS = {", self.source)
@@ -116,8 +116,8 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
         self.assertIn("from persistent_queue import PersistentQueueStore", self.source)
         self.assertIn("find_recoverable_queue_jobs", self.source)
         self.assertIn("Ti\u1ebfp t\u1ee5c queue \u0111\u00e3 gi\u00e1n \u0111o\u1ea1n", self.source)
-        self.assertIn("DownloadFailure", self.source)
-        self.assertIn("download_error_hook", self.source)
+        self.assertIn("DownloadFailure", self.all_source)
+        self.assertIn("download_error_hook", self.all_source)
 
     def test_desktop_lifecycle_shutdown_is_guarded(self) -> None:
         launcher = (ROOT / "windows_launcher.py").read_text(encoding="utf-8")
