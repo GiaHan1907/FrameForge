@@ -32,7 +32,15 @@ class QueueRetryCancelTests(unittest.TestCase):
         self.videos = [self.root / "one.mp4", self.root / "two.mp4"]
         for video in self.videos:
             video.write_bytes(b"test video")
-        self.args = SimpleNamespace(workers=1, disk_reserve_bytes=0)
+        self.args = SimpleNamespace(
+            workers=1,
+            disk_reserve_bytes=0,
+            queue_run_signature="",
+            extract_workers=1,
+            extract_min_targets=8,
+            resume=False,
+            queue_db=None,
+        )
 
     def tearDown(self) -> None:
         self.root_context.cleanup()
@@ -92,7 +100,15 @@ class QueueRetryCancelTests(unittest.TestCase):
         videos = self.videos + [self.root / "three.mp4", self.root / "four.mp4"]
         for video in videos[2:]:
             video.write_bytes(b"test video")
-        args = SimpleNamespace(workers=2, extract_workers=1, disk_reserve_bytes=0)
+        args = SimpleNamespace(
+            workers=2,
+            extract_workers=1,
+            disk_reserve_bytes=0,
+            queue_run_signature="",
+            extract_min_targets=8,
+            resume=False,
+            queue_db=None,
+        )
 
         def fake_process(video, output_root, source_root, args, on_progress=None, cancel_event=None):
             calls.append(video.name)
@@ -273,6 +289,7 @@ class QueueRetryCancelTests(unittest.TestCase):
             checkpoint_path=checkpoint,
             resume=False,
             disk_reserve_bytes=0,
+            queue_run_signature="",
         )
         calls: list[str] = []
 
@@ -302,6 +319,7 @@ class QueueRetryCancelTests(unittest.TestCase):
             checkpoint_path=self.root / "cancel-checkpoint.json",
             resume=False,
             disk_reserve_bytes=0,
+            queue_run_signature="",
         )
         cancel_event = threading.Event()
 
