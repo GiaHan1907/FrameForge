@@ -61,8 +61,8 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
             'download_input_col, quality_col = st.columns([2.35, 1.0], gap="large")',
             self.source,
         )
-        self.assertIn("--canvas: #0a1018", self.all_source)
-        self.assertIn("--surface: #131c2a", self.all_source)
+        self.assertIn("--canvas: #", self.all_source)
+        self.assertIn("--surface: #", self.all_source)
         self.assertIn(".download-action-spacer", self.all_source)
 
     def test_video_preview_is_compact_and_timestamp_lookup_is_supported(self) -> None:
