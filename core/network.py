@@ -50,13 +50,17 @@ def download_verified(
 
     request = urllib.request.Request(url, headers={"User-Agent": user_agent})
     digest = hashlib.sha256()
-    with urllib.request.urlopen(request, timeout=timeout) as response, destination.open("wb") as output:
-        while True:
-            chunk = response.read(1024 * 1024)
-            if not chunk:
-                break
-            digest.update(chunk)
-            output.write(chunk)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response, destination.open("wb") as output:
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+                output.write(chunk)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
 
     actual = digest.hexdigest().lower()
     if actual != expected_sha256.lower():
