@@ -1,26 +1,24 @@
 """Wizard helper functions extracted from streamlit_app.py.
 
-These functions read widget values from a ``widgets: dict`` parameter
+These functions read widget values from a ``widgets: WidgetState`` parameter
 (populated by ``ui.session.read_widgets()``) instead of module-level globals.
 This makes them testable without a Streamlit runtime.
 """
 
 from __future__ import annotations
 
-from typing import Any
-
 from core.config import FrameForgeConfig
 from core.pipeline import recommended_extract_workers
+from ui.session import WidgetState
 
 
-def build_args(widgets: dict[str, Any], *, source_count: int = 0) -> FrameForgeConfig:
+def build_args(widgets: WidgetState, *, source_count: int = 0) -> FrameForgeConfig:
     """Build a ``FrameForgeConfig`` from the current widget values.
 
     Parameters
     ----------
     widgets:
-        Dict returned by ``ui.session.read_widgets()``.  Keys are Python
-        variable names (``"start"``, ``"mode_label"``, etc.).
+        ``WidgetState`` returned by ``ui.session.read_widgets()``.
     source_count:
         Number of uploaded + downloaded videos (used for context, not
         stored in config).
@@ -101,18 +99,18 @@ def build_args(widgets: dict[str, Any], *, source_count: int = 0) -> FrameForgeC
 
 
 def validate_ui_configuration(
-    widgets: dict[str, Any],
+    widgets: WidgetState,
     *,
     source_count: int = 0,
     screenshot_dir: str = "",
-    workers_value: Any = None,
+    workers_value: str | int | None = None,
 ) -> dict[str, list[str]]:
     """Validate widget values and return errors/warnings.
 
     Parameters
     ----------
     widgets:
-        Dict returned by ``ui.session.read_widgets()``.
+        ``WidgetState`` returned by ``ui.session.read_widgets()``.
     source_count:
         Number of uploaded + downloaded videos.
     screenshot_dir:
@@ -169,13 +167,13 @@ def validate_ui_configuration(
     return {"errors": errors, "warnings": warnings}
 
 
-def wizard_summary(widgets: dict[str, Any], *, source_count: int = 0) -> dict[str, str]:
+def wizard_summary(widgets: WidgetState, *, source_count: int = 0) -> dict[str, str]:
     """Build a human-readable summary of the current wizard configuration.
 
     Parameters
     ----------
     widgets:
-        Dict returned by ``ui.session.read_widgets()``.
+        ``WidgetState`` returned by ``ui.session.read_widgets()``.
     source_count:
         Number of uploaded + downloaded videos.
     """

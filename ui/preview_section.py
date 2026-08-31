@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import mimetypes
 from pathlib import Path
-from typing import Any
-
 import streamlit as st
 
 from ui.logic import build_preview_timestamps
+from ui.session import WidgetState
 from ui.preview import (
     preview_crop_overlay,
     preview_frame_at,
@@ -40,16 +39,13 @@ def preview_scene_timeline(duration: float, estimated: list[float], actual: list
     )
 
 
-def render_preview_section(widgets: dict[str, Any]) -> None:
+def render_preview_section(widgets: WidgetState) -> None:
     """Render the full preview workspace: video player, crop overlay, timeline, scene detection.
 
     Parameters
     ----------
     widgets:
-        Dict returned by ``ui.session.read_widgets()``.  Expected keys:
-        ``uploaded_files``, ``downloaded_paths``, ``mode_label``, ``start``,
-        ``end``, ``limit_end``, ``every``, ``count``, ``max_screenshots``,
-        ``crop_ratio``, ``scene_threshold``, ``analysis_fps``.
+        ``WidgetState`` returned by ``ui.session.read_widgets()``.
     """
     uploaded_files = widgets.get("uploaded_files") or []
     downloaded_paths = widgets.get("downloaded_paths") or []
