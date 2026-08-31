@@ -3,7 +3,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 
-packages = ["streamlit", "altair", "pydeck", "PIL", "cv2", "pandas", "numpy", "yt_dlp"]
+packages = ["streamlit", "altair", "pydeck", "PIL", "cv2", "pandas", "numpy", "yt_dlp", "pyarrow"]
 datas = []
 binaries = []
 hiddenimports = []
