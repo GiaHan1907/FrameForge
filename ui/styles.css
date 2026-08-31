@@ -558,7 +558,7 @@ div[data-testid="stMetricValue"] {
     height: 14px;
     border: 3px solid var(--surface);
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--blue), var(--violet));
+    background: linear-gradient(135deg, var(--accent), #818cf8);
     box-shadow: 0 2px 8px rgba(56, 103, 242, .35);
     transform: translate(-50%, -50%);
 }
