@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -12,6 +11,7 @@ import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from core.network import download_verified as _download_verified
 
 PYPI_JSON_URL = "https://pypi.org/pypi/yt-dlp/json"
 CHECK_INTERVAL_SECONDS = 24 * 60 * 60
@@ -130,20 +130,7 @@ def _choose_pure_wheel(metadata: dict[str, object], version: str) -> tuple[str, 
     raise ValueError("Không tìm thấy wheel py3-none-any có SHA-256.")
 
 
-def _download_verified(url: str, expected_sha256: str, destination: Path, timeout: float = 30.0) -> None:
-    request = urllib.request.Request(url, headers={"User-Agent": "FrameForge-yt-dlp-updater/1.0"})
-    digest = hashlib.sha256()
-    with urllib.request.urlopen(request, timeout=timeout) as response, destination.open("wb") as output:
-        while True:
-            chunk = response.read(1024 * 1024)
-            if not chunk:
-                break
-            digest.update(chunk)
-            output.write(chunk)
-    actual = digest.hexdigest().lower()
-    if actual != expected_sha256.lower():
-        destination.unlink(missing_ok=True)
-        raise ValueError(f"SHA-256 không khớp: nhận {actual}, mong đợi {expected_sha256}.")
+
 
 
 def _install_wheel(version: str, wheel_path: Path) -> Path:
@@ -210,7 +197,7 @@ def maybe_update_yt_dlp(force: bool = False, timeout: float = 8.0) -> UpdateStat
         with tempfile.NamedTemporaryFile(prefix="yt_dlp_", suffix=".whl", dir=root, delete=False) as temporary:
             wheel_path = Path(temporary.name)
         try:
-            _download_verified(url, sha256, wheel_path, timeout=max(timeout, 30.0))
+            _download_verified(url, sha256, wheel_path, timeout=max(timeout, 30.0), user_agent="FrameForge-yt-dlp-updater/1.0", validate_https=False, validate_sha256_format=False)
             installed = _install_wheel(latest, wheel_path)
             _write_pointer(latest, installed, sha256)
         finally:

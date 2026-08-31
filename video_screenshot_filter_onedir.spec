@@ -48,6 +48,7 @@ datas += [
     ("core/manifest.py", "core"),
                 ("core/errors.py", "core"),
     ("core/analysis.py", "core"),
+    ("core/network.py", "core"),
     ("core/checkpoint.py", "core"),
     ("core/workers.py", "core"),
     ("core/cleanup.py", "core"),

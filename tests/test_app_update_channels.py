@@ -86,7 +86,7 @@ class AppUpdateChannelTests(unittest.TestCase):
             "signature_status": "unsigned",
         }}
 
-        def fake_download(url, expected_sha256, destination, timeout=60.0):
+        def fake_download(url, expected_sha256, destination, timeout=60.0, **kwargs):
             self.assertTrue(url.startswith("https://"))
             self.assertEqual(expected_sha256, rollback_sha)
             destination.write_bytes(rollback_payload)

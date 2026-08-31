@@ -11,6 +11,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from core.network import download_verified as _download_verified
 from core.utils import atomic_write_json as _atomic_write_json
 from core.utils import read_json as _read_json
 from core.utils import hidden_windows_process_kwargs as _hidden_windows_process_kwargs
@@ -225,24 +226,7 @@ def _authenticode_valid(path: Path) -> bool:
     return result.returncode == 0 and result.stdout.strip().lower() == "valid"
 
 
-def _download_verified(url: str, expected_sha256: str, destination: Path, timeout: float = 60.0) -> None:
-    if not url.lower().startswith("https://"):
-        raise ValueError("Installer URL phải dùng HTTPS.")
-    if not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256):
-        raise ValueError("Manifest có SHA-256 không hợp lệ.")
-    request = urllib.request.Request(url, headers={"User-Agent": "FrameForge-App-Updater/1.0"})
-    digest = hashlib.sha256()
-    with urllib.request.urlopen(request, timeout=timeout) as response, destination.open("wb") as output:
-        while True:
-            chunk = response.read(1024 * 1024)
-            if not chunk:
-                break
-            digest.update(chunk)
-            output.write(chunk)
-    actual = digest.hexdigest().lower()
-    if actual != expected_sha256.lower():
-        destination.unlink(missing_ok=True)
-        raise ValueError(f"SHA-256 không khớp: nhận {actual}, mong đợi {expected_sha256}.")
+
 
 
 def _read_pending() -> dict[str, object] | None:
@@ -376,7 +360,7 @@ def maybe_update_app(force: bool = False, timeout: float = 10.0, download: bool 
         with tempfile.NamedTemporaryFile(prefix="FrameForge-Setup-", suffix=".tmp", dir=update_root, delete=False) as temporary:
             temporary_path = Path(temporary.name)
         try:
-            _download_verified(installer_url, sha256, temporary_path, timeout=max(timeout, 60.0))
+            _download_verified(installer_url, sha256, temporary_path, timeout=max(timeout, 60.0), user_agent="FrameForge-App-Updater/1.0")
             if target.exists():
                 target.unlink()
             temporary_path.replace(target)
@@ -459,7 +443,7 @@ def rollback_app_now(timeout: float = 10.0) -> AppUpdateStatus:
     try:
         with tempfile.NamedTemporaryFile(prefix="FrameForge-Rollback-", suffix=".tmp", dir=update_root, delete=False) as temporary:
             temporary_path = Path(temporary.name)
-        _download_verified(url, sha256, temporary_path, timeout=max(timeout, 60.0))
+        _download_verified(url, sha256, temporary_path, timeout=max(timeout, 60.0), user_agent="FrameForge-App-Updater/1.0")
         target.unlink(missing_ok=True)
         temporary_path.replace(target)
         _atomic_write_json(_rollback_pending_path(), {
