@@ -64,6 +64,11 @@ class CacheCheckpointTests(unittest.TestCase):
             duplicate_root=self.root / "duplicates",
             checkpoint_path=None,
             resume=False,
+            queue_run_signature="",
+            queue_db=None,
+            extract_workers=1,
+            encode_profile="fast",
+            extract_min_targets=1,
         )
 
     def tearDown(self) -> None:

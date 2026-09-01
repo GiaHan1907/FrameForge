@@ -79,6 +79,7 @@ def make_args(work: Path, workers: int, frames: int, encode_profile: str) -> Sim
         use_scene_cache=False, cache_root=work / "cache",
         duplicate_root=work / "duplicates", checkpoint_path=None,
         resume=False, queue_db=None,
+        queue_run_signature="",
     )
 
 
