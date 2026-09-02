@@ -80,6 +80,12 @@ def make_args(work: Path, workers: int, frames: int, encode_profile: str) -> Sim
         duplicate_root=work / "duplicates", checkpoint_path=None,
         resume=False, queue_db=None,
         queue_run_signature="",
+        crop_ratio=None, target_count_after_filter=False,
+        max_screenshots=20, retries=2, retry_delay=5.0,
+        min_free_ram_gb=0.0, repair_manifest=False,
+        target_candidate_multiplier=2.0,
+        target_candidate_multiplier_max=8,
+        video_workers=1,
     )
 
 

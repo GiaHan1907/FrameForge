@@ -69,6 +69,12 @@ class CacheCheckpointTests(unittest.TestCase):
             extract_workers=1,
             encode_profile="fast",
             extract_min_targets=1,
+            crop_ratio=None, target_count_after_filter=False,
+            max_screenshots=20, retries=2, retry_delay=5.0,
+            min_free_ram_gb=0.0, repair_manifest=False,
+            target_candidate_multiplier=2.0,
+            target_candidate_multiplier_max=8,
+            video_workers=1, stage_timings={},
         )
 
     def tearDown(self) -> None:
