@@ -159,15 +159,32 @@ jobs:
             throw "frameforge_version.txt mismatch"
           }
           Write-Host "=== Validate: exe exists ==="
-          if (-not (Test-Path "dist\VideoScreenshotFilter\VideoScreenshotFilter.exe")) {
-            throw "PyInstaller executable was not found"
+          $exePath = $null
+          $candidates = @(
+            "dist\VideoScreenshotFilter\VideoScreenshotFilter.exe",
+            "dist\VideoScreenshotFilter\_internal\VideoScreenshotFilter.exe",
+            "dist\VideoScreenshotFilter\VideoScreenshotFilter\VideoScreenshotFilter.exe"
+          )
+          foreach ($c in $candidates) {
+            if (Test-Path $c) { $exePath = $c; break }
           }
-          Write-Host "  dist\VideoScreenshotFilter\VideoScreenshotFilter.exe OK"
+          if (-not $exePath) {
+            Write-Host "  Not found in any candidate path. Listing dist/:"
+            if (Test-Path "dist") {
+              Get-ChildItem -Path "dist" -Recurse -Filter "*.exe" | ForEach-Object { Write-Host "    $($_.FullName)" }
+            } else {
+              Write-Host "  dist/ directory does not exist!"
+            }
+            throw "PyInstaller executable was not found in any expected location"
+          }
+          Write-Host "  Found: $exePath"
           Write-Host "=== Validate: dist directory listing ==="
-          Get-ChildItem -Path "dist\VideoScreenshotFilter" -Recurse -File | ForEach-Object { Write-Host "  $($_.FullName)" }
+          Get-ChildItem -Path "dist" -Recurse -Directory | ForEach-Object { Write-Host "  [dir] $($_.FullName)" }
+          Get-ChildItem -Path "dist" -Recurse -File -Filter "*.py" | ForEach-Object { Write-Host "  [py] $($_.FullName)" }
+          Get-ChildItem -Path "dist" -Recurse -File -Filter "*.css" | ForEach-Object { Write-Host "  [css] $($_.FullName)" }
           Write-Host "=== Validate: required modules ==="
           foreach ($requiredModule in @("persistent_queue.py", "timeline_utils.py", "queue_per_video.py", "video_screenshot_advanced.py", "streamlit_app.py", "core/utils.py", "core/config.py", "core/pipeline.py", "core/resources.py", "core/manifest.py", "core/errors.py", "core/network.py", "ui/download_section.py", "ui/session.py")) {
-            $modulePath = Get-ChildItem -Path "dist\VideoScreenshotFilter" -Filter $requiredModule -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            $modulePath = Get-ChildItem -Path "dist" -Filter $requiredModule -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
             if (-not $modulePath) {
               Write-Host "  MISSING: $requiredModule"
               throw "Required runtime module was not packaged: $requiredModule"
@@ -175,7 +192,7 @@ jobs:
             Write-Host "  Found: $requiredModule -> $($modulePath.FullName)"
           }
           Write-Host "=== Validate: UI assets ==="
-          $cssPath = Get-ChildItem -Path "dist\VideoScreenshotFilter" -Filter "styles.css" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          $cssPath = Get-ChildItem -Path "dist" -Filter "styles.css" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $cssPath) {
             throw "Required UI asset was not packaged: ui/styles.css"
           }
