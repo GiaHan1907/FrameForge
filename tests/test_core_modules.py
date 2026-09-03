@@ -15,6 +15,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+try:
+    import numpy as np
+    from core.analysis import crop_to_aspect_ratio
+except ImportError:
+    np = None  # type: ignore[assignment]
+    crop_to_aspect_ratio = None  # type: ignore[assignment]
+
 from core.config import FrameForgeConfig
 from core.errors import ErrorInfo, classify_error
 from core.resources import (
@@ -629,6 +636,43 @@ class AvailableMemoryGbTests(unittest.TestCase):
         if result is not None:
             self.assertIsInstance(result, float)
             self.assertGreater(result, 0)
+
+
+# ── core.analysis: crop_to_aspect_ratio ───────────────────────────────
+
+
+@unittest.skipUnless(
+    np is not None and crop_to_aspect_ratio is not None,
+    "numpy not installed; skipping crop tests",
+)
+class CropToAspectRatioTests(unittest.TestCase):
+    """Regression cho lỗi "Không crop" bị ValueError.
+
+    Commit a00ab8b (refactor tách core/analysis.py) đổi guard từ
+    "Không crop" (có dấu) thành "Khong crop" (không dấu) → UI gửi
+    "Không crop" (giá trị mặc định) làm crop_to_aspect_ratio raise
+    ValueError khi xử lý video.
+    """
+
+    def setUp(self) -> None:
+        self.frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+    def test_khong_crop_returns_original_frame(self) -> None:
+        result = crop_to_aspect_ratio(self.frame, "Không crop")
+        self.assertIs(result, self.frame)
+
+    def test_none_returns_original_frame(self) -> None:
+        result = crop_to_aspect_ratio(self.frame, None)
+        self.assertIs(result, self.frame)
+
+    def test_invalid_ratio_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            crop_to_aspect_ratio(self.frame, "3:2")
+
+    def test_valid_ratio_crops(self) -> None:
+        result = crop_to_aspect_ratio(self.frame, "16:9")
+        # 320x240 (4:3) → 16:9: width giữ nguyên, height giảm còn 180
+        self.assertEqual(result.shape, (180, 320, 3))
 
 
 if __name__ == "__main__":

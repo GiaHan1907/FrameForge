@@ -222,7 +222,7 @@ def crop_to_aspect_ratio(
     Returns the original frame if *crop_ratio* is ``None``, empty, or
     ``"Khong crop"``.
     """
-    if crop_ratio is None or str(crop_ratio).strip() in ("", "none", "Khong crop"):
+    if crop_ratio is None or str(crop_ratio).strip() in ("", "none", "Khong crop", "Không crop"):
         return frame
     target_ratio = CROP_RATIO_VALUES.get(str(crop_ratio))
     if target_ratio is None:
