@@ -127,6 +127,19 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
         self.assertIn("runtime.stop()", desktop_source)
         # atexit.register lives in streamlit_app.py (desktop lifecycle setup)
         self.assertIn("atexit.register", self.source)
+        # Regression: watchdog phải được GỌI ở module level (từng bị mất ở
+        # commit 70898d7 → đóng tab không kill được VideoScreenshotFilter.exe).
+        # assertIn("def _start...") không đủ vì định nghĩa hàm cũng match;
+        # phải kiểm tra có lời gọi thực sự bên ngoài định nghĩa.
+        call_lines = [
+            line.strip()
+            for line in self.source.splitlines()
+            if line.strip() == "_start_desktop_session_watchdog()"
+        ]
+        self.assertEqual(
+            len(call_lines), 1,
+            "streamlit_app.py phải gọi _start_desktop_session_watchdog() đúng 1 lần ở module level",
+        )
 
     def test_completed_video_temp_input_is_removed(self) -> None:
         processing_source = (ROOT / "ui" / "processing.py").read_text(encoding="utf-8")

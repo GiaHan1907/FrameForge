@@ -555,6 +555,12 @@ def _start_desktop_session_watchdog() -> None:
     ).start()
 
 
+# BẮT BUỘC phải gọi ở module level, nếu không watchdog không chạy và
+# đóng tab/browser sẽ không kill được VideoScreenshotFilter.exe.
+# (Lời gọi này từng bị mất trong commit 70898d7 — đừng xóa!)
+_start_desktop_session_watchdog()
+
+
 # Main overview
 st.markdown('<div class="section-heading" aria-label="Tổng quan FrameForge"><span>✦</span> Tổng quan</div>', unsafe_allow_html=True)
 st.markdown('<div aria-live="polite">Dùng phím Tab để di chuyển giữa các control; Enter hoặc Space để kích hoạt nút đang được focus.</div>', unsafe_allow_html=True)
