@@ -100,6 +100,7 @@ class Expander:
     """Wrap subsequent entries in a ``st.expander``."""
     label: str
     expanded: bool = False
+    entries: list[Any] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
