@@ -392,6 +392,10 @@ jobs:
               release_payload/build_size_report.json \
               release_payload/vendor/ffmpeg/BUILD_METADATA.txt \
               --clobber
+            # A release may already exist as a draft (e.g. staged on GitHub or
+            # left over from a previous run). Uploading into it keeps it draft,
+            # so force-publish it here.
+            gh release edit "$tag" --draft=false
           elif [ "$channel" = "beta" ]; then
             gh release create "$tag" \
               "$setup" \
@@ -401,6 +405,7 @@ jobs:
               release_payload/vendor/ffmpeg/BUILD_METADATA.txt \
               --title "FrameForge ${tag#v} (Beta)" \
               --prerelease \
+              --draft=false \
               --generate-notes
           else
             gh release create "$tag" \
@@ -410,5 +415,6 @@ jobs:
               release_payload/build_size_report.json \
               release_payload/vendor/ffmpeg/BUILD_METADATA.txt \
               --title "FrameForge ${tag#v}" \
+              --draft=false \
               --generate-notes
           fi

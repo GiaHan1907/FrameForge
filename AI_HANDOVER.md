@@ -122,19 +122,29 @@ git tag -a v0.1.37 -m "v0.1.37" && git push origin v0.1.37
 ```
 Rồi chờ: `gh run list --limit 1` → conclusion `success`.
 
-### ⚠️ VẤN ĐỀ CHƯA FIX: Release luôn tạo ở dạng **draft**
-CI "Create or update GitHub Release" tạo release **draft** → user không thấy
-file .exe trên link. **Mỗi lần build xong PHẢI publish thủ công**:
+### ✅ ĐÃ FIX: Release tự publish, không còn draft (v0.1.38+)
+Nguyên nhân cũ: publish step `if gh release view ...; then gh release upload
+--clobber` — nếu tag đã có sẵn một release **draft** (stage trên GitHub hoặc
+từ run trước), nó chỉ upload asset vào draft đó và KHÔNG BAO GIỜ flip
+`draft=false` → build "success" mà user không thấy .exe.
+
+Fix trong `.github/workflows/windows-release.yml` (publish-release job):
+1. Nhánh release đã tồn tại: thêm `gh release edit "$tag" --draft=false`
+   ngay sau `gh release upload --clobber` → draft cũ tự publish.
+2. Cả 2 nhánh `gh release create` (stable + beta): thêm `--draft=false`.
+
+Sau fix, user thấy release ngay sau khi build xong, không cần publish tay.
+Các release draft cũ (v0.1.35 → v0.1.37) vẫn phải publish thủ công 1 lần:
 ```bash
+gh release edit v0.1.35 --repo GiaHan1907/FrameForge --draft=false
+gh release edit v0.1.36 --repo GiaHan1907/FrameForge --draft=false
 gh release edit v0.1.37 --repo GiaHan1907/FrameForge --draft=false
 ```
-→ Việc đầu tiên nên làm: fix workflow để release tự publish (thêm
-`--draft=false` hoặc dùng `softprops/action-gh-release` với `draft: false`)
-khi event là tag push.
 
 ### Khi user báo "đã build .exe chưa / không thấy .exe":
 1. `gh run list --limit 3` xem run mới nhất đã success chưa
-2. `gh release view v0.1.37` xem `isDraft` — **nếu draft:true thì publish**
+2. `gh release view v0.1.37` xem `isDraft` — chỉ publish tay nếu là release
+   CŨ tạo trước khi fix (từ v0.1.38 workflow đã tự publish)
 3. Báo link download: `https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.37`
 
 ---
@@ -206,7 +216,9 @@ python -m unittest discover -s tests -p "test_*.py"   # hiện: 259 pass, 27 ski
 - Local tests: 259 pass / 0 fail / 27 skip (skipped = cần cv2/opencv)
 
 ### Các việc còn dang dở / nên làm tiếp:
-1. **Fix CI auto-publish release** (hết draft) — ưu tiên #1.
+1. ✅ ĐÃ LÀM: Fix CI auto-publish release (thêm `gh release edit --draft=false`
+   + `--draft=false` ở create — xem mục 4). Còn publish tay 1 lần cho các
+   release draft cũ v0.1.35 → v0.1.37.
 2. **Bỏ `continue-on-error`** ở test step sau khi fix flaky queue retry tests.
 3. User đã yêu cầu các tính năng content marketing (thumbnail generator,
    crop presets social media...) — chưa implement.
@@ -221,7 +233,6 @@ python -m unittest discover -s tests -p "test_*.py"   # hiện: 259 pass, 27 ski
 
 - Tests queue retry/cancel **flaky trên CI runner chậm** (threading +
   timeout) — đã né bằng continue-on-error, chưa fix gốc.
-- Release publish workflow tạo draft — cần sửa (mục 4).
 - Các hàm `_hidden_windows_process_kwargs`, `_atomic_write_json` từng bị
   duplicate giữa modules — đã gộp về `core/utils.py`, nhưng nếu thấy
   duplicate tương tự, ưu tiên gộp hơn copy-paste.
