@@ -844,6 +844,8 @@ def process_video(
     on_progress: ProgressCallback | None = None,
     cancel_event=None,
 ) -> dict[str, object]:
+    # Chuẩn hóa về Path để video.parent/stem/resolve() an toàn với mọi caller.
+    video = Path(video)
     check_cancelled(cancel_event)
     metadata = probe_video(video)
     duration = float(metadata["duration"])
