@@ -140,12 +140,42 @@ jobs:
           Write-Host "Profile: $requestedProfile"
           Write-Host "Version: $version"
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if ($env:BUILD_PROFILE -eq 'minimal') {
+            python -m pip install -r requirements.txt pyinstaller
+          } else {
+            python -m pip install -r requirements_full.txt pyinstaller
+          }
+          Set-Content -Path frameforge_version.txt -Value $env:FRAMEFORGE_VERSION -NoNewline
+          Write-Host "Wrote version $env:FRAMEFORGE_VERSION to frameforge_version.txt"
+      - name: Prepare FFmpeg
+        run: |
+          if (-not (Test-Path 'vendor\ffmpeg\ffmpeg.exe')) {
+            Write-Host 'Downloading FFmpeg...'
+            powershell -NoProfile -ExecutionPolicy Bypass -File prepare_ffmpeg_windows.ps1 -OutputDir vendor\ffmpeg
+          }
+          if (-not (Test-Path 'vendor\ffmpeg\ffmpeg.exe')) {
+            throw 'ffmpeg.exe not found after download'
+          }
+          if (-not (Test-Path 'vendor\ffmpeg\ffprobe.exe')) {
+            throw 'ffprobe.exe not found after download'
+          }
+          Write-Host 'FFmpeg ready'
       - name: Build PyInstaller onedir package
         run: |
-          cmd /c build_windows.bat
+          $env:FRAMEFORGE_VERSION = $env:FRAMEFORGE_VERSION
+          $specFile = if ($env:BUILD_PROFILE -eq 'minimal') { 'video_screenshot_filter_minimal.spec' } else { 'video_screenshot_filter_onedir.spec' }
+          Write-Host "Building with spec: $specFile"
+          Write-Host "Working directory: $(Get-Location)"
+          pyinstaller --noconfirm --clean $specFile
           if ($LASTEXITCODE -ne 0) {
-            throw "build_windows.bat failed with exit code $LASTEXITCODE"
+            throw "pyinstaller failed with exit code $LASTEXITCODE"
           }
+          Write-Host "Build output:"
+          Get-ChildItem -Path dist -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 20 | ForEach-Object { Write-Host "  $($_.FullName)" }
+          python measure_package_size.py . --json build_size_report.json
       - name: Run queue retry and cancel tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
       - name: Run extraction benchmark
