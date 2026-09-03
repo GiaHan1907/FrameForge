@@ -152,34 +152,52 @@ jobs:
         run: python benchmarks/benchmark_frame_extraction.py --frames 60 --workers 1,2,4 --output benchmark_results.json
       - name: Validate packaged build outputs
         run: |
+          Write-Host "=== Validate: version file ==="
           $versionFile = (Get-Content frameforge_version.txt -Raw).Trim()
+          Write-Host "  frameforge_version.txt = '$versionFile', expected '$env:FRAMEFORGE_VERSION'"
           if ($versionFile -ne $env:FRAMEFORGE_VERSION) {
-            throw "frameforge_version.txt contains '$versionFile', expected '$env:FRAMEFORGE_VERSION'"
+            throw "frameforge_version.txt mismatch"
           }
+          Write-Host "=== Validate: exe exists ==="
           if (-not (Test-Path "dist\VideoScreenshotFilter\VideoScreenshotFilter.exe")) {
             throw "PyInstaller executable was not found"
           }
+          Write-Host "  dist\VideoScreenshotFilter\VideoScreenshotFilter.exe OK"
+          Write-Host "=== Validate: dist directory listing ==="
+          Get-ChildItem -Path "dist\VideoScreenshotFilter" -Recurse -File | ForEach-Object { Write-Host "  $($_.FullName)" }
+          Write-Host "=== Validate: required modules ==="
           foreach ($requiredModule in @("persistent_queue.py", "timeline_utils.py", "queue_per_video.py", "video_screenshot_advanced.py", "streamlit_app.py", "core/utils.py", "core/config.py", "core/pipeline.py", "core/resources.py", "core/manifest.py", "core/errors.py", "core/network.py", "ui/download_section.py", "ui/session.py")) {
             $modulePath = Get-ChildItem -Path "dist\VideoScreenshotFilter" -Filter $requiredModule -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
             if (-not $modulePath) {
+              Write-Host "  MISSING: $requiredModule"
               throw "Required runtime module was not packaged: $requiredModule"
             }
-            Write-Host "Packaged runtime module: $($modulePath.FullName)"
+            Write-Host "  Found: $requiredModule -> $($modulePath.FullName)"
           }
+          Write-Host "=== Validate: UI assets ==="
           $cssPath = Get-ChildItem -Path "dist\VideoScreenshotFilter" -Filter "styles.css" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $cssPath) {
             throw "Required UI asset was not packaged: ui/styles.css"
           }
-          Write-Host "Packaged UI asset: $($cssPath.FullName)"
+          Write-Host "  styles.css -> $($cssPath.FullName)"
+          Write-Host "=== Validate: ffmpeg vendor ==="
           if (-not (Test-Path "vendor\ffmpeg\ffmpeg.exe")) {
+            Write-Host "  vendor\ffmpeg\ffmpeg.exe NOT FOUND in project root"
+            Write-Host "  Listing vendor/ffmpeg/:"
+            Get-ChildItem -Path "vendor\ffmpeg" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "    $($_.Name)" }
             throw "Embedded ffmpeg.exe was not found"
           }
+          Write-Host "  vendor\ffmpeg\ffmpeg.exe OK"
           if (-not (Test-Path "vendor\ffmpeg\ffprobe.exe")) {
             throw "Embedded ffprobe.exe was not found"
           }
+          Write-Host "  vendor\ffmpeg\ffprobe.exe OK"
           if (-not (Test-Path "vendor\ffmpeg\BUILD_METADATA.txt")) {
+            Write-Host "  vendor\ffmpeg\BUILD_METADATA.txt NOT FOUND in project root"
             throw "FFmpeg build metadata was not found"
           }
+          Write-Host "  vendor\ffmpeg\BUILD_METADATA.txt OK"
+          Write-Host "=== All validation checks passed ==="
 
       - name: Smoke test packaged executable
         run: |
