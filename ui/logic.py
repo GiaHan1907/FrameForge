@@ -73,8 +73,16 @@ def build_preview_timestamps(
     every: float | None,
     count: int,
     maximum: int,
+    *,
+    fill_to_maximum: bool = True,
 ) -> list[float]:
-    """Build a list of preview timestamps based on the selected mode."""
+    """Build a list of preview timestamps based on the selected mode.
+
+    ``fill_to_maximum`` mirrors the engine's ``target_count_after_filter``
+    behaviour: when a short video yields fewer interval ticks than
+    ``maximum``, spread extra evenly-spaced ticks so the preview matches
+    what the engine will actually produce.
+    """
     actual_end = (
         min(float(duration), float(end))
         if duration and end is not None
@@ -98,8 +106,18 @@ def build_preview_timestamps(
     while current < actual_end and len(timestamps) < max(1, int(maximum)):
         timestamps.append(round(current, 3))
         current += interval
-    if mode in {"Best frame per scene", "Scene detection"} and maximum > 0:
-        timestamps = timestamps[:maximum]
+    if mode in {"Best frame per scene", "Scene detection"}:
+        if maximum > 0:
+            timestamps = timestamps[:maximum]
+        return timestamps
+    # "Mỗi N giây" trên video ngắn: bù mốc đều giống engine khi ép đủ.
+    if fill_to_maximum and int(maximum) > 1 and len(timestamps) < int(maximum):
+        safe_end = max(actual_start, actual_end - 0.1)
+        step = (safe_end - actual_start) / (int(maximum) - 1)
+        timestamps = [
+            round(actual_start + index * step, 3)
+            for index in range(int(maximum))
+        ]
     return timestamps
 
 

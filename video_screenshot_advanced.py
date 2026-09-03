@@ -428,6 +428,12 @@ def process_fixed_mode(
 
     limit = screenshot_limit(args)
     target_mode = bool(args.target_count_after_filter)
+    # Video ngắn hơn khoảng cách "Mỗi N giây" (vd 3s với every=5s chỉ có 1 mốc):
+    # khi bật "Ép đủ số ảnh yêu cầu", bù thêm mốc đều để đạt đủ max_screenshots.
+    if target_mode and limit is not None and limit > 1 and args.count is None and len(targets) < limit:
+        safe_end = max(actual_start, actual_end - 0.1)
+        step = (safe_end - actual_start) / (limit - 1)
+        targets = [actual_start + index * step for index in range(limit)]
     target_candidates, maximum_candidates = candidate_budget_bounds(args)
     if target_candidates is not None and args.count is None and not args.target_count_after_filter:
         targets = targets[:target_candidates]

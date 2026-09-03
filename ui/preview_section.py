@@ -81,6 +81,7 @@ def render_preview_section(widgets: WidgetState) -> None:
         float(end) if limit_end else None,
         float(every) if every is not None else None,
         int(count or max_screenshots), int(max_screenshots),
+        fill_to_maximum=bool(widgets.get("target_count_after_filter", True)),
     )
     actual_scene_marks = st.session_state.get("quick_scene_preview_marks", [])
 

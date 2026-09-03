@@ -122,10 +122,31 @@ class BuildPreviewTimestampsTests(unittest.TestCase):
         self.assertAlmostEqual(ts[0], 50.0, places=0)
 
     def test_interval_mode(self):
+        # Ép đủ (mặc định): max_screenshots là mục tiêu → bù lên 32 mốc đều.
         ts = build_preview_timestamps(100.0, "M\u1ed7i N gi\u00e2y", 0, 100, 10.0, 10, 32)
+        self.assertEqual(len(ts), 32)
+        self.assertAlmostEqual(ts[0], 0.0, places=1)
+
+    def test_interval_mode_no_fill_long_video(self):
+        # Tắt ép đủ trên video dài: giữ mốc theo every (10 mốc cho 100s/10s).
+        ts = build_preview_timestamps(100.0, "M\u1ed7i N gi\u00e2y", 0, 100, 10.0, 10, 32, fill_to_maximum=False)
         self.assertEqual(len(ts), 10)
         self.assertAlmostEqual(ts[0], 0.0, places=1)
         self.assertAlmostEqual(ts[1], 10.0, places=1)
+
+    def test_interval_mode_short_video_fills_to_maximum(self):
+        # Video 3s + every 5s chỉ có 1 mốc; ép đủ phải bù lên 6 mốc đều
+        # (khớp engine khi target_count_after_filter=True).
+        ts = build_preview_timestamps(3.0, "M\u1ed7i N gi\u00e2y", 0, None, 5.0, 1, 6)
+        self.assertEqual(len(ts), 6)
+        self.assertAlmostEqual(ts[0], 0.0, places=1)
+        self.assertAlmostEqual(ts[-1], 2.9, places=0)
+
+    def test_interval_mode_no_fill_keeps_sparse_ticks(self):
+        # Tắt ép đủ: giữ nguyên hành vi cũ (1 mốc cho video ngắn).
+        ts = build_preview_timestamps(3.0, "M\u1ed7i N gi\u00e2y", 0, None, 5.0, 1, 6, fill_to_maximum=False)
+        self.assertEqual(len(ts), 1)
+        self.assertAlmostEqual(ts[0], 0.0, places=1)
 
     def test_empty_range(self):
         ts = build_preview_timestamps(100.0, "\u0110\u00fang N frame", 50, 50, None, 5, 32)
