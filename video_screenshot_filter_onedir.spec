@@ -55,6 +55,7 @@ datas += [
     ("core/google_images.py", "core"),
     ("ui/logic.py", "ui"),
     ("ui/download_section.py", "ui"),
+    ("ui/image_search_inline.py", "ui"),
     ("ui/processing.py", "ui"),
     ("ui/processing_view.py", "ui"),
     ("ui/session.py", "ui"),

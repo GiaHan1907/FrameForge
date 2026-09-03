@@ -53,10 +53,13 @@ class PackagingSpecTests(unittest.TestCase):
                 self.assertIn(marker, content, f"{marker} missing from {spec_name}")
 
     def test_windows_workflow_checks_runtime_modules(self) -> None:
-        content = (ROOT / ".github" / "workflows" / "windows-release.yml").read_text(encoding="utf-8")
-        self.assertIn('"persistent_queue.py"', content)
-        self.assertIn('"timeline_utils.py"', content)
-        self.assertIn("Required runtime module was not packaged", content)
+        workflow = (ROOT / ".github" / "workflows" / "windows-release.yml").read_text(encoding="utf-8")
+        self.assertIn("validate_build.py", workflow, "workflow must call validate_build.py")
+        validate_script = (ROOT / "validate_build.py").read_text(encoding="utf-8")
+        self.assertIn('"persistent_queue.py"', validate_script)
+        self.assertIn('"timeline_utils.py"', validate_script)
+        self.assertIn('"core/utils.py"', validate_script)
+        self.assertIn('"ui/session.py"', validate_script)
 
 
 if __name__ == "__main__":

@@ -455,6 +455,12 @@ try:
 except OSError as exc:
     st.caption(f"Không thể ghi config thư mục: {exc}")
 
+# Inline image search (toggled from sidebar)
+if st.session_state.get("_show_image_search", False):
+    from ui.image_search_inline import render_inline_image_search
+    render_inline_image_search()
+    st.divider()
+
 # Download public video queue
 from ui.download_section import render_download_section
 render_download_section()
@@ -465,8 +471,9 @@ from ui.widgets import render_entries
 
 # Sidebar controls (declarative)
 with st.sidebar:
-    # Image search page link
-    st.page_link("ui/image_search.py", label="🔍 Tìm ảnh theo địa điểm", icon="🔍")
+    # Image search toggle (inline, avoids st.page_link requiring multi-page setup)
+    if st.button("🔍 Tìm ảnh theo địa điểm", use_container_width=True, key="_img_search_toggle"):
+        st.session_state["_show_image_search"] = not st.session_state.get("_show_image_search", False)
     st.divider()
 
     render_entries(build_sidebar_entries(
