@@ -400,6 +400,7 @@ if "screenshot_dir" not in st.session_state:
     st.session_state["screenshot_dir"] = output_dirs["screenshot_dir"]
 if "downloaded_paths" not in st.session_state:
     st.session_state["downloaded_paths"] = []
+downloaded_paths = st.session_state["downloaded_paths"]
 
 st.markdown('<div class="section-heading"><span>⌂</span> Nơi lưu file</div>', unsafe_allow_html=True)
 st.markdown(
@@ -483,7 +484,7 @@ with st.sidebar:
         limit_end=st.session_state.get("limit_end", False),
         image_format=st.session_state.get("image_format", "jpg"),
         max_screenshots=st.session_state.get("max_screenshots", 20),
-        worker_count=len(uploaded_files) if uploaded_files else None,
+        worker_count=len(st.session_state.get("uploaded_files") or []),
         preset_options=list(PRESET_CONFIGS),
         on_change_preset=apply_selected_preset,
     ))
