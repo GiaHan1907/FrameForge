@@ -67,7 +67,7 @@ def render_preview_section(widgets: WidgetState) -> None:
     st.markdown('<div class="section-heading"><span>▷</span> Preview workspace</div>', unsafe_allow_html=True)
 
     preview_entries = [(Path(item.name).name, "upload", item) for item in uploaded_files]
-    preview_entries += [(path.name, "download", path) for path in downloaded_paths]
+    preview_entries += [(Path(path).name, "download", path) for path in downloaded_paths]
     preview_names = [entry[0] for entry in preview_entries]
     preview_name = st.selectbox(
         "Chọn video để xem preview", preview_names,
