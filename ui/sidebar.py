@@ -21,6 +21,7 @@ from ui.widgets import (
     Checkbox,
     ConditionalBlock,
     Custom,
+    Expander,
     NumberInput,
     Radio,
     SectionHeading,
