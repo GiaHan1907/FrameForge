@@ -947,6 +947,9 @@ def process_videos(
     """Xử lý queue video, retry từng item và trả báo cáo theo thứ tự đầu vào."""
     if not videos:
         return []
+    # Callers (UI session state, CLI) có thể truyền list[str]; chuẩn hóa về Path
+    # để video.resolve()/video.name bên dưới không bao giờ gặp AttributeError.
+    videos = [Path(video) for video in videos]
 
     requested_workers = args.workers
     if isinstance(requested_workers, str) and requested_workers.lower() == "auto":

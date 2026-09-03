@@ -738,7 +738,7 @@ if run_clicked:
         args.resume = False
         input_dir.mkdir(parents=True)
         output_dir.mkdir(parents=True)
-        input_paths = list(downloaded_paths)
+        input_paths = [Path(str(item)) for item in (downloaded_paths or [])]
         for uploaded in (uploaded_files or []):
             input_path = input_dir / Path(uploaded.name).name
             input_path.write_bytes(uploaded.getbuffer())

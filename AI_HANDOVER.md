@@ -87,6 +87,7 @@ không gặp. Danh sách lỗi + nguyên nhân + commit fix:
 | 10 | CI validation `MISSING: core/utils.py` | PowerShell `Get-ChildItem -Filter "core/utils.py"` chỉ match **filename** không match full path | `ee8019c` (thay bằng `validate_build.py` Python) |
 | 11 | CI build "thành công" nhưng không có exe | `cmd /c build_windows.bat` chạy sai working directory / exe nằm dưới `_internal\` | `7741377`, `252f2ca` |
 | 12 | CI: benchmark fail `AttributeError: 'SimpleNamespace' object has no attribute 'queue_run_signature'` | Mock `SimpleNamespace` args thiếu attrs mà `process_video()` truy cập trực tiếp (`queue_run_signature`, `crop_ratio`, `target_count_after_filter`, ... ~45 attrs) | `c676eb7`, `93eff5d`, `a8dcda7` |
+| 13 | Runtime: `Không thể xử lý queue: 'str' object has no attribute 'resolve'` | **Lặp lại lỗi #6**: `st.session_state["downloaded_paths"]` luôn là `list[str]` (xem `ui/download_section.py`), nhưng `streamlit_app.py` đưa thẳng vào `process_videos()` → `video.resolve()` fail. Fix #6 (`7622bc2`) chỉ wrap ở preview_section, **quên call site xử lý queue**. Fix: wrap `Path()` khi build `input_paths` + chuẩn hóa `videos = [Path(v) for v in videos]` ở đầu `process_videos()` | |
 
 ### ⚠️ Bài học chính (rule cho mọi AI sau):
 1. **Mỗi lần refactor/tách file** phải kiểm tra module mới có nằm trong
