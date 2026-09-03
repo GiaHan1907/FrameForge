@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import streamlit as st
+
 from core.pipeline import (
     CROP_RATIO_LABELS,
     ENCODE_PROFILE_LABELS,
