@@ -237,3 +237,14 @@ python -m unittest discover -s tests -p "test_*.py"   # hiện: 259 pass, 27 ski
 - Các hàm `_hidden_windows_process_kwargs`, `_atomic_write_json` từng bị
   duplicate giữa modules — đã gộp về `core/utils.py`, nhưng nếu thấy
   duplicate tương tự, ưu tiên gộp hơn copy-paste.
+
+
+## UI redesign 0.1.38 — giảm scroll (2026-09-04)
+
+- **3 tabs** thay vì 1 trang dài: `⚙️ Xử lý video` / `⬇️ Tải video công khai` / `📁 Cài đặt & Lịch sử`.
+- Bỏ: hero to, 4 card "Tổng quan", sticky-summary (trùng 4 card wizard), 3 card "Quy trình hoạt động".
+- "Thư mục lưu file" gói trong expander collapsed (vẫn chạy trước tabs để giữ thứ tự ghi session_state).
+- Update channel + thông báo cập nhật/rollback → tab Cài đặt.
+- Download section → tab riêng; personal preset + job history → tab Cài đặt.
+- CSS: `.hero-mini`, padding-top trang giảm 2.2rem → 1.1rem.
+- LƯU Ý cho AI sau: widget keys KHÔNG đổi (uploaded_files, video_dir_text, download_quality, update_channel_choice, ...) — đừng đổi key khi refactor UI vì tests + session_state phụ thuộc.

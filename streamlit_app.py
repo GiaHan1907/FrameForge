@@ -328,66 +328,13 @@ def find_recoverable_queue_jobs(root: Path) -> list[dict[str, object]]:
     return jobs[:10]
 
 
-# Header
-current_channel = get_update_channel()
-channel_choice = st.selectbox(
-    "Kênh cập nhật",
-    ["stable", "beta"],
-    index=0 if current_channel == "stable" else 1,
-    format_func=lambda value: "Stable — bản ổn định" if value == "stable" else "Beta — bản thử nghiệm",
-    key="update_channel_choice",
-)
-if channel_choice != current_channel:
-    set_update_channel(channel_choice)
-    st.success(f"Đã chuyển sang kênh {channel_choice}. Kiểm tra lại feed ở lần tải giao diện kế tiếp.")
-    st.rerun()
-
-if update_status.updated:
-    st.info(f"Đã tải bản yt-dlp {update_status.latest_version}; bản cập nhật sẽ được kích hoạt ở lần mở ứng dụng kế tiếp.")
-elif update_status.message and "mới nhất" not in update_status.message and "tắt" not in update_status.message and update_status.checked:
-    st.caption(f"yt-dlp updater: {update_status.message}")
-
-if app_update_status.available:
-    channel_label = "Beta" if app_update_status.channel == "beta" else "Stable"
-    st.info(f"[{channel_label}] Có bản cập nhật FrameForge {app_update_status.latest_version}. {app_update_status.message}")
-    if app_update_status.release_notes:
-        with st.expander("Xem release notes", expanded=False):
-            st.markdown(app_update_status.release_notes)
-            if app_update_status.release_notes_url:
-                st.markdown(f"[Mở release notes trên GitHub]({app_update_status.release_notes_url})")
-    if st.button("Cập nhật ngay", type="primary", use_container_width=False):
-        with st.spinner("Đang tải, xác minh SHA-256 và mở Setup…"):
-            app_update_status = update_app_now(timeout=30.0)
-        if app_update_status.downloaded and app_update_status.installer_path:
-            st.success(app_update_status.message)
-        else:
-            st.error(app_update_status.message)
-
-if app_update_status.rollback_available and app_update_status.rollback_version:
-    with st.expander(f"Rollback về FrameForge {app_update_status.rollback_version}", expanded=False):
-        st.caption("Chỉ dùng rollback khi bản hiện tại gặp lỗi. Installer rollback vẫn được kiểm tra HTTPS và SHA-256 trước khi mở.")
-        if st.button("Tải bản rollback", key="download_rollback"):
-            with st.spinner("Đang tải và xác minh installer rollback…"):
-                rollback_status = rollback_app_now(timeout=30.0)
-            if rollback_status.downloaded:
-                st.success(rollback_status.message)
-            else:
-                st.error(rollback_status.message)
-        if st.button("Mở installer rollback", key="launch_rollback"):
-            if launch_rollback_installer():
-                st.success("Đã mở installer rollback. Hãy hoàn tất cài đặt rồi khởi động lại FrameForge.")
-            else:
-                st.error("Chưa có installer rollback hợp lệ; hãy tải lại trước.")
-
+# ── Compact header ──────────────────────────────────────────────────
 st.markdown(
     """
-    <section class="hero">
-      <div>
-        <div class="hero-kicker">Scene-aware video toolkit</div>
-        <h1>FrameForge</h1>
-        <p>Cắt screenshot từ video bằng pipeline đọc một lần — nhận diện phân cảnh, chọn frame sắc nét nhất, loại bỏ mờ và trùng lặp.</p>
-      </div>
-    </section>
+    <div class="hero-mini">
+      <div class="hero-mini-title">🎞️ FrameForge</div>
+      <div class="hero-mini-sub">Scene-aware video screenshot · tải video công khai · trích frame sắc nét, lọc mờ & trùng lặp</div>
+    </div>
     """,
     unsafe_allow_html=True,
 )
@@ -402,69 +349,66 @@ if "downloaded_paths" not in st.session_state:
     st.session_state["downloaded_paths"] = []
 downloaded_paths = st.session_state["downloaded_paths"]
 
-st.markdown('<div class="section-heading"><span>⌂</span> Nơi lưu file</div>', unsafe_allow_html=True)
-st.markdown(
-    '<p class="muted-note">Chọn thư mục ngay từ đầu. Video tải xuống sẽ lưu trực tiếp vào thư mục video; mỗi lần xử lý screenshot sẽ tạo một thư mục con riêng để không trộn với kết quả cũ.</p>',
-    unsafe_allow_html=True,
-)
-video_path_col, screenshot_path_col = st.columns(2, gap="large")
-with video_path_col:
-    video_input_col, video_pick_col = st.columns([4.4, 1.1], vertical_alignment="bottom")
-    with video_input_col:
-        video_dir_text = st.text_input(
-            "Thư mục lưu video",
-            value=st.session_state["download_dir"],
-            key="video_dir_text",
-            help="Đường dẫn local trên máy đang chạy FrameForge.",
-        )
-    with video_pick_col:
-        st.button(
-            "Chọn…",
-            key="choose_video_dir",
-            use_container_width=True,
-            help="Mở folder picker để chọn nơi lưu video tải xuống.",
-            on_click=choose_and_store_directory,
-            args=("download_dir", "video_dir_text", "Chọn thư mục lưu video"),
-        )
-    st.session_state["download_dir"] = video_dir_text
-with screenshot_path_col:
-    screenshot_input_col, screenshot_pick_col = st.columns([4.4, 1.1], vertical_alignment="bottom")
-    with screenshot_input_col:
-        screenshot_dir_text = st.text_input(
-            "Thư mục gốc lưu screenshot",
-            value=st.session_state["screenshot_dir"],
-            key="screenshot_dir_text",
-            help="Mỗi lần xử lý sẽ tạo một thư mục FrameForge_YYYYMMDD_HHMMSS bên trong.",
-        )
-    with screenshot_pick_col:
-        st.button(
-            "Chọn…",
-            key="choose_screenshot_dir",
-            use_container_width=True,
-            help="Mở folder picker để chọn nơi lưu screenshot.",
-            on_click=choose_and_store_directory,
-            args=("screenshot_dir", "screenshot_dir_text", "Chọn thư mục gốc lưu screenshot"),
-        )
-    st.session_state["screenshot_dir"] = screenshot_dir_text
-
-# Persist the most recent valid paths for the next app start.
-try:
-    save_output_dirs(
-        normalize_output_dir(st.session_state["download_dir"], Path.home() / "Videos" / "FrameForge" / "videos"),
-        normalize_output_dir(st.session_state["screenshot_dir"], Path.home() / "Videos" / "FrameForge" / "screenshots"),
+# Thư mục lưu file — thu gọn trong expander để tiết kiệm chiều cao trang.
+with st.expander("📁 Thư mục lưu file", expanded=False):
+    st.markdown(
+        '<p class="muted-note">Chọn thư mục ngay từ đầu. Video tải xuống sẽ lưu trực tiếp vào thư mục video; mỗi lần xử lý screenshot sẽ tạo một thư mục con riêng để không trộn với kết quả cũ.</p>',
+        unsafe_allow_html=True,
     )
-except OSError as exc:
-    st.caption(f"Không thể ghi config thư mục: {exc}")
+    video_path_col, screenshot_path_col = st.columns(2, gap="large")
+    with video_path_col:
+        video_input_col, video_pick_col = st.columns([4.4, 1.1], vertical_alignment="bottom")
+        with video_input_col:
+            video_dir_text = st.text_input(
+                "Thư mục lưu video",
+                value=st.session_state["download_dir"],
+                key="video_dir_text",
+                help="Đường dẫn local trên máy đang chạy FrameForge.",
+            )
+        with video_pick_col:
+            st.button(
+                "Chọn…",
+                key="choose_video_dir",
+                use_container_width=True,
+                help="Mở folder picker để chọn nơi lưu video tải xuống.",
+                on_click=choose_and_store_directory,
+                args=("download_dir", "video_dir_text", "Chọn thư mục lưu video"),
+            )
+        st.session_state["download_dir"] = video_dir_text
+    with screenshot_path_col:
+        screenshot_input_col, screenshot_pick_col = st.columns([4.4, 1.1], vertical_alignment="bottom")
+        with screenshot_input_col:
+            screenshot_dir_text = st.text_input(
+                "Thư mục gốc lưu screenshot",
+                value=st.session_state["screenshot_dir"],
+                key="screenshot_dir_text",
+                help="Mỗi lần xử lý sẽ tạo một thư mục FrameForge_YYYYMMDD_HHMMSS bên trong.",
+            )
+        with screenshot_pick_col:
+            st.button(
+                "Chọn…",
+                key="choose_screenshot_dir",
+                use_container_width=True,
+                help="Mở folder picker để chọn nơi lưu screenshot.",
+                on_click=choose_and_store_directory,
+                args=("screenshot_dir", "screenshot_dir_text", "Chọn thư mục gốc lưu screenshot"),
+            )
+        st.session_state["screenshot_dir"] = screenshot_dir_text
+
+    # Persist the most recent valid paths for the next app start.
+    try:
+        save_output_dirs(
+            normalize_output_dir(st.session_state["download_dir"], Path.home() / "Videos" / "FrameForge" / "videos"),
+            normalize_output_dir(st.session_state["screenshot_dir"], Path.home() / "Videos" / "FrameForge" / "screenshots"),
+        )
+    except OSError as exc:
+        st.caption(f"Không thể ghi config thư mục: {exc}")
 
 # Inline image search (toggled from sidebar)
 if st.session_state.get("_show_image_search", False):
     from ui.image_search_inline import render_inline_image_search
     render_inline_image_search()
     st.divider()
-
-# Download public video queue
-from ui.download_section import render_download_section
-render_download_section()
 
 # Sidebar controls
 from ui.sidebar import build_sidebar_entries
@@ -561,207 +505,223 @@ def _start_desktop_session_watchdog() -> None:
 _start_desktop_session_watchdog()
 
 
-# Main overview
-st.markdown('<div class="section-heading" aria-label="Tổng quan FrameForge"><span>✦</span> Tổng quan</div>', unsafe_allow_html=True)
-st.markdown('<div aria-live="polite">Dùng phím Tab để di chuyển giữa các control; Enter hoặc Space để kích hoạt nút đang được focus.</div>', unsafe_allow_html=True)
-overview_a, overview_b, overview_c, overview_d = st.columns(4)
-with overview_a:
-    st.markdown(
-        f'<div class="info-card"><div class="label">Video đã chọn</div><div class="value">{len(uploaded_files or []) + len(downloaded_paths)}</div><div class="sub">Upload + download</div></div>',
-        unsafe_allow_html=True,
-    )
-with overview_b:
-    short_mode = "Best / scene" if mode_label == "Best frame per scene" else mode_label
-    st.markdown(
-        f'<div class="info-card"><div class="label">Chế độ</div><div class="value">{short_mode}</div><div class="sub">Cách chọn frame</div></div>',
-        unsafe_allow_html=True,
-    )
-with overview_c:
-    st.markdown(
-        f'<div class="info-card"><div class="label">Phân tích</div><div class="value">{int(analysis_width)} px</div><div class="sub">{float(analysis_fps):g} FPS · đọc một lần</div></div>',
-        unsafe_allow_html=True,
-    )
-with overview_d:
-    quality_label = "JPG/WebP" if image_format != "png" else "PNG"
-    st.markdown(
-        f'<div class="info-card"><div class="label">Đầu ra</div><div class="value">{quality_label}</div><div class="sub">Sharpness + dHash</div></div>',
-        unsafe_allow_html=True,
-    )
-
-st.markdown('<div class="section-heading"><span>◎</span> Wizard cấu hình 4 bước</div>', unsafe_allow_html=True)
-wizard_step = st.radio(
-    "Bước cấu hình",
-    list(WIZARD_STEPS),
-    key="wizard_step",
-    horizontal=True,
-    label_visibility="collapsed",
+# ── Tab layout: Xử lý / Tải video / Cài đặt & Lịch sử ───────────────
+main_tab, download_tab, settings_tab = st.tabs(
+    ["⚙️ Xử lý video", "⬇️ Tải video công khai", "📁 Cài đặt & Lịch sử"]
 )
-summary = wizard_summary()
-validation = validate_ui_configuration()
-validation_errors = validation["errors"]
-validation_warnings = validation["warnings"]
-summary_cols = st.columns(4)
-for summary_col, step_name in zip(summary_cols, WIZARD_STEPS):
-    summary_key = step_name.split(" · ", 1)[1]
-    summary_col.markdown(
-        f'<div class="info-card"><div class="label">{html.escape(step_name)}</div><div class="value" style="font-size:1rem">{html.escape(summary[summary_key])}</div><div class="sub">{"Đang chỉnh" if wizard_step == step_name else "Đã cấu hình"}</div></div>',
-        unsafe_allow_html=True,
-    )
-st.markdown(
-    f'<div class="sticky-summary"><strong>Sẵn sàng xử lý</strong> · {html.escape(summary["Nguồn"])} · {html.escape(summary["Chọn frame"])} · {html.escape(summary["Đầu ra"])}<br><span class="status-pill">{"Cấu hình hợp lệ" if not validation_errors else f"Cần sửa {len(validation_errors)} mục"}</span><span class="status-pill">{"Có cảnh báo" if validation_warnings else "Không có cảnh báo"}</span></div>',
-    unsafe_allow_html=True,
-)
-if validation_errors:
-    st.error("Chưa thể bắt đầu xử lý. Hãy kiểm tra các mục sau: " + " · ".join(validation_errors))
-if validation_warnings:
-    st.warning("Lưu ý cấu hình: " + " · ".join(validation_warnings))
-st.caption({
-    "01 · Nguồn": "Chọn video upload hoặc video đã tải công khai.",
-    "02 · Chọn frame": "Chọn scene, best frame, mỗi N giây hoặc đúng N frame.",
-    "03 · Chất lượng": "Điều chỉnh phân tích, lọc mờ/trùng và worker.",
-    "04 · Đầu ra": "Chọn crop ratio, format, chất lượng và encode profile.",
-}[wizard_step])
 
-render_preview_section({
-    "uploaded_files": uploaded_files,
-    "downloaded_paths": downloaded_paths,
-    "mode_label": mode_label,
-    "start": start,
-    "end": end,
-    "limit_end": limit_end,
-    "every": every,
-    "count": count,
-    "max_screenshots": max_screenshots,
-    "crop_ratio": crop_ratio,
-    "scene_threshold": scene_threshold,
-    "analysis_fps": analysis_fps,
-})
-
-render_personal_config_panel()
-render_job_history()
-
-st.markdown('<div class="section-heading"><span>→</span> Quy trình hoạt động</div>', unsafe_allow_html=True)
-step_a, step_b, step_c = st.columns(3)
-with step_a:
-    st.markdown(
-        '<div class="step-card"><span class="step-num">1</span><strong>Đọc video một lần</strong><p>Phân tích tuần tự ở độ phân giải thấp để xử lý nhanh và tiết kiệm bộ nhớ.</p></div>',
-        unsafe_allow_html=True,
+with main_tab:
+    st.markdown('<div class="section-heading"><span>◎</span> Wizard cấu hình 4 bước</div>', unsafe_allow_html=True)
+    st.markdown('<div aria-live="polite">Dùng phím Tab để di chuyển giữa các control; Enter hoặc Space để kích hoạt nút đang được focus.</div>', unsafe_allow_html=True)
+    wizard_step = st.radio(
+        "Bước cấu hình",
+        list(WIZARD_STEPS),
+        key="wizard_step",
+        horizontal=True,
+        label_visibility="collapsed",
     )
-with step_b:
-    st.markdown(
-        '<div class="step-card"><span class="step-num">2</span><strong>Chọn frame tốt nhất</strong><p>Nhận diện scene, chấm điểm độ nét và loại các frame mờ hoặc quá giống nhau.</p></div>',
-        unsafe_allow_html=True,
-    )
-with step_c:
-    st.markdown(
-        '<div class="step-card"><span class="step-num">3</span><strong>Tải kết quả</strong><p>Xem timeline, preview ảnh và tải toàn bộ screenshot cùng báo cáo JSON.</p></div>',
-        unsafe_allow_html=True,
-    )
-
-active_job = st.session_state.get("processing_job")
-job_running = isinstance(active_job, dict) and active_job.get("status") in {"running", "paused"}
-
-if not job_running:
-    recovery_root = normalize_output_dir(
-        st.session_state.get("screenshot_dir", ""),
-        Path.home() / "Videos" / "FrameForge" / "screenshots",
-    )
-    recoverable_jobs = find_recoverable_queue_jobs(recovery_root)
-    if recoverable_jobs:
-        st.markdown("#### Queue có thể khôi phục")
-        recovery_labels = [
-            f"{Path(str(item['database'])).parent.name} · {item['info'].get('state', 'interrupted')} · {item['existing']} file nguồn"
-            for item in recoverable_jobs
-        ]
-        recovery_index = st.selectbox("Chọn queue cũ", range(len(recovery_labels)), format_func=lambda index: recovery_labels[index], key="recovery_queue_choice")
-        selected_recovery = recoverable_jobs[int(recovery_index)]
-        resume_args_preview = build_args()
-        stored_signature = str(selected_recovery["info"].get("run_signature", ""))
-        current_signature = processing_signature(resume_args_preview)
-        signature_matches = bool(stored_signature and stored_signature == current_signature)
-        st.caption("Các item đã hoàn tất sẽ được bỏ qua theo checkpoint; item interrupted sẽ tiếp tục bằng stable item ID.")
-        if not signature_matches:
-            st.warning("Cấu hình hiện tại khác cấu hình của queue cũ. Hãy chọn lại preset/tham số cũ hoặc tạo job mới; không tự động resume để tránh sai cache và output.")
-        if st.button("Tiếp tục queue đã gián đoạn", key="resume_persistent_queue", type="primary", disabled=not signature_matches):
-            recovery_info = selected_recovery["info"]
-            recovery_items = selected_recovery["items"]
-            resume_args = resume_args_preview
-            resume_args.resume = True
-            resume_args.queue_db = Path(str(selected_recovery["database"]))
-            resume_args.queue_run_signature = str(recovery_info.get("run_signature", ""))
-            recovery_output = Path(str(selected_recovery["database"])).parent
-            resume_args.checkpoint_path = recovery_output / ".frameforge_checkpoint.json"
-            resume_args.cache_root = recovery_root / ".frameforge_scene_cache"
-            resume_args.duplicate_root = recovery_root / ".frameforge_duplicate_index"
-            resume_paths = [Path(item.video_path) for item in recovery_items]
-            _start_processing_job(resume_args, resume_paths, recovery_output, recovery_output)
-            st.rerun()
-
-st.markdown("<br>", unsafe_allow_html=True)
-run_col, hint_col = st.columns([1, 2.2])
-with run_col:
-    run_clicked = st.button(
-        "▶  Bắt đầu xử lý",
-        type="primary",
-        use_container_width=True,
-        disabled=bool(validation_errors) or job_running,
-    )
-with hint_col:
-    render_resource_meter(build_args() if (uploaded_files or downloaded_paths) else None)
-    if not uploaded_files and not downloaded_paths:
-        st.markdown(
-            '<p class="muted-note">Upload video hoặc tải video công khai ở phía trên để kích hoạt xử lý. Gợi ý: bắt đầu với <b>Best frame per scene</b> và threshold scene 0.30.</p>',
+    summary = wizard_summary()
+    validation = validate_ui_configuration()
+    validation_errors = validation["errors"]
+    validation_warnings = validation["warnings"]
+    summary_cols = st.columns(4)
+    for summary_col, step_name in zip(summary_cols, WIZARD_STEPS):
+        summary_key = step_name.split(" · ", 1)[1]
+        summary_col.markdown(
+            f'<div class="info-card"><div class="label">{html.escape(step_name)}</div><div class="value" style="font-size:1rem">{html.escape(summary[summary_key])}</div><div class="sub">{"Đang chỉnh" if wizard_step == step_name else "Đã cấu hình"}</div></div>',
             unsafe_allow_html=True,
         )
-    else:
-        st.markdown(
-            f'<p class="muted-note">Sẵn sàng xử lý <b>{len(uploaded_files or []) + len(downloaded_paths)} video</b> bằng chế độ <b>{mode_label}</b>. Kết quả sẽ được lọc theo sharpness, motion blur và dHash.</p>',
-            unsafe_allow_html=True,
-        )
-
-if run_clicked:
-    args = build_args()
-    work_dir: Path | None = None
     if validation_errors:
-        st.error("Không thể bắt đầu queue vì cấu hình chưa hợp lệ.")
-    try:
-        screenshot_root = normalize_output_dir(
+        st.error("Chưa thể bắt đầu xử lý. Hãy kiểm tra các mục sau: " + " · ".join(validation_errors))
+    if validation_warnings:
+        st.warning("Lưu ý cấu hình: " + " · ".join(validation_warnings))
+    st.caption({
+        "01 · Nguồn": "Chọn video upload hoặc video đã tải công khai.",
+        "02 · Chọn frame": "Chọn scene, best frame, mỗi N giây hoặc đúng N frame.",
+        "03 · Chất lượng": "Điều chỉnh phân tích, lọc mờ/trùng và worker.",
+        "04 · Đầu ra": "Chọn crop ratio, format, chất lượng và encode profile.",
+    }[wizard_step])
+
+    render_preview_section({
+        "uploaded_files": uploaded_files,
+        "downloaded_paths": downloaded_paths,
+        "mode_label": mode_label,
+        "start": start,
+        "end": end,
+        "limit_end": limit_end,
+        "every": every,
+        "count": count,
+        "max_screenshots": max_screenshots,
+        "crop_ratio": crop_ratio,
+        "scene_threshold": scene_threshold,
+        "analysis_fps": analysis_fps,
+    })
+
+    active_job = st.session_state.get("processing_job")
+    job_running = isinstance(active_job, dict) and active_job.get("status") in {"running", "paused"}
+
+    if not job_running:
+        recovery_root = normalize_output_dir(
             st.session_state.get("screenshot_dir", ""),
             Path.home() / "Videos" / "FrameForge" / "screenshots",
         )
-        cleanup_frameforge_cache(screenshot_root / ".frameforge_scene_cache", max_total_bytes=1 * 1024**3)
-        free_bytes = ensure_free_disk_space(
-            screenshot_root,
-            required_bytes=0,
-            reserve_bytes=args.disk_reserve_bytes,
-        )
-        work_dir = Path(tempfile.mkdtemp(prefix="video_screenshot_web_"))
-        input_dir = work_dir / "input"
-        output_dir = screenshot_root / f"FrameForge_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        args.cache_root = screenshot_root / ".frameforge_scene_cache"
-        args.duplicate_root = screenshot_root / ".frameforge_duplicate_index"
-        args.checkpoint_path = output_dir / ".frameforge_checkpoint.json"
-        args.resume = False
-        input_dir.mkdir(parents=True)
-        output_dir.mkdir(parents=True)
-        input_paths = [Path(str(item)) for item in (downloaded_paths or [])]
-        for uploaded in (uploaded_files or []):
-            input_path = input_dir / Path(uploaded.name).name
-            input_path.write_bytes(uploaded.getbuffer())
-            input_paths.append(input_path)
-        _start_processing_job(args, input_paths, output_dir, work_dir)
-        st.info(f"Đã xếp {len(input_paths)} video vào queue · còn trống {format_bytes(free_bytes)} trước khi xử lý.")
-        st.rerun()
-    except InsufficientDiskSpace as exc:
-        if work_dir is not None:
-            shutil.rmtree(work_dir, ignore_errors=True)
-        st.error(str(exc))
-    except OSError as exc:
-        if work_dir is not None:
-            shutil.rmtree(work_dir, ignore_errors=True)
-        st.error(f"Không thể tạo thư mục xử lý tạm: {exc}")
+        recoverable_jobs = find_recoverable_queue_jobs(recovery_root)
+        if recoverable_jobs:
+            st.markdown("#### Queue có thể khôi phục")
+            recovery_labels = [
+                f"{Path(str(item['database'])).parent.name} · {item['info'].get('state', 'interrupted')} · {item['existing']} file nguồn"
+                for item in recoverable_jobs
+            ]
+            recovery_index = st.selectbox("Chọn queue cũ", range(len(recovery_labels)), format_func=lambda index: recovery_labels[index], key="recovery_queue_choice")
+            selected_recovery = recoverable_jobs[int(recovery_index)]
+            resume_args_preview = build_args()
+            stored_signature = str(selected_recovery["info"].get("run_signature", ""))
+            current_signature = processing_signature(resume_args_preview)
+            signature_matches = bool(stored_signature and stored_signature == current_signature)
+            st.caption("Các item đã hoàn tất sẽ được bỏ qua theo checkpoint; item interrupted sẽ tiếp tục bằng stable item ID.")
+            if not signature_matches:
+                st.warning("Cấu hình hiện tại khác cấu hình của queue cũ. Hãy chọn lại preset/tham số cũ hoặc tạo job mới; không tự động resume để tránh sai cache và output.")
+            if st.button("Tiếp tục queue đã gián đoạn", key="resume_persistent_queue", type="primary", disabled=not signature_matches):
+                recovery_info = selected_recovery["info"]
+                recovery_items = selected_recovery["items"]
+                resume_args = resume_args_preview
+                resume_args.resume = True
+                resume_args.queue_db = Path(str(selected_recovery["database"]))
+                resume_args.queue_run_signature = str(recovery_info.get("run_signature", ""))
+                recovery_output = Path(str(selected_recovery["database"])).parent
+                resume_args.checkpoint_path = recovery_output / ".frameforge_checkpoint.json"
+                resume_args.cache_root = recovery_root / ".frameforge_scene_cache"
+                resume_args.duplicate_root = recovery_root / ".frameforge_duplicate_index"
+                resume_paths = [Path(item.video_path) for item in recovery_items]
+                _start_processing_job(resume_args, resume_paths, recovery_output, recovery_output)
+                st.rerun()
 
-render_processing_job()
+    st.markdown("<br>", unsafe_allow_html=True)
+    run_col, hint_col = st.columns([1, 2.2])
+    with run_col:
+        run_clicked = st.button(
+            "▶  Bắt đầu xử lý",
+            type="primary",
+            use_container_width=True,
+            disabled=bool(validation_errors) or job_running,
+        )
+    with hint_col:
+        render_resource_meter(build_args() if (uploaded_files or downloaded_paths) else None)
+        if not uploaded_files and not downloaded_paths:
+            st.markdown(
+                '<p class="muted-note">Chưa có video nào. Upload video ở sidebar hoặc tải video công khai ở tab ⬇️ Tải video để kích hoạt xử lý. Gợi ý: bắt đầu với <b>Best frame per scene</b> và threshold scene 0.30.</p>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f'<p class="muted-note">Sẵn sàng xử lý <b>{len(uploaded_files or []) + len(downloaded_paths)} video</b> bằng chế độ <b>{mode_label}</b>. Kết quả sẽ được lọc theo sharpness, motion blur và dHash.</p>',
+                unsafe_allow_html=True,
+            )
+
+    if run_clicked:
+        args = build_args()
+        work_dir: Path | None = None
+        if validation_errors:
+            st.error("Không thể bắt đầu queue vì cấu hình chưa hợp lệ.")
+        try:
+            screenshot_root = normalize_output_dir(
+                st.session_state.get("screenshot_dir", ""),
+                Path.home() / "Videos" / "FrameForge" / "screenshots",
+            )
+            cleanup_frameforge_cache(screenshot_root / ".frameforge_scene_cache", max_total_bytes=1 * 1024**3)
+            free_bytes = ensure_free_disk_space(
+                screenshot_root,
+                required_bytes=0,
+                reserve_bytes=args.disk_reserve_bytes,
+            )
+            work_dir = Path(tempfile.mkdtemp(prefix="video_screenshot_web_"))
+            input_dir = work_dir / "input"
+            output_dir = screenshot_root / f"FrameForge_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            args.cache_root = screenshot_root / ".frameforge_scene_cache"
+            args.duplicate_root = screenshot_root / ".frameforge_duplicate_index"
+            args.checkpoint_path = output_dir / ".frameforge_checkpoint.json"
+            args.resume = False
+            input_dir.mkdir(parents=True)
+            output_dir.mkdir(parents=True)
+            input_paths = [Path(str(item)) for item in (downloaded_paths or [])]
+            for uploaded in (uploaded_files or []):
+                input_path = input_dir / Path(uploaded.name).name
+                input_path.write_bytes(uploaded.getbuffer())
+                input_paths.append(input_path)
+            _start_processing_job(args, input_paths, output_dir, work_dir)
+            st.info(f"Đã xếp {len(input_paths)} video vào queue · còn trống {format_bytes(free_bytes)} trước khi xử lý.")
+            st.rerun()
+        except InsufficientDiskSpace as exc:
+            if work_dir is not None:
+                shutil.rmtree(work_dir, ignore_errors=True)
+            st.error(str(exc))
+        except OSError as exc:
+            if work_dir is not None:
+                shutil.rmtree(work_dir, ignore_errors=True)
+            st.error(f"Không thể tạo thư mục xử lý tạm: {exc}")
+
+    render_processing_job()
+
+with download_tab:
+    from ui.download_section import render_download_section
+    render_download_section()
+
+with settings_tab:
+    st.markdown('<div class="section-heading"><span>⚙</span> Cập nhật & kênh</div>', unsafe_allow_html=True)
+    current_channel = get_update_channel()
+    channel_choice = st.selectbox(
+        "Kênh cập nhật",
+        ["stable", "beta"],
+        index=0 if current_channel == "stable" else 1,
+        format_func=lambda value: "Stable — bản ổn định" if value == "stable" else "Beta — bản thử nghiệm",
+        key="update_channel_choice",
+    )
+    if channel_choice != current_channel:
+        set_update_channel(channel_choice)
+        st.success(f"Đã chuyển sang kênh {channel_choice}. Kiểm tra lại feed ở lần tải giao diện kế tiếp.")
+        st.rerun()
+
+    if update_status.updated:
+        st.info(f"Đã tải bản yt-dlp {update_status.latest_version}; bản cập nhật sẽ được kích hoạt ở lần mở ứng dụng kế tiếp.")
+    elif update_status.message and "mới nhất" not in update_status.message and "tắt" not in update_status.message and update_status.checked:
+        st.caption(f"yt-dlp updater: {update_status.message}")
+
+    if app_update_status.available:
+        channel_label = "Beta" if app_update_status.channel == "beta" else "Stable"
+        st.info(f"[{channel_label}] Có bản cập nhật FrameForge {app_update_status.latest_version}. {app_update_status.message}")
+        if app_update_status.release_notes:
+            with st.expander("Xem release notes", expanded=False):
+                st.markdown(app_update_status.release_notes)
+                if app_update_status.release_notes_url:
+                    st.markdown(f"[Mở release notes trên GitHub]({app_update_status.release_notes_url})")
+        if st.button("Cập nhật ngay", type="primary", use_container_width=False):
+            with st.spinner("Đang tải, xác minh SHA-256 và mở Setup…"):
+                app_update_status = update_app_now(timeout=30.0)
+            if app_update_status.downloaded and app_update_status.installer_path:
+                st.success(app_update_status.message)
+            else:
+                st.error(app_update_status.message)
+
+    if app_update_status.rollback_available and app_update_status.rollback_version:
+        with st.expander(f"Rollback về FrameForge {app_update_status.rollback_version}", expanded=False):
+            st.caption("Chỉ dùng rollback khi bản hiện tại gặp lỗi. Installer rollback vẫn được kiểm tra HTTPS và SHA-256 trước khi mở.")
+            if st.button("Tải bản rollback", key="download_rollback"):
+                with st.spinner("Đang tải và xác minh installer rollback…"):
+                    rollback_status = rollback_app_now(timeout=30.0)
+                if rollback_status.downloaded:
+                    st.success(rollback_status.message)
+                else:
+                    st.error(rollback_status.message)
+            if st.button("Mở installer rollback", key="launch_rollback"):
+                if launch_rollback_installer():
+                    st.success("Đã mở installer rollback. Hãy hoàn tất cài đặt rồi khởi động lại FrameForge.")
+                else:
+                    st.error("Chưa có installer rollback hợp lệ; hãy tải lại trước.")
+
+    render_personal_config_panel()
+    render_job_history()
+
+
 
 st.markdown(
     '<div style="margin-top:2.4rem;padding-top:1rem;border-top:1px solid #e6eaf0;color:#8b95a7;font-size:.78rem;">FrameForge · Scene-aware video screenshot studio · Pipeline đọc một lần, phân tích nhanh và lọc chất lượng tự động.</div>',
