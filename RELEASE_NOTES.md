@@ -1,6 +1,29 @@
 # FrameForge — Release Notes
 
-> Bản mới nhất: **v0.1.40**. Lịch sử đầy đủ từng bản: [CHANGELOG.md](CHANGELOG.md). Ghi chú riêng cho một số bản cũ: RELEASE_NOTES_v0.1.31.md, RELEASE_NOTES_v0.1.32.md, RELEASE_NOTES_v0.1.33.md, UPDATE_GUIDE_v0.1.31.md.
+> Bản mới nhất: **v0.1.41**. Lịch sử đầy đủ từng bản: [CHANGELOG.md](CHANGELOG.md). Ghi chú riêng cho một số bản cũ: RELEASE_NOTES_v0.1.31.md, RELEASE_NOTES_v0.1.32.md, RELEASE_NOTES_v0.1.33.md, UPDATE_GUIDE_v0.1.31.md.
+
+# FrameForge v0.1.41
+
+## Tìm ảnh theo địa điểm: 6 nguồn, có license rõ ràng
+
+- Mở rộng từ DuckDuckGo lên **6 nguồn ảnh** chọn trong dropdown **Nguồn ảnh**: DuckDuckGo (mặc định), **Wikimedia Commons (CC, no key)**, Openverse (CC), Pexels, Pixabay, Unsplash.
+- **Wikimedia Commons không cần API key** và trả ảnh Creative Commons/phạm vi công cộng kèm **license + tác giả + kích thước + trang nguồn** - đã kiểm chứng end-to-end (tìm -> tải -> crop) từ IP người dùng thật.
+- Nguồn cần key (Pexels/Pixabay/Unsplash) hiện ô **🔑 API key cho …** kèm link đăng ký ngay trong giao diện; key dán vào ô chỉ lưu trong phiên, hoặc đặt biến môi trường `FRAMEFORGE_PEXELS_API_KEY` / `FRAMEFORGE_PIXABAY_API_KEY` / `FRAMEFORGE_UNSPLASH_ACCESS_KEY` (Openverse: `FRAMEFORGE_OPENVERSE_TOKEN`) để dùng lâu dài.
+- Dưới mỗi ảnh hiện dòng **license + tác giả** để biết quyền sử dụng trước khi tải.
+
+## Crop ảnh đúng tỷ lệ ngay khi tải
+
+- Dropdown **Tỷ lệ crop khi tải**: `Giữ nguyên`, `Vuông 1:1`, `4:5 (Portrait)`, `3:2`, `16:9 (Landscape)`, `9:16 (Story/Reels)` - mỗi ảnh tải về được center-crop đúng tỷ lệ bằng Pillow trước khi lưu (không cần OpenCV).
+- Khi tải từ nguồn có license/tác giả, app ghi kèm file **`sources.tsv`** trong thư mục lưu (file · license · tác giả · trang nguồn · URL gốc) để ghi credit hợp pháp.
+
+## Tải ảnh ổn định hơn
+
+- `download_image` giờ **retry có backoff** với HTTP 429 / 5xx / lỗi mạng (2 lần retry, chờ 2s -> 5s, tôn trọng header Retry-After) - Wikimedia/Openverse hay bị rate-limit thoáng qua sẽ không còn mất ảnh.
+
+## Chất lượng
+
+- Thêm 31 unit test mock HTTP cho backend mới (parse Wikimedia/Openverse/Pexels/Pixabay/Unsplash, thiếu key trả về rỗng, routing dispatcher, crop box math, sources.tsv, retry backoff) - tổng suite 325 tests.
+- Đồng bộ `HUONG_DAN_SU_DUNG.md` + `README.md` cho 6 nguồn/cách nhập API key/crop ratio; registry CANONICAL_LABELS mở rộng lên 34 nhãn để CI chặn docs lỗi thời.
 
 # FrameForge v0.1.40
 
@@ -384,3 +407,4 @@ Workflow dùng `GITHUB_TOKEN` với `contents: write`. Repository phải cho ph�
 Kênh `stable` tạo `latest.json` và GitHub Release thông thường. Kênh `beta` tạo prerelease và asset `latest-beta.json`; người dùng chọn kênh trong UI hoặc đặt `FRAMEFORGE_UPDATE_CHANNEL=beta`. Updater chỉ chấp nhận manifest đúng channel, HTTPS và SHA-256 hợp lệ. Stable release mới sẽ ghi metadata rollback tới stable release trước đó nếu asset `latest.json` cũ còn truy cập được.
 
 Để ký installer bằng Authenticode, tạo hai Actions secrets: `WINDOWS_CERTIFICATE_BASE64` chứa file PFX đã mã hóa Base64 và `WINDOWS_CERTIFICATE_PASSWORD` chứa mật khẩu PFX. Workflow sẽ dùng `signtool.exe`, timestamp SHA-256 và kiểm tra `Get-AuthenticodeSignature`. Nếu secrets chưa được cấu hình, build vẫn phát hành nhưng manifest ghi rõ `signature_status=unsigned`; không nên coi bản unsigned là bản phân phối production cuối cùng.
+
