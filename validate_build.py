@@ -21,6 +21,7 @@ REQUIRED_MODULES = [
     "core/manifest.py",
     "core/errors.py",
     "core/network.py",
+    "core/cli.py",
     "ui/download_section.py",
     "ui/session.py",
 ]
