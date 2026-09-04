@@ -7,6 +7,8 @@ Handles User-Agent rotation and rate limiting to avoid blocks.
 
 from __future__ import annotations
 
+import io
+import os
 import re
 import time
 import random
@@ -33,6 +35,9 @@ class ImageResult:
     height: int = 0
     thumbnail: str = ""
     file_size: str = ""
+    license: str = ""
+    author: str = ""
+    page_url: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -49,6 +54,43 @@ _USER_AGENTS = [
 
 _GOOGLE_IMAGES_URL = "https://www.google.com/search"
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff"}
+
+# Additional license-aware image sources (no API key required for the first two).
+_WIKIMEDIA_API = "https://commons.wikimedia.org/w/api.php"
+_OPENVERSE_API = "https://api.openverse.org/v1/images/"
+_PEXELS_API = "https://api.pexels.com/v1/search"
+_PIXABAY_API = "https://pixabay.com/api/"
+_UNSPLASH_API = "https://api.unsplash.com/search/photos"
+
+# env var names for optional API keys (Pexels / Pixabay / Unsplash / Openverse)
+_API_KEY_ENV = {
+    "pexels": "FRAMEFORGE_PEXELS_API_KEY",
+    "pixabay": "FRAMEFORGE_PIXABAY_API_KEY",
+    "unsplash": "FRAMEFORGE_UNSPLASH_ACCESS_KEY",
+    "openverse": "FRAMEFORGE_OPENVERSE_TOKEN",
+}
+
+# display label used by the UI dropdown (kept here so core + ui agree)
+IMAGE_SOURCES = [
+    ("duckduckgo", "DuckDuckGo"),
+    ("wikimedia", "Wikimedia Commons (CC, no key)"),
+    ("openverse", "Openverse (CC)"),
+    ("pexels", "Pexels"),
+    ("pixabay", "Pixabay"),
+    ("unsplash", "Unsplash"),
+]
+# sources that REQUIRE an api key to return anything
+_KEY_REQUIRED_SOURCES = {"pexels", "pixabay", "unsplash"}
+
+# aspect-ratio presets for optional center-crop on download
+CROP_RATIOS = {
+    "original": None,
+    "1:1": (1, 1),
+    "4:5": (4, 5),
+    "3:2": (3, 2),
+    "16:9": (16, 9),
+    "9:16": (9, 16),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -342,13 +384,323 @@ def _search_google_images_legacy(
 
 
 # ---------------------------------------------------------------------------
+# Additional license-aware sources
+# ---------------------------------------------------------------------------
+
+def _strip_html(text: str) -> str:
+    """Remove HTML tags (Wikimedia returns artist/license as HTML)."""
+    if not text:
+        return ""
+    text = re.sub(r"<[^>]+>", "", text)
+    return text.strip()
+
+
+def _dicts_to_results(dicts: list[dict]) -> list[ImageResult]:
+    """Convert raw dict results (shared shape) to ImageResult objects."""
+    return [
+        ImageResult(
+            url=r["url"],
+            title=r.get("title", ""),
+            source=r.get("source", ""),
+            width=r.get("width") or 0,
+            height=r.get("height") or 0,
+            thumbnail=r.get("thumbnail") or r["url"],
+            license=r.get("license", ""),
+            author=r.get("author", ""),
+            page_url=r.get("page_url", ""),
+        )
+        for r in dicts
+    ]
+
+
+def _wikimedia_search_images(query: str, num_results: int = 20) -> list[dict]:
+    """Search Wikimedia Commons via the MediaWiki API (no API key)."""
+    params = {
+        "action": "query",
+        "format": "json",
+        "generator": "search",
+        "gsrsearch": query,
+        "gsrlimit": str(min(num_results, 50)),
+        "gsrnamespace": "6",
+        "prop": "imageinfo",
+        "iiprop": "url|size|mime|extmetadata",
+        "iiurlwidth": "400",
+    }
+    try:
+        resp = requests.get(
+            _WIKIMEDIA_API,
+            params=params,
+            headers={"User-Agent": "FrameForge/0.1 (image search by location)"},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except (requests.RequestException, ValueError):
+        return []
+
+    results: list[dict] = []
+    seen: set[str] = set()
+    pages = (data.get("query") or {}).get("pages") or {}
+    for page in pages.values():
+        imageinfo = (page.get("imageinfo") or [{}])[0]
+        url = imageinfo.get("url") or ""
+        if not url or url in seen or not (imageinfo.get("mime") or "").startswith("image/"):
+            continue
+        seen.add(url)
+        meta = imageinfo.get("extmetadata") or {}
+        results.append({
+            "url": url,
+            "title": (page.get("title") or "").replace("File:", "", 1),
+            "thumbnail": imageinfo.get("thumburl") or url,
+            "source": "commons.wikimedia.org",
+            "width": int(imageinfo.get("width") or 0),
+            "height": int(imageinfo.get("height") or 0),
+            "license": _strip_html((meta.get("LicenseShortName") or {}).get("value", "")),
+            "author": _strip_html((meta.get("Artist") or {}).get("value", "")),
+            "page_url": "https://commons.wikimedia.org/wiki/" + (page.get("title") or "").replace(" ", "_"),
+        })
+        if len(results) >= num_results:
+            break
+    return results[:num_results]
+
+
+def _openverse_search_images(query: str, num_results: int = 20, token: str = "") -> list[dict]:
+    """Search Openverse (CC-licensed aggregate) - anonymous or with token."""
+    headers = {"User-Agent": "FrameForge/0.1 (image search by location)"}
+    if token:
+        headers["Authorization"] = "Token " + token
+    try:
+        resp = requests.get(
+            _OPENVERSE_API,
+            params={"q": query, "per_page": min(num_results, 20)},
+            headers=headers,
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except (requests.RequestException, ValueError):
+        return []
+
+    results: list[dict] = []
+    for item in (data.get("results") or []):
+        url = item.get("url") or ""
+        if not url:
+            continue
+        lic = item.get("license") or ""
+        if lic and item.get("license_version"):
+            lic = lic + " " + str(item["license_version"])
+        results.append({
+            "url": url,
+            "title": (item.get("title") or "").strip(),
+            "thumbnail": item.get("thumbnail") or url,
+            "source": item.get("source") or "openverse.org",
+            "width": int(item.get("width") or 0),
+            "height": int(item.get("height") or 0),
+            "license": lic,
+            "author": (item.get("creator") or "").strip(),
+            "page_url": item.get("foreign_landing_url") or "",
+        })
+        if len(results) >= num_results:
+            break
+    return results[:num_results]
+
+
+def _pexels_search_images(query: str, num_results: int = 20, api_key: str = "") -> list[dict]:
+    """Search Pexels (requires API key)."""
+    if not api_key:
+        return []
+    try:
+        resp = requests.get(
+            _PEXELS_API,
+            params={"query": query, "per_page": min(num_results, 80)},
+            headers={"Authorization": api_key, "User-Agent": "FrameForge/0.1"},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except (requests.RequestException, ValueError):
+        return []
+    results: list[dict] = []
+    for photo in (data.get("photos") or []):
+        src = photo.get("src") or {}
+        url = src.get("original") or src.get("large2x") or ""
+        if not url:
+            continue
+        results.append({
+            "url": url,
+            "title": (photo.get("alt") or "").strip(),
+            "thumbnail": src.get("medium") or src.get("small") or url,
+            "source": "pexels.com",
+            "width": int(photo.get("width") or 0),
+            "height": int(photo.get("height") or 0),
+            "license": "Pexels License (free to use)",
+            "author": (photo.get("photographer") or "").strip(),
+            "page_url": photo.get("url") or "",
+        })
+        if len(results) >= num_results:
+            break
+    return results[:num_results]
+
+
+def _pixabay_search_images(query: str, num_results: int = 20, api_key: str = "") -> list[dict]:
+    """Search Pixabay (requires API key)."""
+    if not api_key:
+        return []
+    try:
+        resp = requests.get(
+            _PIXABAY_API,
+            params={"key": api_key, "q": query, "per_page": min(num_results, 200)},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except (requests.RequestException, ValueError):
+        return []
+    results: list[dict] = []
+    for hit in (data.get("hits") or []):
+        url = hit.get("largeImageURL") or hit.get("webformatURL") or ""
+        if not url:
+            continue
+        results.append({
+            "url": url,
+            "title": (hit.get("tags") or "").strip(),
+            "thumbnail": hit.get("webformatURL") or url,
+            "source": "pixabay.com",
+            "width": int(hit.get("imageWidth") or 0),
+            "height": int(hit.get("imageHeight") or 0),
+            "license": "Pixabay Content License",
+            "author": (hit.get("user") or "").strip(),
+            "page_url": hit.get("pageURL") or "",
+        })
+        if len(results) >= num_results:
+            break
+    return results[:num_results]
+
+
+def _unsplash_search_images(query: str, num_results: int = 20, api_key: str = "") -> list[dict]:
+    """Search Unsplash (requires access key)."""
+    if not api_key:
+        return []
+    try:
+        resp = requests.get(
+            _UNSPLASH_API,
+            params={"query": query, "per_page": min(num_results, 30)},
+            headers={"Authorization": "Client-ID " + api_key, "User-Agent": "FrameForge/0.1"},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except (requests.RequestException, ValueError):
+        return []
+    results: list[dict] = []
+    for photo in (data.get("results") or []):
+        urls = photo.get("urls") or {}
+        url = urls.get("full") or urls.get("raw") or urls.get("regular") or ""
+        if not url:
+            continue
+        results.append({
+            "url": url,
+            "title": (photo.get("alt_description") or photo.get("description") or "").strip(),
+            "thumbnail": urls.get("thumb") or urls.get("small") or url,
+            "source": "unsplash.com",
+            "width": int(photo.get("width") or 0),
+            "height": int(photo.get("height") or 0),
+            "license": "Unsplash License (free to use)",
+            "author": ((photo.get("user") or {}).get("name") or "").strip(),
+            "page_url": photo.get("links", {}).get("html") or "",
+        })
+        if len(results) >= num_results:
+            break
+    return results[:num_results]
+
+
+def search_images(
+    query: str,
+    num_results: int = 20,
+    source: str = "duckduckgo",
+    api_keys: dict[str, str] | None = None,
+) -> list[ImageResult]:
+    """Search images from a selectable source (DuckDuckGo, Wikimedia, ...).
+
+    Sources that need an API key read it from api_keys (keyed by source name)
+    or from the FRAMEFORGE_*_API_KEY environment variables.
+    """
+    api_keys = api_keys or {}
+    source = (source or "duckduckgo").strip().lower()
+
+    def _key(name: str) -> str:
+        return api_keys.get(name) or os.environ.get(_API_KEY_ENV.get(name, ""), "")
+
+    if source == "wikimedia":
+        return _dicts_to_results(_wikimedia_search_images(query, num_results))
+    if source == "openverse":
+        return _dicts_to_results(_openverse_search_images(query, num_results, _key("openverse")))
+    if source == "pexels":
+        return _dicts_to_results(_pexels_search_images(query, num_results, _key("pexels")))
+    if source == "pixabay":
+        return _dicts_to_results(_pixabay_search_images(query, num_results, _key("pixabay")))
+    if source == "unsplash":
+        return _dicts_to_results(_unsplash_search_images(query, num_results, _key("unsplash")))
+    # default: DuckDuckGo
+    return search_google_images(query, num_results)
+
+
+# ---------------------------------------------------------------------------
 # Download
 # ---------------------------------------------------------------------------
+
+def _resolve_crop(ratio):
+    """Map a CROP_RATIOS key ("1:1", "16:9", ...) or a raw tuple to a ratio."""
+    if ratio is None:
+        return None
+    if isinstance(ratio, tuple):
+        return ratio
+    return CROP_RATIOS.get(str(ratio).strip().lower())
+
+
+def _crop_image_file(path: Path, ratio: tuple) -> None:
+    """Center-crop an image file in place using Pillow (bundled with the app).
+
+    Pillow ships inside the packaged exe (requirements.txt), but the raw dev
+    environment may lack it - import lazily and keep the original file if
+    Pillow is unavailable or the image cannot be decoded. Never destroys the
+    source file on failure.
+    """
+    try:
+        from PIL import Image, ImageOps
+    except Exception:
+        return
+    try:
+        raw = path.read_bytes()
+        with Image.open(io.BytesIO(raw)) as img:
+            img = ImageOps.exif_transpose(img)
+            img.load()
+            width, height = img.size
+            target = ratio[0] / ratio[1]
+            current = width / height
+            if current > target:
+                new_width = int(height * target)
+                left = (width - new_width) // 2
+                box = (left, 0, left + new_width, height)
+            else:
+                new_height = int(width / target)
+                top = (height - new_height) // 2
+                box = (0, top, width, top + new_height)
+            cropped = img.crop(box)
+        suffix = path.suffix.lower()
+        if suffix in (".jpg", ".jpeg"):
+            cropped.save(path, format="JPEG", quality=92)
+        else:
+            cropped.save(path)
+    except Exception:
+        pass
+
 
 def download_image(
     url: str,
     save_dir: str | Path,
     filename: str | None = None,
+    crop_ratio: str | tuple | None = None,
 ) -> Path:
     """Download a single image from URL and save to disk.
 
@@ -356,6 +708,8 @@ def download_image(
         url: Image URL to download
         save_dir: Directory to save the image
         filename: Optional custom filename. Auto-generated if not provided.
+        crop_ratio: Optional aspect ratio ("1:1", "16:9", (4, 5), ...) -
+            center-crops the saved file with Pillow when given.
 
     Returns:
         Path to the saved file
@@ -368,19 +722,16 @@ def download_image(
     save_dir.mkdir(parents=True, exist_ok=True)
 
     if not filename:
-        # Generate filename from URL
         parsed = urlparse(url)
         basename = Path(parsed.path).name
         if not basename or basename == "/":
             basename = f"image_{abs(hash(url)) % 100000}.jpg"
-        # Ensure valid extension
         if not any(basename.lower().endswith(ext) for ext in _IMAGE_EXTENSIONS):
             basename += ".jpg"
         filename = basename
 
     save_path = save_dir / filename
 
-    # Download with retry
     headers = {
         "User-Agent": random.choice(_USER_AGENTS),
         "Referer": "https://www.google.com/",
@@ -393,6 +744,10 @@ def download_image(
         for chunk in resp.iter_content(chunk_size=8192):
             f.write(chunk)
 
+    crop = _resolve_crop(crop_ratio)
+    if crop is not None and save_path.exists() and save_path.stat().st_size > 0:
+        _crop_image_file(save_path, crop)
+
     return save_path
 
 
@@ -400,13 +755,15 @@ def download_images(
     urls: list[str],
     save_dir: str | Path,
     delay: float = 0.5,
+    crop_ratio: str | tuple | None = None,
 ) -> list[Path]:
-    """Download multiple images with rate limiting.
+    """Download multiple image URLs with rate limiting (retry-free, silent skip).
 
     Args:
         urls: List of image URLs
         save_dir: Directory to save images
         delay: Delay between downloads (seconds)
+        crop_ratio: Optional aspect ratio applied to every saved file
 
     Returns:
         List of successfully downloaded file paths
@@ -414,13 +771,65 @@ def download_images(
     paths: list[Path] = []
     for i, url in enumerate(urls):
         try:
-            path = download_image(url, save_dir)
+            path = download_image(url, save_dir, crop_ratio=crop_ratio)
             paths.append(path)
         except Exception:
-            # Silently skip failed downloads
-            pass
-
+            pass  # silently skip failed downloads (legacy behaviour)
         if i < len(urls) - 1:
             time.sleep(delay)
-
     return paths
+
+
+def download_results(
+    results: list[ImageResult],
+    save_dir: str | Path,
+    crop_ratio: str | tuple | None = None,
+    delay: float = 0.5,
+) -> dict:
+    """Download ImageResult objects and write a sources.tsv sidecar.
+
+    Useful for license-aware sources (Wikimedia, Openverse, Pexels, Pixabay,
+    Unsplash): each saved file is recorded with its license, author, page
+    and original URL so attribution is easy. Files without metadata produce
+    no sidecar.
+
+    Returns a dict with keys: paths (saved files), failed (download errors),
+    sources_file (Path or None), total (requested count).
+    """
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_paths: list[Path] = []
+    failed: list[str] = []
+    for i, result in enumerate(results):
+        try:
+            path = download_image(result.url, save_dir, crop_ratio=crop_ratio)
+            saved_paths.append(path)
+        except Exception as exc:
+            failed.append(f"{result.url} ({exc})")
+        if i < len(results) - 1:
+            time.sleep(delay)
+
+    has_meta = any(r.license or r.author or r.page_url for r in results)
+    sources_file: Path | None = None
+    if has_meta and saved_paths:
+        sep = chr(9)
+        header = sep.join(["file", "license", "author", "page_url", "source_url"])
+        rows = [header]
+        for result, path in zip(results, saved_paths):
+            rows.append(sep.join([
+                path.name,
+                result.license,
+                result.author,
+                result.page_url,
+                result.url,
+            ]))
+        sources_file = save_dir / "sources.tsv"
+        sources_file.write_text(chr(10).join(rows) + chr(10), encoding="utf-8")
+
+    return {
+        "paths": saved_paths,
+        "failed": failed,
+        "sources_file": sources_file,
+        "total": len(results),
+    }
