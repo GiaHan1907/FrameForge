@@ -1,5 +1,10 @@
 # FrameForge v0.1.33
 
+> ⚠️ **Tài liệu lưu trữ.** File này ghi chú riêng cho bản **{v}** đã phát hành; bản mới nhất hiện tại là **v0.1.39**. Thông tin hiện hành xem [RELEASE_NOTES.md](RELEASE_NOTES.md) và [CHANGELOG.md](CHANGELOG.md) — nội dung bên dưới chỉ để tham khảo lịch sử.
+
+---
+
+
 ## Force-fill số lượng screenshot sau filter
 
 FrameForge v0.1.33 giải quyết trường hợp người dùng yêu cầu một số lượng ảnh cụ thể nhưng toàn bộ frame bị loại bởi bộ lọc mờ, motion blur hoặc duplicate. Khi bật **Ép đủ số ảnh yêu cầu (fallback cuối)**, ứng dụng sẽ cố gắng tạo đúng target count thay vì kết thúc với 0 ảnh hoặc thiếu ảnh mà không có giải thích rõ ràng.

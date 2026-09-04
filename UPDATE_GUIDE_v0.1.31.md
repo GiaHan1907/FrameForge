@@ -1,5 +1,10 @@
 # FrameForge v0.1.31 — Hướng dẫn cập nhật
 
+> ⚠️ **Tài liệu lưu trữ.** File này ghi chú riêng cho bản **{v}** đã phát hành; bản mới nhất hiện tại là **v0.1.39**. Thông tin hiện hành xem [RELEASE_NOTES.md](RELEASE_NOTES.md) và [CHANGELOG.md](CHANGELOG.md) — nội dung bên dưới chỉ để tham khảo lịch sử.
+
+---
+
+
 ## Tổng quan
 
 FrameForge v0.1.31 chuẩn bị phát hành với bản sửa hiện tượng cửa sổ terminal chớp tắt khi ứng dụng kiểm tra Authenticode hoặc kiểm tra FFmpeg. EXE chính tiếp tục được build bằng PyInstaller `console=False`; các process con PowerShell và FFmpeg được chạy với `CREATE_NO_WINDOW` trên Windows.

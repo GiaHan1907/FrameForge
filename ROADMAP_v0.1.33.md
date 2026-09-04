@@ -1,5 +1,10 @@
 # FrameForge v0.1.33 — Roadmap đề xuất
 
+> ⚠️ **Tài liệu lưu trữ.** File này ghi chú riêng cho bản **{v}** đã phát hành; bản mới nhất hiện tại là **v0.1.39**. Thông tin hiện hành xem [RELEASE_NOTES.md](RELEASE_NOTES.md) và [CHANGELOG.md](CHANGELOG.md) — nội dung bên dưới chỉ để tham khảo lịch sử.
+
+---
+
+
 ## Định hướng
 
 v0.1.33 nên ưu tiên **kiểm soát chất lượng đầu ra và khả năng giải thích kết quả**. Sau khi v0.1.32 hoàn thiện auto-shutdown desktop, giá trị lớn nhất tiếp theo là giúp người dùng xem, lọc và xác nhận frame trước khi export mà không phải chạy lại toàn bộ video nhiều lần.

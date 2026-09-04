@@ -1,5 +1,10 @@
 # FrameForge v0.1.32
 
+> ⚠️ **Tài liệu lưu trữ.** File này ghi chú riêng cho bản **{v}** đã phát hành; bản mới nhất hiện tại là **v0.1.39**. Thông tin hiện hành xem [RELEASE_NOTES.md](RELEASE_NOTES.md) và [CHANGELOG.md](CHANGELOG.md) — nội dung bên dưới chỉ để tham khảo lịch sử.
+
+---
+
+
 ## Desktop auto-shutdown khi đóng web
 
 FrameForge v0.1.32 bổ sung cơ chế tự động dừng tiến trình desktop khi browser session cuối cùng đóng. Mục tiêu là tránh `VideoScreenshotFilter.exe` hoặc process con tiếp tục chạy nền sau khi người dùng đã đóng giao diện web.

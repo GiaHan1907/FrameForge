@@ -1,5 +1,10 @@
 # FrameForge v0.1.31
 
+> ⚠️ **Tài liệu lưu trữ.** File này ghi chú riêng cho bản **{v}** đã phát hành; bản mới nhất hiện tại là **v0.1.39**. Thông tin hiện hành xem [RELEASE_NOTES.md](RELEASE_NOTES.md) và [CHANGELOG.md](CHANGELOG.md) — nội dung bên dưới chỉ để tham khảo lịch sử.
+
+---
+
+
 ## Silent Windows runtime và installer shortcut hardening
 
 FrameForge v0.1.31 tập trung loại bỏ hiện tượng cửa sổ terminal chớp tắt trong lúc ứng dụng khởi động, kiểm tra cập nhật và kiểm tra FFmpeg.

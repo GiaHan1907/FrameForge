@@ -39,7 +39,9 @@ Double-click `VideoScreenshotFilter.exe`. Nếu trình duyệt không tự mở,
 http://127.0.0.1:8501
 ```
 
-Trong sidebar, chọn một hoặc nhiều video. Khu vực **Xem trước video** sẽ xuất hiện sau khi upload; chọn video trong danh sách để phát trực tiếp trước khi cắt.
+Bố cục bản mới (v0.1.39) rất gọn: dưới header chỉ có expander thu gọn **📁 Thư mục lưu file**, còn toàn bộ nội dung chính nằm trong **3 tab** — `⚙️ Xử lý video` · `⬇️ Tải video công khai` · `📁 Cài đặt & Lịch sử`. Toàn bộ cấu hình nằm ở **sidebar**, chia 4 nhóm đúng theo 4 bước wizard: `01 · Nguồn video`, `02 · Cách chọn frame`, `03 · Chất lượng & tốc độ`, `04 · Đầu ra`; một số tùy chọn nâng cao nằm gọn trong các expander con (Scene detection nâng cao, Hiệu năng phân tích, Lọc mờ · trùng lặp, Retry · cache · nâng cao).
+
+Bắt đầu bằng việc **upload video ở nhóm `01 · Nguồn video`** trong sidebar (nút *Chọn một hoặc nhiều video*, hỗ trợ mp4/mov/mkv/avi/webm/m4v/ts/mts). Video tải từ tab `⬇️ Tải video công khai` cũng tự xuất hiện ở nhóm này. Khi đã có video, sang tab **⚙️ Xử lý video**: dưới wizard là dropdown *Chọn video để xem preview*; mở expander **Xem video · crop · timeline — `<tên video>`** để phát trực tiếp, xem crop overlay và timeline trước khi cắt.
 
 ### Chế độ chọn frame
 
@@ -50,7 +52,7 @@ Trong sidebar, chọn một hoặc nhiều video. Khu vực **Xem trước video
 | Mỗi N giây | Lấy frame theo khoảng thời gian cố định. |
 | Đúng N frame | Phân bố đều đúng số lượng frame trong khoảng thời gian đã chọn. |
 
-Sau khi chọn cấu hình, bấm **Bắt đầu xử lý**. Ứng dụng tạo một job nền và hiển thị progress tổng thể cùng progress riêng cho từng video. Các giai đoạn gồm `queued`, `preparing`, `analyzing`, `selecting`, `saving` và `completed`; bounded scheduler chỉ cấp tối đa số item bằng số worker hiệu dụng. Khi video lỗi, queue sẽ tự retry theo số lần đã chọn trước khi chuyển sang video tiếp theo.
+Sau khi chọn cấu hình, ở tab **⚙️ Xử lý video** bấm nút **▶ Bắt đầu xử lý** (chỉ bật khi cấu hình hợp lệ và chưa có job đang chạy). Ứng dụng tạo một job nền và hiển thị progress tổng thể cùng progress riêng cho từng video ngay bên dưới nút. Các giai đoạn gồm `queued`, `preparing`, `analyzing`, `selecting`, `saving` và `completed`; bounded scheduler chỉ cấp tối đa số item bằng số worker hiệu dụng. Khi video lỗi, queue sẽ tự retry theo số lần đã chọn trước khi chuyển sang video tiếp theo.
 
 Trong lúc xử lý, khu vực **Queue theo video** hiển thị card riêng cho từng file với trạng thái, phần trăm, message, số lần thử, số ảnh đã lưu, FPS, ETA và RAM. Bấm **Tạm dừng** để đặt pause event; pause chỉ có hiệu lực tại ranh giới video/retry và không cắt video đang chạy giữa một frame. Khi `Video xử lý song song` lớn hơn 1, các video đã được submit cho worker có thể tiếp tục đến checkpoint gần nhất; nếu cần pause tuần tự rõ ràng, đặt giá trị bằng 1. Bấm **Tiếp tục** để mở lại item còn chờ.
 
@@ -60,7 +62,7 @@ Sau khi từng video hoàn tất, file input tạm của video đó được xó
 
 Trước khi chạy, ứng dụng kiểm tra dung lượng trống tại thư mục screenshot. Trường **Vùng đệm dung lượng tối thiểu** mặc định là 512 MB; nếu không đủ vùng đệm, job sẽ không bắt đầu. Các work directory tạm của phiên trước có tiền tố `video_screenshot_web_` và cũ hơn 24 giờ sẽ được dọn tự động. Report JSON được ghi trực tiếp trong thư mục run để không bị mất khi thư mục tạm được dọn.
 
-Khu vực **Tải video công khai** dùng layout hai tầng: URL ở vùng rộng phía trên, chất lượng ở cột bên cạnh, còn giới hạn playlist, số lần retry và nút **Tải queue** nằm trên cùng một hàng bên dưới. Toàn bộ giao diện dùng dark mode thống nhất cho nền, card, ô nhập, select, bảng timeline và nút thao tác.
+Khu vực tải video nằm ở tab **⬇️ Tải video công khai**, gói trong một expander thu gọn có nhãn `⇩ Tải video công khai — URL · chất lượng · giới hạn` (nhãn tự thêm `(N URL)` khi bạn đã dán URL). Bên trong có khung **Danh sách tải**: URL ở ô rộng phía trên, **Chất lượng tải** ở cột bên cạnh; hàng dưới gồm **Tối đa mỗi playlist**, **Số lần retry** và nút **Tải queue**. Kết quả tải (progress, lỗi, nút tải ZIP) hiển thị bên ngoài expander trong lúc chạy. Toàn bộ giao diện dùng dark mode thống nhất cho nền, card, ô nhập, select, bảng timeline và nút thao tác.
 
 ### Preset cấu hình và telemetry
 
@@ -71,6 +73,8 @@ Trong khi xử lý, ba thẻ telemetry hiển thị **FPS**, **ETA** và **RAM p
 ## 4. Tinh chỉnh scene detection
 
 `Độ nhạy thay đổi cảnh` thấp hơn sẽ nhạy hơn và thường tạo nhiều scene hơn. `Khoảng cách tối thiểu giữa scene` giúp tránh tạo quá nhiều scene trong các đoạn chuyển tiếp nhanh. Cơ chế chống flash kiểm tra xem frame sau thay đổi có quay lại cảnh cũ hay không.
+
+Trên giao diện: **Độ nhạy thay đổi cảnh** hiện trực tiếp ở nhóm `02 · Cách chọn frame` khi đang ở chế độ scene; các trường `Khoảng cách tối thiểu giữa scene`, ngưỡng chống flash và **Số frame xác nhận thay đổi cảnh** nằm trong expander **Scene detection nâng cao**.
 
 Giá trị khởi đầu khuyến nghị:
 
@@ -89,6 +93,8 @@ Nếu video có nhiều hiệu ứng sáng hoặc flash, tăng độ ổn địn
 
 `FPS phân tích scene` quyết định số frame/giây được kiểm tra. Dùng 8 FPS cho video thông thường và 15–24 FPS cho video có chuyển cảnh nhanh.
 
+Trên giao diện, **Chiều rộng phân tích**, **RAM khả dụng tối thiểu**, **FPS phân tích scene** và **Process trích frame fixed/count** nằm trong expander **Hiệu năng phân tích** (nhóm `03 · Chất lượng & tốc độ`); **Video xử lý song song** hiển thị trực tiếp ở nhóm này.
+
 `Video xử lý song song` chỉ áp dụng giữa các video độc lập. Một worker phù hợp khi xử lý một video hoặc máy có ít RAM. Hai đến ba worker là điểm bắt đầu an toàn khi xử lý nhiều video. Video 4K hoặc nhiều video dài có thể cần giảm worker để tránh đầy RAM.
 
 ## 6. Lọc chất lượng
@@ -96,6 +102,8 @@ Nếu video có nhiều hiệu ứng sáng hoặc flash, tăng độ ổn địn
 Ngưỡng độ nét đã được chuẩn hóa về chiều rộng tham chiếu 640 px. Đặt `Ngưỡng độ nét tối thiểu` bằng 0 để tắt lọc mờ. Giá trị 100 là điểm bắt đầu hợp lý; tăng giá trị nếu muốn giữ ít frame nhưng sắc nét hơn.
 
 `Ngưỡng trùng dHash` càng lớn thì bộ lọc càng mạnh và loại nhiều frame tương tự hơn. Giá trị 6 phù hợp cho phần lớn nội dung. Đặt bằng 0 để tắt lọc trùng.
+
+Trên giao diện, cả ba ngưỡng (độ nét, dHash, motion blur) nằm trong expander **Lọc mờ · trùng lặp** (nhóm `03`); đặt về 0 là tắt bộ lọc tương ứng.
 
 ## 7. CLI nâng cao
 
@@ -176,9 +184,11 @@ DHash index trong `--duplicate-index-dir` giúp loại frame gần giống đã 
 
 CLI xóa work directory tạm cũ nhất khi vượt `--temp-quota-mb`, sau khi đã áp dụng `--temp-cleanup-hours`. Scene cache chỉ xóa file JSON cũ hơn 7 ngày khi vượt `--cache-quota-mb`; cache đang mới sẽ được giữ lại để tránh làm mất lợi ích resume nhanh.
 
-## 9. Timeline tương tác
+## 9. Preview workspace và timeline tương tác
 
-Sau khi queue hoàn tất, Web UI hiển thị scene markers và bảng timestamp. Khu vực **Timeline tương tác** cho phép chọn một video/scene, điều chỉnh mốc preview bằng slider và xem frame gần nhất trong thư mục output. Screenshot mới có tên dạng `HH-MM-SS.mmm.jpg` hoặc `.webp`; tên cũ có tiền tố video vẫn được tìm thấy nhờ pattern tương thích. Với video chỉ có một scene, frame đại diện vẫn được hiển thị như một marker.
+Preview workspace nằm trong tab **⚙️ Xử lý video**: chọn video ở dropdown *Chọn video để xem preview* rồi mở expander **Xem video · crop · timeline — `<tên video>`**. Bên trong có hai panel cạnh nhau **Video gốc** và **Crop overlay** (theo tỉ lệ crop đang chọn), phía dưới là **Phân bố screenshot dự kiến · timeline tương tác**: thanh trượt *Mốc preview* để chọn timestamp, nút **Phân tích nhanh scene thật** chạy scene detection ở độ phân giải thấp (marker ước tính và marker scene thật được phân biệt trên timeline), cùng frame gallery xem frame tại mốc đang chọn. File nguồn chỉ được đọc để xem, không bị thay đổi.
+
+Screenshot sau khi xử lý có tên dạng `HH-MM-SS.mmm.jpg` hoặc `.webp`; tên cũ có tiền tố video vẫn được tìm thấy nhờ pattern tương thích. Với video chỉ có một scene, frame đại diện vẫn được hiển thị như một marker.
 
 ## 10. Kết quả và báo cáo
 
@@ -415,7 +425,7 @@ Báo cáo có trường `rejected_motion_blur` để biết bao nhiêu frame b�
 
 ## 16. Tải queue nhiều video và playlist
 
-Trong khu vực **Tải video công khai**, nhập mỗi URL trên một dòng. Có thể trộn URL video đơn và URL playlist trong cùng một queue. Trường **Tối đa mỗi playlist** giới hạn số mục lấy từ từng playlist; tổng số URL trong một lần gọi được giới hạn ở mức an toàn 100 URL. Preview video ở phần dưới dùng khung 16:9 tối đa 560px, tự co trên màn hình hẹp.
+Trong tab **⬇️ Tải video công khai** (mở expander `⇩ Tải video công khai — URL · chất lượng · giới hạn`), nhập mỗi URL trên một dòng trong ô *URL video hoặc playlist*. Có thể trộn URL video đơn và URL playlist trong cùng một queue. Trường **Tối đa mỗi playlist** giới hạn số mục lấy từ từng playlist; tổng số URL trong một lần gọi được giới hạn ở mức an toàn 100 URL. Video tải xong tự xuất hiện trong sidebar ở nhóm `01 · Nguồn video` và được xem preview trong tab Xử lý video như video upload (khung 16:9 tối đa 560px, tự co trên màn hình hẹp).
 
 Ứng dụng xử lý queue tuần tự, hiển thị progress tải theo file và tự retry từng URL theo trường **Retry tải**. Video tải thành công được đổi tên gọn theo timestamp dạng `video_YYYYMMDD_HHMMSS.ext`; nếu trùng thời điểm, hậu tố số được thêm tự động. Title, URL và playlist index vẫn nằm trong metadata kết quả. Nếu một URL vẫn gặp lỗi sau các lần thử, thông báo sẽ ghi rõ URL và số lần đã thử; các video tải thành công trước đó vẫn được giữ lại để preview hoặc tải ZIP.
 
@@ -428,6 +438,17 @@ https://pin.it/...
 ```
 
 URL phải là URL công khai thuộc Facebook, TikTok hoặc Pinterest. Ứng dụng không hỗ trợ URL riêng tư, nội dung yêu cầu đăng nhập, DRM hoặc kỹ thuật vượt cơ chế bảo vệ.
+
+## Tìm ảnh theo địa điểm (Google, không cần API key)
+
+Tính năng riêng biệt, không liên quan đến tải video hoặc cắt screenshot — dùng để tra cứu ảnh theo địa điểm làm tài liệu tham khảo:
+
+1. Ở đầu sidebar bấm nút **🔍 Tìm ảnh theo địa điểm** để bật/hiện khu vực tìm kiếm ngay trong trang chính (bấm lại lần nữa để ẩn).
+2. Nhập địa điểm hoặc keywords (ví dụ: `Hoàn Kiếm, Hà Nội`), chọn **Số ảnh tối đa** (5–50) rồi bấm **Tìm kiếm**.
+3. FrameForge tìm qua Google Image Search tự nhiên — không cần API key, không cần đăng nhập — và hiển thị danh sách ảnh kèm tên.
+4. Bấm **Tải #N** ở từng ảnh để lưu về thư mục đang chọn trong mục **📁 Thư mục lưu file** (thư mục lưu video; mặc định `Videos\FrameForge\videos`).
+
+Chỉ nên tải ảnh bạn có quyền sử dụng; kiểm tra nguồn và bản quyền khi dùng cho nội dung thương mại.
 
 ## 17. Health check FFmpeg
 
@@ -448,7 +469,7 @@ File `video_screenshot_filter.spec` thu thập `yt_dlp` bằng cả `collect_all
 
 ## 19. Auto-updater yt-dlp
 
-Khi mở ứng dụng, FrameForge kiểm tra phiên bản yt-dlp tối đa một lần trong 24 giờ. Nếu có phiên bản mới, updater tải wheel chính thức từ PyPI qua HTTPS, kiểm tra SHA-256 theo metadata PyPI và kiểm tra package có cấu trúc hợp lệ. Bản mới được lưu trong thư mục dữ liệu người dùng và chỉ được kích hoạt khi mở ứng dụng lần kế tiếp.
+Khi mở ứng dụng, FrameForge kiểm tra phiên bản yt-dlp tối đa một lần trong 24 giờ (trạng thái hiển thị trong tab **📁 Cài đặt & Lịch sử** → expander cập nhật `⚙ Cập nhật FrameForge · kênh cập nhật · yt-dlp`). Nếu có phiên bản mới, updater tải wheel chính thức từ PyPI qua HTTPS, kiểm tra SHA-256 theo metadata PyPI và kiểm tra package có cấu trúc hợp lệ. Bản mới được lưu trong thư mục dữ liệu người dùng và chỉ được kích hoạt khi mở ứng dụng lần kế tiếp.
 
 Updater không thay thế file EXE đang chạy. Cách này tránh khóa file trên Windows và cho phép giữ bản yt-dlp nhúng làm fallback. Nếu tải lỗi, timeout hoặc checksum không khớp, ứng dụng vẫn dùng bản hiện tại.
 
@@ -522,7 +543,7 @@ Cài **Inno Setup 6** trên Windows. Sau khi build xong thư mục `dist\VideoSc
 build_installer.bat
 ```
 
-Script sẽ tự tìm `ISCC.exe`, biên dịch `FrameForge.iss` và tạo `installer\FrameForge-Setup-1.0.0.exe`. Installer đóng gói toàn bộ thư mục onedir, tạo shortcut Start Menu, cho phép tạo shortcut Desktop, có uninstaller và cài mặc định vào `%LOCALAPPDATA%\Programs\FrameForge`. Cách cài theo user giúp updater yt-dlp ghi dữ liệu vào `%LOCALAPPDATA%` mà không cần quyền administrator.
+Script sẽ tự tìm `ISCC.exe`, biên dịch `FrameForge.iss` và tạo `installer\FrameForge-Setup-<version>.exe` (version lấy từ biến môi trường `FRAMEFORGE_VERSION`; nếu không đặt, dùng mặc định khai báo trong `FrameForge.iss` — hiện là `0.1.39`). Installer đóng gói toàn bộ thư mục onedir, tạo shortcut Start Menu, cho phép tạo shortcut Desktop, có uninstaller và cài mặc định vào `%LOCALAPPDATA%\Programs\FrameForge`. Cách cài theo user giúp updater yt-dlp ghi dữ liệu vào `%LOCALAPPDATA%` mà không cần quyền administrator.
 
 Nếu Inno Setup cài ở vị trí khác, đặt biến `ISCC` trước khi chạy:
 
@@ -542,7 +563,7 @@ Trước khi phát hành, hãy build trên Windows trong thư mục sạch, ki�
 
 Workflow `.github/workflows/windows-release.yml` chạy trên Windows runner của GitHub. Nó tự cài Python 3.12, build PyInstaller onedir, cài Inno Setup, chạy `build_installer.bat`, đo kích thước, tạo `SHA256SUMS.txt` và upload file Setup cùng báo cáo build.
 
-Khi push tag theo dạng `v1.2.3`, workflow mặc định build profile `minimal` và tạo GitHub Release. Khi chạy thủ công trong **Actions**, có thể chọn profile `minimal` hoặc `full`. Nếu chạy thủ công từ một tag và muốn tạo Release, bật tùy chọn `publish_release`.
+Khi push tag theo dạng `v1.2.3`, workflow mặc định build profile `minimal`, tạo và **publish** GitHub Release (từ v0.1.37 không còn ở trạng thái draft; phần *What's new* lấy từ đầu file `RELEASE_NOTES.md`). Khi chạy thủ công trong **Actions**, có thể chọn profile `minimal` hoặc `full`. Nếu chạy thủ công từ một tag và muốn tạo Release, bật tùy chọn `publish_release`.
 
 Sau khi workflow hoàn tất, file có thể lấy ở **Actions → workflow run → Artifacts**, hoặc ở **Releases** nếu workflow đã tạo release theo tag. Artifact Actions mặc định chỉ lưu trong thời hạn giới hạn; file trong Release phù hợp hơn để phân phối lâu dài.
 
@@ -559,7 +580,7 @@ Workflow GitHub Actions tạo `latest.json` trong mỗi GitHub Release. Để b�
 set FRAMEFORGE_UPDATE_MANIFEST_URL=https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest.json
 ```
 
-Repository FrameForge hiện là public, nên app có thể đọc manifest và tải asset từ GitHub Release mà không cần Personal Access Token. App đã có URL manifest public mặc định; có thể ghi đè bằng `FRAMEFORGE_UPDATE_MANIFEST_URL` nếu dùng feed khác. Khi có version mới, giao diện hiển thị một nút **Cập nhật ngay** duy nhất.
+Repository FrameForge hiện là public, nên app có thể đọc manifest và tải asset từ GitHub Release mà không cần Personal Access Token. App đã có URL manifest public mặc định; có thể ghi đè bằng `FRAMEFORGE_UPDATE_MANIFEST_URL` nếu dùng feed khác. Toàn bộ điều khiển cập nhật (chọn kênh stable/beta, trạng thái yt-dlp, xem release notes, nút **Cập nhật ngay**, rollback) nằm trong tab **📁 Cài đặt & Lịch sử** → expander cập nhật; khi có bản app mới, nhãn expander tự đổi thành `🔔 Có bản FrameForge X — Cập nhật & kênh`. Preset cá nhân và lịch sử job cũng nằm trong tab này (2 expander thu gọn riêng).
 
 Có thể tắt updater EXE bằng:
 
@@ -572,7 +593,7 @@ Biến `FRAMEFORGE_AUTO_UPDATE=0` chỉ tắt updater yt-dlp, không phải upda
 
 ## 26. Chọn nơi lưu video và screenshot
 
-Ngay khi mở ứng dụng, mở phần **Nơi lưu file** ở khu vực chính. Nhập đường dẫn local hoặc bấm **Chọn thư mục video** để chọn nơi lưu video tải xuống, và bấm **Chọn thư mục screenshot** để chọn thư mục gốc cho ảnh đầu ra.
+Ngay khi mở ứng dụng, bấm mở expander **📁 Thư mục lưu file** (thu gọn mặc định, nằm ngay dưới header). Nhập đường dẫn local trực tiếp vào ô *Thư mục lưu video* / *Thư mục gốc lưu screenshot* hoặc bấm nút **Chọn…** ở từng ô để mở folder picker chọn nơi lưu.
 
 Video tải từ URL công khai sẽ được lưu trực tiếp vào thư mục video. Mỗi lần bấm **Bắt đầu xử lý**, FrameForge tạo thư mục con dạng `FrameForge_YYYYMMDD_HHMMSS` trong thư mục screenshot, lưu ảnh và `report.json` tại đó. Vì vậy không cần tải file ZIP mới xem được kết quả; nút tải ZIP chỉ còn là lựa chọn phụ để chia sẻ kết quả.
 

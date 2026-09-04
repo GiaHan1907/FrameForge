@@ -43,7 +43,7 @@ Chia giao diện thành 3 tab thay vì một trang dài; bỏ hero và các card
 
 Bảng Lịch sử job chuyển từ `st.dataframe` sang HTML/CSS thuần, loại bỏ phụ thuộc Pandas/PyArrow ở profile minimal (hết lỗi `No module named 'pyarrow'`). Sửa các spec PyInstaller (thiếu trailing comma, thiếu `core/google_images.py`), bổ sung `requests`/`beautifulsoup4` vào requirements, sửa các lỗi thiếu import/NameError khi chạy bản đóng gói, và đưa *Tìm ảnh theo địa điểm* chạy inline thay vì `st.page_link`.
 
-Lịch sử đầy đủ nằm tại [RELEASE_NOTES.md](RELEASE_NOTES.md) (đồng thời là phần *What's new* trong app) và [CHANGELOG.md](CHANGELOG.md). Roadmap tham khảo tại [ROADMAP_v0.1.33.md](ROADMAP_v0.1.33.md).
+Lịch sử đầy đủ nằm tại [RELEASE_NOTES.md](RELEASE_NOTES.md) (đồng thời là phần *What's new* trong app) và [CHANGELOG.md](CHANGELOG.md). Roadmap đề xuất cũ cho v0.1.33 (đã lưu trữ) tại [ROADMAP_v0.1.33.md](ROADMAP_v0.1.33.md).
 
 ## Chạy từ source
 

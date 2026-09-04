@@ -38,9 +38,11 @@ git tag -a v1.0.0 -m "FrameForge 1.0.0"
 git push origin v1.0.0
 ```
 
-Tag phải dùng dạng `vMAJOR.MINOR.PATCH`, ví dụ `v1.0.0`. Workflow sẽ build profile minimal, tạo Setup, sinh `latest.json`, `SHA256SUMS.txt`, rồi tạo GitHub Release. Không nên tái sử dụng tag đã phát hành; nếu cần sửa, tăng lên `v1.0.1`.
+Tag phải dùng dạng `vMAJOR.MINOR.PATCH`, ví dụ `v1.0.0`. Workflow sẽ build profile minimal, tạo Setup, sinh `latest.json`, `SHA256SUMS.txt`, rồi tạo GitHub Release (kể từ v0.1.37 release tự **publish**, không còn ở trạng thái draft). Không nên tái sử dụng tag đã phát hành; nếu cần sửa, tăng lên `v1.0.1`.
 
-## 4. Phân tích Setup 147 MB
+## 4. Phân tích kích thước Setup (số đo thời bản 0.0.6)
+
+> ⚠️ Số đo bên dưới lấy từ thời bản `FrameForge-Setup-0.0.6.exe` (Setup ~147.45 MB, installed ~459.47 MiB). Setup hiện tại (v0.1.39) ~149 MB và phân bổ file đã thay đổi — dùng bảng này để hiểu cấu trúc chi phí, không phải con số chính xác của bản mới.
 
 Setup `FrameForge-Setup-0.0.6.exe` có kích thước khoảng **147.45 MB**. Đây là archive đã nén bởi Inno Setup; kích thước installed payload trong report là khoảng **459.47 MiB**, vì vậy không thể trừ trực tiếp từng file installed khỏi 147 MB. Các file lớn nhất trong Windows dist là:
 
