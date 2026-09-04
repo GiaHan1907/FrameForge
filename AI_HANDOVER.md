@@ -254,3 +254,9 @@ python -m unittest discover -s tests -p "test_*.py"   # hiện: 259 pass, 27 ski
 - Giữ hiển thị: scene_threshold, every (mode N giây), worker_choice, preset, mode, số screenshot, format/crop/quality/width, overwrite.
 - 4 expander collapsed: "Scene detection nâng cao" (min_scene_gap, flash_return_ratio, flash_brightness_threshold, scene_confirmations), "Hiệu năng phân tích" (analysis_width, min_free_ram_gb, analysis_fps, extract_worker_choice), "Lọc mờ · trùng lặp" (min_sharpness, duplicate_threshold, motion_blur_threshold), "Retry · cache · nâng cao" (retries, retry_delay, disk_reserve_mb, use_scene_cache, cross_run_duplicates).
 - Widget keys KHÔNG đổi — expander chỉ ẩn/hiện, session_state vẫn giữ giá trị.
+
+## Preview workspace gọn hơn 0.1.38c (2026-09-04)
+
+- Video player + crop overlay + timeline + thanh trượt preview + frame gallery gói trong 1 expander collapsed "Xem video · crop · timeline — <tên video>".
+- Vẫn giữ selectbox chọn video bên ngoài (1 dòng) để đổi video nhanh.
+- Giữ marker "Preview workspace" + "Frame gallery" (test_ui_visual_contract kiểm tra).

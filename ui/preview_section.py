@@ -85,58 +85,59 @@ def render_preview_section(widgets: WidgetState) -> None:
     )
     actual_scene_marks = st.session_state.get("quick_scene_preview_marks", [])
 
-    with st.container(border=True):
-        preview_col, crop_preview_col = st.columns([1.15, 1], gap="large")
-        with preview_col:
-            st.markdown("**Video gốc**")
-            if preview_entry[1] == "upload":
-                st.video(preview_entry[2].getvalue(), format=preview_mime, subtitles=None, width=560)
-            else:
-                st.video(str(preview_entry[2]), format=preview_mime, subtitles=None, width=560)
-            st.caption("File nguồn chỉ được đọc để xem; không bị thay đổi.")
-        with crop_preview_col:
-            st.markdown(f"**Crop overlay · {crop_ratio}**")
-            overlay = preview_crop_overlay(preview_entry[2], crop_ratio)
-            if overlay is not None:
-                st.image(overlay, caption=f"Crop overlay · {crop_ratio}", use_container_width=True)
-                st.caption("Vùng sáng có viền xanh là phần được giữ lại.")
-            else:
-                st.info("Không thể tạo frame preview cho codec này; engine vẫn có thể xử lý video.")
+    with st.expander(f"Xem video · crop · timeline — {preview_name}", expanded=False):
+        with st.container(border=True):
+            preview_col, crop_preview_col = st.columns([1.15, 1], gap="large")
+            with preview_col:
+                st.markdown("**Video gốc**")
+                if preview_entry[1] == "upload":
+                    st.video(preview_entry[2].getvalue(), format=preview_mime, subtitles=None, width=560)
+                else:
+                    st.video(str(preview_entry[2]), format=preview_mime, subtitles=None, width=560)
+                st.caption("File nguồn chỉ được đọc để xem; không bị thay đổi.")
+            with crop_preview_col:
+                st.markdown(f"**Crop overlay · {crop_ratio}**")
+                overlay = preview_crop_overlay(preview_entry[2], crop_ratio)
+                if overlay is not None:
+                    st.image(overlay, caption=f"Crop overlay · {crop_ratio}", use_container_width=True)
+                    st.caption("Vùng sáng có viền xanh là phần được giữ lại.")
+                else:
+                    st.info("Không thể tạo frame preview cho codec này; engine vẫn có thể xử lý video.")
 
-        st.markdown("**Phân bố screenshot dự kiến · timeline tương tác**")
-        if preview_duration:
-            preview_scene_timeline(float(preview_duration), preview_timestamps, actual_scene_marks)
+            st.markdown("**Phân bố screenshot dự kiến · timeline tương tác**")
+            if preview_duration:
+                preview_scene_timeline(float(preview_duration), preview_timestamps, actual_scene_marks)
 
-        timeline_col, action_col = st.columns([2, 1])
-        with timeline_col:
-            max_preview_time = max(0.1, float(preview_duration or end or 1.0))
-            selected_preview_time = st.slider(
-                "Mốc preview", 0.0, max_preview_time,
-                min(max_preview_time / 2, max_preview_time), 0.1,
-                key="preview_timestamp_slider",
-            )
-        with action_col:
-            st.markdown("**Scene detection**")
-            if st.button("Phân tích nhanh scene thật", key="quick_scene_preview_button"):
-                st.session_state["quick_scene_preview_marks"] = quick_scene_preview(
-                    preview_entry[2], float(scene_threshold), float(start),
-                    float(end) if limit_end else None, float(analysis_fps),
+            timeline_col, action_col = st.columns([2, 1])
+            with timeline_col:
+                max_preview_time = max(0.1, float(preview_duration or end or 1.0))
+                selected_preview_time = st.slider(
+                    "Mốc preview", 0.0, max_preview_time,
+                    min(max_preview_time / 2, max_preview_time), 0.1,
+                    key="preview_timestamp_slider",
                 )
-                st.rerun()
+            with action_col:
+                st.markdown("**Scene detection**")
+                if st.button("Phân tích nhanh scene thật", key="quick_scene_preview_button"):
+                    st.session_state["quick_scene_preview_marks"] = quick_scene_preview(
+                        preview_entry[2], float(scene_threshold), float(start),
+                        float(end) if limit_end else None, float(analysis_fps),
+                    )
+                    st.rerun()
 
-        selected_frame = preview_frame_at(preview_entry[2], selected_preview_time, crop_ratio)
-        if selected_frame is not None:
-            st.image(
-                selected_frame,
-                caption=f"Frame gallery · {selected_preview_time:.1f}s · crop {crop_ratio}",
-                use_container_width=True,
-            )
-        if preview_timestamps:
-            st.caption(
-                f"Gallery hiện tại: {len(preview_timestamps)} mốc dự kiến · "
-                "chọn thanh trượt để xem frame tại timestamp bất kỳ."
-            )
-        if actual_scene_marks:
-            st.success(f"Đã phân tích {len(actual_scene_marks)} scene marker thực tế.")
-        else:
-            st.info("Chưa có marker scene thật. Bấm 'Phân tích scene thật' để chạy phân tích nhanh.")
+            selected_frame = preview_frame_at(preview_entry[2], selected_preview_time, crop_ratio)
+            if selected_frame is not None:
+                st.image(
+                    selected_frame,
+                    caption=f"Frame gallery · {selected_preview_time:.1f}s · crop {crop_ratio}",
+                    use_container_width=True,
+                )
+            if preview_timestamps:
+                st.caption(
+                    f"Gallery hiện tại: {len(preview_timestamps)} mốc dự kiến · "
+                    "chọn thanh trượt để xem frame tại timestamp bất kỳ."
+                )
+            if actual_scene_marks:
+                st.success(f"Đã phân tích {len(actual_scene_marks)} scene marker thực tế.")
+            else:
+                st.info("Chưa có marker scene thật. Bấm 'Phân tích scene thật' để chạy phân tích nhanh.")
