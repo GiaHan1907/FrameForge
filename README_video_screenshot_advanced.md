@@ -1,6 +1,18 @@
 # Video Screenshot Filter: CLI, Scene Detection và Web UI
 
-Bộ công cụ gồm hai cách sử dụng: CLI nâng cao trong `video_screenshot_advanced.py` và giao diện Web Streamlit trong `streamlit_app.py`. Cả hai đều hỗ trợ lọc frame mờ và frame trùng trước khi lưu.
+Bộ công cụ gồm hai cách sử dụng: CLI nâng cao và giao diện Web Streamlit trong `streamlit_app.py`. Cả hai đều hỗ trợ lọc frame mờ và frame trùng trước khi lưu.
+
+### Cấu trúc code hiện tại (từ v0.1.35)
+
+`video_screenshot_advanced.py` vẫn là entry engine đầy đủ (queue, checkpoint, report, worker), nhưng phần lớn logic thuần đã được tách sang `core/` để kiểm thử độc lập:
+
+- `core/cli.py` — `parse_args()`/`build_config()` và entry headless mới `python -m core.cli <video> ...` (cùng tập flag ở dưới, không cần Streamlit).
+- `core/analysis.py` — phân tích frame/scene bằng cv2: `normalized_difference`, `histogram_difference`, `smart_scene_difference`, `better_frame`, `crop_to_aspect_ratio`, `FrameCandidate`, `probe_video`.
+- `core/cv2_helpers.py` — `laplacian_variance`, `motion_blur_score`, `dhash`, `hamming_distance`.
+- `core/pipeline.py` + `checkpoint.py`, `workers.py`, `cleanup.py`, `targets.py` — cache scene, checkpoint/resume, adaptive workers, dọn dẹp và sinh candidate/target.
+- `core/config.py` (dataclass `FrameForgeConfig`), `core/utils.py`, `core/errors.py`, `core/manifest.py`, `core/resources.py`.
+
+Chạy CLI theo cách cũ `python video_screenshot_advanced.py ...` vẫn hoạt động như trước.
 
 ## Cài đặt
 
@@ -27,7 +39,7 @@ python3 -m pip install -r requirements_video_screenshot.txt
 
 ## 1. Scene detection bằng CLI
 
-Chế độ scene detection dùng bộ lọc scene của FFmpeg để tìm frame đầu tiên sau mỗi thay đổi cảnh. Frame đầu của vùng xử lý luôn được thêm vào, vì vậy cảnh đầu video không bị bỏ qua.
+Chế độ scene detection **không dùng bộ lọc scene của FFmpeg**: engine tự phân tích frame bằng OpenCV (trong `core/analysis.py`), kết hợp sai khác pixel trung bình (`normalized_difference`) với sai khác histogram màu (`histogram_difference`) qua `smart_scene_difference`. Một mốc chỉ được ghi nhận khi frame đủ sắc nét, đạt `--min-scene-gap` và được xác nhận bởi `--scene-confirmations` frame liên tiếp (chống flash/nhiễu). Frame đầu của vùng xử lý luôn được thêm vào, vì vậy cảnh đầu video không bị bỏ qua.
 
 ```bash
 python3 video_screenshot_advanced.py video.mp4 \
@@ -108,9 +120,9 @@ streamlit run streamlit_app.py
 
 Sau đó mở địa chỉ được Streamlit hiển thị, thường là `http://localhost:8501`.
 
-Trong giao diện, người dùng có thể tải lên một hoặc nhiều video, chọn một trong ba chế độ **Tự động nhận diện phân cảnh**, **Mỗi N giây** hoặc **Đúng N frame**, rồi điều chỉnh ngưỡng scene, độ nét, dHash, định dạng và kích thước ảnh.
+Trong giao diện (bố cục v0.1.39), toàn bộ cấu hình nằm ở **sidebar** chia 4 nhóm khớp wizard: `01 · Nguồn video` (upload nhiều video mp4/mov/mkv/avi/webm/m4v/ts/mts), `02 · Cách chọn frame`, `03 · Chất lượng & tốc độ`, `04 · Đầu ra`. Nội dung chính gồm 3 tab: **⚙️ Xử lý video** (wizard 4 bước + 4 card tóm tắt + nút **Bắt đầu xử lý** + preview workspace), **⬇️ Tải video công khai** (yt-dlp) và **📁 Cài đặt & Lịch sử** (cập nhật, preset cá nhân, lịch sử job). Có bốn chế độ chọn frame: **Best frame per scene**, **Scene detection**, **Mỗi N giây** và **Đúng N frame**; ngưỡng scene, độ nét, dHash, motion blur, định dạng và kích thước ảnh đều chỉnh được trong sidebar (một số trường nâng cao nằm trong các expander thu gọn).
 
-Sau khi nhấn **Bắt đầu xử lý**, ứng dụng hiển thị thống kê, xem trước tối đa 24 ảnh và cung cấp một file ZIP chứa toàn bộ screenshot cùng `report.json`.
+Sau khi bấm **Bắt đầu xử lý**, tab Xử lý video hiển thị progress theo từng video (FPS/ETA/RAM, tạm dừng/tiếp tục/hủy/retry); khi hoàn tất có nút tải file ZIP chứa toàn bộ screenshot cùng `report.json` (giao diện chỉ xem trước một phần ảnh). Hướng dẫn từng màn hình chi tiết tại [HUONG_DAN_SU_DUNG.md](HUONG_DAN_SU_DUNG.md).
 
 ## 4. Tham số chính
 
@@ -147,13 +159,13 @@ Frame được lọc mờ bằng phương sai Laplacian và được lọc trùn
 
 ## 6. File đầu ra
 
-Tên ảnh có dạng:
+Tên ảnh được đặt theo thời điểm frame, dạng `HH-MM-SS.mmm.jpg` (hoặc `.png`/`.webp` theo `--format`), ví dụ:
 
 ```text
-ten_video_00001_00-00-12.400.jpg
+00-00-12.400.jpg
 ```
 
-Khi xử lý một thư mục, mỗi video có thư mục riêng. Khi dùng `--recursive`, cấu trúc thư mục tương đối được giữ lại. Scene detection được ghi trong `report.json` với trường `selection_mode` có giá trị `scene_detection`.
+Khi bật ép đủ số ảnh sau filter (`--target-count-after-filter`) mà timestamp đã có file trong thư mục output và chưa bật `--overwrite`, ảnh fallback được thêm hậu tố dạng `_fallback_0001_1` để không ghi đè output cũ. Các video được xử lý độc lập và tổng hợp trong `report.json`; trường `selection_mode` cho biết chế độ đã dùng (`scene_detection`, `best_frame_per_scene`, `fixed_interval` hoặc `count`).
 
 ## Tham khảo
 

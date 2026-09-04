@@ -6,6 +6,8 @@ Gói FrameForge hiện không còn bị chi phối chỉ bởi các thư viện 
 
 Có hai mục tiêu cần tách riêng. **Installed size** là dung lượng thư mục sau khi cài, còn **Setup download size** là dung lượng file `FrameForge-Setup.exe` sau nén. Inno Setup có thể làm file tải xuống nhỏ hơn bằng LZMA2 và solid compression, nhưng không làm giảm dung lượng các binary đã cài.
 
+> ⚠️ **Ghi chú hiện trạng (v0.1.39):** các con số bên dưới là mốc đo artifact Linux ở thời v0.1.x — dùng để hiểu cấu trúc chi phí, không phải số liệu bản hiện tại. Bản phát hành Windows hiện được CI dựng bằng profile **minimal** (`.github/workflows/windows-release.yml`, Setup ~149 MB). Từ v0.1.37, bảng lịch sử job dùng HTML/CSS thuần thay `st.dataframe` nên runtime không còn đòi pyarrow/pandas (spec minimal vẫn loại chúng khỏi bundle).
+
 ## Kiểm tra `build_installer.bat`
 
 Script hiện thực hiện đúng các bước cơ bản: chuyển working directory về thư mục chứa script, dùng biến `ISCC` nếu người dùng đã chỉ định, tự tìm `ISCC.exe` trong PATH hoặc hai vị trí Inno Setup phổ biến, kiểm tra executable onedir, tạo thư mục `installer`, xóa Setup cũ, gọi compiler và xác nhận compiler thực sự tạo ra file Setup. Sau đó script in đường dẫn và kích thước file Setup.
@@ -19,7 +21,7 @@ Phiên bản hiện tại tốt hơn bản ban đầu ở hai điểm. Thứ nh�
 | Dọn output cũ | Tốt | Tránh nhầm Setup cũ với Setup vừa build. |
 | Compiler flags | Hợp lý | `/Qp` phù hợp build tự động nhưng vẫn cho progress. |
 | Xác minh output | Đã bổ sung | Kiểm tra file thực tế và in byte size. |
-| Khả năng reproducible | Cần cải thiện | Version hiện nằm cố định trong `.iss`; nên truyền version từ CI hoặc file version chung. |
+| Khả năng reproducible | Đã cải thiện | `build_installer.bat` truyền `/DMyAppVersion=%FRAMEFORGE_VERSION%` khi biến được đặt; mặc định trong `FrameForge.iss` đồng bộ `frameforge_version.txt` (hiện `0.1.39`), CI luôn đặt `FRAMEFORGE_VERSION` từ tag. |
 | Kiểm tra payload | Cần bổ sung | Nên kiểm tra `ffmpeg.exe`, `ffprobe.exe`, license và metadata trước khi gọi ISCC. |
 
 Một cải tiến tiếp theo nên thêm preflight vào `build_installer.bat`: kiểm tra các file `vendor\ffmpeg\ffmpeg.exe`, `vendor\ffmpeg\ffprobe.exe`, `BUILD_METADATA.txt` và ít nhất một file license trước khi build. Điều này ngăn tạo Setup “thành công” nhưng thiếu khả năng tải/ghép video chất lượng cao.
@@ -119,7 +121,7 @@ Nếu muốn Setup nhỏ hơn nữa mà vẫn giữ offline core, hãy tạo hai
 | 6 | Prune data/hidden imports có kiểm thử | Giảm static/plugin overhead | Trung bình đến cao; Streamlit/yt-dlp dynamic imports. |
 | 7 | UPX/strip thử nghiệm | Có thể giảm installed size thêm | Cao; antivirus, startup và native compatibility. |
 
-Với yêu cầu hiện tại, lựa chọn thực dụng nhất là giữ **full onedir** cho bản offline ổn định, dùng **minimal onedir** cho bản nhẹ hơn, giữ Inno Setup hiện tại để giảm download size, và tách một nhánh thử nghiệm “FFmpeg-only” trước khi đầu tư vào custom OpenCV. Không nên cam kết con số dưới 200 MB cho bản offline đầy đủ trước khi có phép đo Windows sau cài.
+Với thực tế phát hành hiện tại, bản Windows chính thức dùng **minimal onedir** làm profile mặc định trên CI (`windows-release.yml`); **full onedir** giữ làm tùy chọn khi cần mức tương thích Streamlit rộng hơn. Inno Setup hiện tại được giữ nguyên để giảm download size; các hướng tách FFmpeg-only hoặc custom OpenCV vẫn là nhánh thử nghiệm. Không nên cam kết con số dưới 200 MB cho bản offline đầy đủ trước khi có phép đo Windows sau cài.
 
 ## References
 
