@@ -17,7 +17,6 @@ from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
 import requests
-from bs4 import BeautifulSoup
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +106,12 @@ def _extract_image_urls_from_html(html: str) -> list[dict]:
 
     Returns a list of dicts with keys: url, title, thumbnail, source.
     """
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        # bs4 may be absent in some packaged profiles; this parser is only a
+        # fallback, so degrade to no results instead of crashing the app.
+        return []
     soup = BeautifulSoup(html, "html.parser")
     results: list[dict] = []
     seen_urls: set[str] = set()
@@ -868,3 +873,4 @@ def download_results(
         "sources_file": sources_file,
         "total": len(results),
     }
+

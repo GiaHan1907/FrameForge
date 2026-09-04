@@ -274,3 +274,36 @@ class TestSearchGoogleImages(unittest.TestCase):
             with patch("core.google_images._search_google_images_legacy", return_value=[]):
                 results = search_google_images("Nowhere")
         self.assertEqual(results, [])
+
+
+class TestHtmlParserWithoutBs4(unittest.TestCase):
+    """_extract_image_urls_from_html must degrade to [] when bs4 is missing"""
+
+    def test_missing_bs4_returns_empty(self) -> None:
+        import sys
+
+        from core.google_images import _extract_image_urls_from_html
+
+        saved = sys.modules.get("bs4")
+        sys.modules["bs4"] = None  # simulate a bundle without bs4
+        try:
+            result = _extract_image_urls_from_html("<html><body>no images</body></html>")
+        finally:
+            if saved is None:
+                sys.modules.pop("bs4", None)
+            else:
+                sys.modules["bs4"] = saved
+        self.assertEqual(result, [])
+
+    def test_with_bs4_parses_images(self) -> None:
+        import sys
+
+        from core.google_images import _extract_image_urls_from_html
+
+        if "bs4" in sys.modules and sys.modules["bs4"] is None:
+            self.skipTest("bs4 not importable in this environment")
+        html = ('<html><body><img src="https://cdn.example/a.jpg" width="200" height="150">'
+                "</body></html>")
+        result = _extract_image_urls_from_html(html)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["url"], "https://cdn.example/a.jpg")

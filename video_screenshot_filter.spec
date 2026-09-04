@@ -19,6 +19,9 @@ hiddenimports += collect_submodules("streamlit.web")
 hiddenimports += collect_submodules("streamlit.runtime")
 hiddenimports += collect_submodules("yt_dlp")
 hiddenimports += ["tkinter", "tkinter.filedialog"]
+# bs4/soupsieve: core/google_images.py được đóng gói dạng source (data file) nên
+# PyInstaller không phân tích import bên trong - khai báo tường minh để bundle.
+hiddenimports += ["bs4", "soupsieve"]
 
 # Nhúng FFmpeg static nếu đã được chuẩn bị bởi prepare_ffmpeg_windows.ps1.
 # PyInstaller sẽ giải nén chúng vào _MEIPASS/vendor/ffmpeg khi chạy one-file.
@@ -109,3 +112,5 @@ exe = EXE(
     # Không tạo console window khi double-click EXE.
     console=False,
 )
+
+

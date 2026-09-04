@@ -62,5 +62,19 @@ class PackagingSpecTests(unittest.TestCase):
         self.assertIn('"ui/session.py"', validate_script)
 
 
+    def test_all_specs_bundle_bs4_for_runtime_import(self) -> None:
+        # core/google_images.py is embedded as a data-file source, so PyInstaller
+        # cannot statically see its 'from bs4 import BeautifulSoup' import.
+        marker = 'hiddenimports += ["bs4", "soupsieve"]'
+        for spec_name in (
+            "video_screenshot_filter.spec",
+            "video_screenshot_filter_minimal.spec",
+            "video_screenshot_filter_onedir.spec",
+        ):
+            content = (ROOT / spec_name).read_text(encoding="utf-8")
+            self.assertIn(marker, content, f"bs4/soupsieve hiddenimports missing from {spec_name}")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
