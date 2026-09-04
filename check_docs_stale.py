@@ -121,6 +121,12 @@ CANONICAL_LABELS: list[tuple[str, str]] = [
     ("Scene detection", "ui/sidebar.py"),
     ("Mỗi N giây", "ui/sidebar.py"),
     ("Đúng N frame", "ui/sidebar.py"),
+    ("Chế độ xử lý", "ui/sidebar.py"),
+    ("Queue có thể khôi phục", "streamlit_app.py"),
+    ("Tiếp tục queue đã gián đoạn", "streamlit_app.py"),
+    ("Áp dụng preset cá nhân", "ui/timeline.py"),
+    ("Lưu preset hiện tại", "ui/timeline.py"),
+    ("Cập nhật & kênh", "streamlit_app.py"),
 ]
 
 

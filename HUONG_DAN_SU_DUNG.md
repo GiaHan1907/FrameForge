@@ -45,6 +45,8 @@ Bắt đầu bằng việc **upload video ở nhóm `01 · Nguồn video`** tron
 
 ### Chế độ chọn frame
 
+Trong sidebar, control **Chế độ xử lý** (nhóm **02 · Cách chọn frame**) cho phép chọn một trong bốn chế độ sau:
+
 | Chế độ | Hành vi |
 |---|---|
 | Best frame per scene | Phát hiện scene và giữ frame sắc nét nhất trong mỗi scene. Đây là chế độ nên dùng mặc định. |
@@ -232,7 +234,7 @@ python video_screenshot_advanced.py video.mp4 --repair-manifest
 
 Ảnh được encode qua file tạm rồi đổi tên an toàn. File tạm còn sót sau crash không được tính là output hoàn tất.
 
-Khi mở lại ứng dụng, khu vực **Queue có thể khôi phục** chỉ bật nút resume nếu run signature của cấu hình hiện tại khớp queue cũ. Nếu preset hoặc tham số đã thay đổi, hãy chọn lại cấu hình cũ; FrameForge không tự resume bằng config khác để tránh sai checkpoint/cache.
+Khi mở lại ứng dụng, khu vực **Queue có thể khôi phục** chỉ bật nút **Tiếp tục queue đã gián đoạn** nếu run signature của cấu hình hiện tại khớp queue cũ. Nếu preset hoặc tham số đã thay đổi, hãy chọn lại cấu hình cũ; FrameForge không tự resume bằng config khác để tránh sai checkpoint/cache.
 
 Bounded scheduler kiểm tra RAM và dung lượng disk trước mỗi video mới. Khi tài nguyên thấp, item chuyển sang trạng thái chờ tài nguyên và không cấp thêm worker; có thể chờ tài nguyên hồi phục hoặc bấm hủy. Preview có nút **Phân tích nhanh scene thật**, dùng decode độ phân giải thấp và hiển thị marker scene thực tế; các timestamp trước đó chỉ là ước tính.
 
@@ -580,7 +582,7 @@ Workflow GitHub Actions tạo `latest.json` trong mỗi GitHub Release. Để b�
 set FRAMEFORGE_UPDATE_MANIFEST_URL=https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest.json
 ```
 
-Repository FrameForge hiện là public, nên app có thể đọc manifest và tải asset từ GitHub Release mà không cần Personal Access Token. App đã có URL manifest public mặc định; có thể ghi đè bằng `FRAMEFORGE_UPDATE_MANIFEST_URL` nếu dùng feed khác. Toàn bộ điều khiển cập nhật (chọn kênh stable/beta, trạng thái yt-dlp, xem release notes, nút **Cập nhật ngay**, rollback) nằm trong tab **📁 Cài đặt & Lịch sử** → expander cập nhật; khi có bản app mới, nhãn expander tự đổi thành `🔔 Có bản FrameForge X — Cập nhật & kênh`. Preset cá nhân nằm trong expander **Preset cá nhân và cấu hình**, lịch sử job trong expander **Lịch sử job (N)** — cả hai đều thu gọn trong tab này.
+Repository FrameForge hiện là public, nên app có thể đọc manifest và tải asset từ GitHub Release mà không cần Personal Access Token. App đã có URL manifest public mặc định; có thể ghi đè bằng `FRAMEFORGE_UPDATE_MANIFEST_URL` nếu dùng feed khác. Toàn bộ điều khiển cập nhật (chọn kênh stable/beta, trạng thái yt-dlp, xem release notes, nút **Cập nhật ngay**, rollback) nằm trong tab **📁 Cài đặt & Lịch sử** → expander cập nhật; khi có bản app mới, nhãn expander tự đổi thành `🔔 Có bản FrameForge X — Cập nhật & kênh`. Preset cá nhân nằm trong expander **Preset cá nhân và cấu hình**, lịch sử job trong expander **Lịch sử job (N)** — cả hai đều thu gọn trong tab này. Bên trong expander preset có hai nút **Áp dụng preset cá nhân** (khôi phục bộ thông số đã lưu) và **Lưu preset hiện tại** (ghi lại thông số đang dùng).
 
 Có thể tắt updater EXE bằng:
 

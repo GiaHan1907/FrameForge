@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import sys
 from pathlib import Path
+
+
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from check_docs_stale import (
     CANONICAL_LABELS,
@@ -67,5 +72,29 @@ class DocsStaleScanTest(unittest.TestCase):
         self.assertEqual(len(labels), len(set(labels)), "Nhãn canonical bị trùng")
 
 
+    @staticmethod
+    def _normalize(text: str) -> str:
+        return " ".join(text.split())
+
+    def test_canonical_labels_exist_in_code(self) -> None:
+        misses = []
+        for label, loc in CANONICAL_LABELS:
+            file_part = loc.split(":", 1)[0].strip()
+            path = ROOT / file_part
+            if not path.exists():
+                misses.append(label + " -> " + loc + ": file khong ton tai")
+                continue
+            src = path.read_text(encoding="utf-8")
+            if self._normalize(label) not in self._normalize(src):
+                misses.append(label + " -> " + loc + ": nhan khong xuat hien trong code")
+        sep = chr(10)
+        self.assertEqual([], misses, "CANONICAL_LABELS co nhan khong khop code that:" + sep + sep.join(misses))
+
+    def test_canonical_rejects_fabricated_label(self) -> None:
+        fabricated = ("Nha hang Pizzeria 66", "streamlit_app.py")
+        self.assertNotIn(fabricated, CANONICAL_LABELS, "Fixture trung registry")
+        file_part = fabricated[1].split(":", 1)[0].strip()
+        src = (ROOT / file_part).read_text(encoding="utf-8")
+        self.assertNotIn(self._normalize(fabricated[0]), self._normalize(src))
 if __name__ == "__main__":
     unittest.main()
