@@ -1,6 +1,26 @@
 # FrameForge — Release Notes
 
-> Bản mới nhất: **v0.1.39**. Lịch sử đầy đủ từng bản: [CHANGELOG.md](CHANGELOG.md). Ghi chú riêng cho một số bản cũ: RELEASE_NOTES_v0.1.31.md, RELEASE_NOTES_v0.1.32.md, RELEASE_NOTES_v0.1.33.md, UPDATE_GUIDE_v0.1.31.md.
+> Bản mới nhất: **v0.1.40**. Lịch sử đầy đủ từng bản: [CHANGELOG.md](CHANGELOG.md). Ghi chú riêng cho một số bản cũ: RELEASE_NOTES_v0.1.31.md, RELEASE_NOTES_v0.1.32.md, RELEASE_NOTES_v0.1.33.md, UPDATE_GUIDE_v0.1.31.md.
+
+# FrameForge v0.1.40
+
+## Luồng làm việc gọn hơn: tải video trước, cấu hình vào tab chính
+
+- Đảo thứ tự tab: **`⬇️ Tải video công khai`** giờ đứng **trước** `⚙️ Xử lý video` — dán URL xong là thấy tab Xử lý ngay kế bên.
+- Wizard 4 bước chuyển từ sidebar vào **tab Xử lý video**: cấu hình nằm ngay trong 4 expander thu gọn theo từng bước (Nguồn video / Cách chọn frame / Chất lượng & tốc độ / Đầu ra); bước đang chọn trên radio wizard tự mở sẵn.
+- **Sidebar chỉ còn**: thương hiệu + nút **🔍 Tìm ảnh theo địa điểm**. Toàn bộ widget keys giữ nguyên nên preset và cấu hình đã lưu không bị reset.
+
+## Sửa tính năng Tìm ảnh theo địa điểm
+
+- Google Images chặn scraper không-JS (trả trang “enable JavaScript” → 0 kết quả): chuyển engine mặc định sang **DuckDuckGo Images** (không cần API key, không cần JS); parser Google cũ giữ làm fallback.
+- Sửa lỗi `thumbnail_url` không tồn tại khi hiển thị lưới kết quả (dùng `thumbnail` đúng field).
+- UI inline nâng cấp: ô địa điểm + slider số ảnh + lưới 3 cột + ô **📁 Thư mục lưu ảnh** + nút **📥 Tải tất cả** (batch) và **Tải #N** từng ảnh.
+
+## Dọn mã & chất lượng
+
+- Xóa `ui/image_search.py` (page standalone cũ gọi `st.set_page_config`, không còn dùng) — gỡ khỏi spec đóng gói onedir để tránh nhầm lẫn.
+- Thêm 15 unit test mock HTTP cho `_ddg_search_images` / `search_google_images`: chặn tái phạm lỗi “0 kết quả” (trang chặn thiếu token vqd, network error, JSON hỏng → trả `[]`; fallback đúng thứ tự DDG → Google cũ).
+
 
 # FrameForge v0.1.39
 
