@@ -138,6 +138,95 @@ def _extract_image_urls_from_html(html: str) -> list[dict]:
 
     return results
 
+_DDG_URL = "https://duckduckgo.com/"
+_DDG_IMAGES_URL = "https://duckduckgo.com/i.js"
+
+
+def _ddg_search_images(query: str, num_results: int = 20, lang: str = "vi") -> list[dict]:
+    """Search DuckDuckGo Images (no API key, no JavaScript required).
+
+    Google Images now blocks plain-HTTP scrapers with a "please enable
+    JavaScript" page, so the default engine is DuckDuckGo Images: its
+    ``i.js`` endpoint returns JSON to a plain ``requests`` call.  Returns
+    the same dict shape as ``_extract_image_urls_from_html`` so callers
+    share one code path.
+    """
+    results: list[dict] = []
+    seen_urls: set[str] = set()
+
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": random.choice(_USER_AGENTS),
+        "Accept-Language": f"{lang},en;q=0.5",
+    })
+
+    # Step 1: grab the vqd token from the image-search page.
+    try:
+        page = session.get(
+            _DDG_URL,
+            params={"q": query, "iax": "images", "ia": "images"},
+            timeout=15,
+        )
+        page.raise_for_status()
+        vqd_match = re.search(r"vqd=([0-9-]+)", page.text)
+        if not vqd_match:
+            return results
+        vqd = vqd_match.group(1)
+    except requests.RequestException:
+        return results
+
+    # Step 2: pull JSON results from i.js (Referer is required).
+    params: dict[str, str] = {
+        "q": query,
+        "vqd": vqd,
+        "o": "json",
+        "p": "1",
+        "f": ",,,",
+    }
+    if "-" in lang:
+        params["l"] = lang
+    headers = {
+        "Referer": _DDG_URL,
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+
+    offset = 0
+    while len(results) < num_results:
+        params["s"] = str(offset)
+        try:
+            resp = session.get(_DDG_IMAGES_URL, params=params, headers=headers, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, ValueError):
+            break
+
+        items = data.get("results") or []
+        if not items:
+            break
+        for item in items:
+            url = item.get("image") or ""
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            results.append({
+                "url": url,
+                "title": (item.get("title") or "").strip(),
+                "thumbnail": item.get("thumbnail") or url,
+                "source": item.get("url") or "",
+                "width": int(item.get("width") or 0),
+                "height": int(item.get("height") or 0),
+            })
+
+        next_url = data.get("next") or ""
+        if "s=" not in next_url:
+            break
+        offset += 100
+        time.sleep(random.uniform(0.8, 1.8))
+
+    return results[:num_results]
+
+
 
 def search_google_images(
     query: str,
@@ -145,7 +234,37 @@ def search_google_images(
     lang: str = "vi",
     safe: str = "active",
 ) -> list[ImageResult]:
-    """Scrape Google Images for the given query.
+    """Search images by place name / address / coordinates (no API key).
+
+    Google Images now blocks plain-HTTP scrapers (it returns a
+    JavaScript-required page with no results), so the primary engine is
+    DuckDuckGo Images, which serves JSON to a plain ``requests`` call.
+    The Google HTML parser below is kept as a fallback for environments
+    where Google still serves static results.
+    """
+    ddg_results = _ddg_search_images(query, num_results, lang)
+    if ddg_results:
+        return [
+            ImageResult(
+                url=r["url"],
+                title=r["title"],
+                source=r["source"],
+                width=r["width"],
+                height=r["height"],
+                thumbnail=r["thumbnail"],
+            )
+            for r in ddg_results
+        ]
+    return _search_google_images_legacy(query, num_results, lang, safe)
+
+
+def _search_google_images_legacy(
+    query: str,
+    num_results: int = 20,
+    lang: str = "vi",
+    safe: str = "active",
+) -> list[ImageResult]:
+    """Scrape Google Images for the given query (legacy fallback).
 
     Args:
         query: Search query (place name, address, coordinates, etc.)

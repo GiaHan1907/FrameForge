@@ -14,7 +14,7 @@ Bản mới nhất: **v0.1.39** — tải tại [GitHub Releases](https://github
 | Crop/đầu ra | Tỉ lệ `16:9`, `9:16`, `4:5`, `1:1`, encode profile nhanh/chất lượng cao |
 | Queue | SQLite persistence, pause/resume/cancel/retry, checkpoint và crash recovery |
 | Downloader | Tải URL công khai qua yt-dlp (Facebook, TikTok, Pinterest...), retry exponential backoff và staging an toàn |
-| Tìm ảnh theo địa điểm | Tìm kiếm ảnh qua Google (không cần API key), duyệt kết quả và tải ảnh về máy |
+| Tìm ảnh theo địa điểm | Tìm kiếm ảnh qua DuckDuckGo Images (không cần API key), duyệt kết quả và tải ảnh về máy |
 | Preset & lịch sử | Preset cá nhân, xuất/nhập cấu hình JSON, lịch sử job (50 job gần nhất) |
 | Cập nhật | Kênh stable/beta, release notes hiển thị trong app, rollback có xác minh SHA-256 |
 | Desktop | Installer Inno Setup, FFmpeg nhúng, watchdog tự dừng job khi đóng browser, silent console |
@@ -23,11 +23,11 @@ Bản mới nhất: **v0.1.39** — tải tại [GitHub Releases](https://github
 
 Giao diện Streamlit được tổ chức thành **3 tab** để không phải cuộn nhiều:
 
-- **⚙️ Xử lý video** — wizard 4 bước (Nguồn → Chọn frame → Chất lượng → Đầu ra), 4 card tóm tắt, preview workspace và nút *Bắt đầu xử lý*.
 - **⬇️ Tải video công khai** — dán một hoặc nhiều URL, chọn chất lượng, giới hạn playlist, retry.
+- **⚙️ Xử lý video** — wizard 4 bước (Nguồn → Chọn frame → Chất lượng → Đầu ra): 4 card tóm tắt + 4 expander cấu hình theo từng bước, preview workspace và nút *Bắt đầu xử lý*.
 - **📁 Cài đặt & Lịch sử** — kênh cập nhật + update/rollback, preset cá nhân, lịch sử job.
 
-Các tùy chọn nâng cao (scene detection, hiệu năng, lọc mờ/trùng, retry/cache, form tải video, video player + timeline) nằm trong **expander thu gọn**; nút *Tìm ảnh theo địa điểm* bật/tắt ngay trong giao diện.
+Các tùy chọn nâng cao (scene detection, hiệu năng, lọc mờ/trùng, retry/cache, form tải video, video player + timeline) nằm trong **expander thu gọn**; toàn bộ cấu hình wizard nằm trong tab ⚙️ Xử lý video, còn sidebar chỉ giữ thương hiệu và nút *Tìm ảnh theo địa điểm* (bật/tắt ngay trong giao diện).
 
 ## Ba bản cập nhật gần nhất
 

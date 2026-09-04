@@ -411,27 +411,15 @@ if st.session_state.get("_show_image_search", False):
     st.divider()
 
 # Sidebar controls
-from ui.sidebar import build_sidebar_entries
+from ui.sidebar import build_wizard_entries, render_sidebar
 from ui.widgets import render_entries
 
 # Sidebar controls (declarative)
 with st.sidebar:
+    render_sidebar()
     # Image search toggle (inline, avoids st.page_link requiring multi-page setup)
     if st.button("🔍 Tìm ảnh theo địa điểm", use_container_width=True, key="_img_search_toggle"):
         st.session_state["_show_image_search"] = not st.session_state.get("_show_image_search", False)
-    st.divider()
-
-    render_entries(build_sidebar_entries(
-        uploaded_files=st.session_state.get("uploaded_files"),
-        downloaded_paths=downloaded_paths,
-        mode_label=st.session_state.get("mode_label", "Best frame per scene"),
-        limit_end=st.session_state.get("limit_end", False),
-        image_format=st.session_state.get("image_format", "jpg"),
-        max_screenshots=st.session_state.get("max_screenshots", 20),
-        worker_count=len(st.session_state.get("uploaded_files") or []),
-        preset_options=list(PRESET_CONFIGS),
-        on_change_preset=apply_selected_preset,
-    ))
 
 # Read widget values from session_state (populated by declarative sidebar)
 uploaded_files = st.session_state.get("uploaded_files")
@@ -506,8 +494,8 @@ _start_desktop_session_watchdog()
 
 
 # ── Tab layout: Xử lý / Tải video / Cài đặt & Lịch sử ───────────────
-main_tab, download_tab, settings_tab = st.tabs(
-    ["⚙️ Xử lý video", "⬇️ Tải video công khai", "📁 Cài đặt & Lịch sử"]
+download_tab, main_tab, settings_tab = st.tabs(
+    ["⬇️ Tải video công khai", "⚙️ Xử lý video", "📁 Cài đặt & Lịch sử"]
 )
 
 with main_tab:
@@ -541,6 +529,28 @@ with main_tab:
         "03 · Chất lượng": "Điều chỉnh phân tích, lọc mờ/trùng và worker.",
         "04 · Đầu ra": "Chọn crop ratio, format, chất lượng và encode profile.",
     }[wizard_step])
+
+    # ── Wizard cấu hình: 4 expander theo bước (trước đây ở sidebar) ──
+    step_entries = build_wizard_entries(
+        uploaded_files=uploaded_files,
+        downloaded_paths=downloaded_paths,
+        mode_label=mode_label,
+        limit_end=limit_end,
+        image_format=image_format,
+        max_screenshots=max_screenshots,
+        worker_count=len(uploaded_files or []),
+        preset_options=list(PRESET_CONFIGS),
+        on_change_preset=apply_selected_preset,
+    )
+    step_heading = {
+        "01 · Nguồn": "01 · Nguồn video",
+        "02 · Chọn frame": "02 · Cách chọn frame",
+        "03 · Chất lượng": "03 · Chất lượng & tốc độ",
+        "04 · Đầu ra": "04 · Đầu ra",
+    }
+    for step_name in WIZARD_STEPS:
+        with st.expander(step_heading[step_name], expanded=(wizard_step == step_name)):
+            render_entries(step_entries[step_heading[step_name]])
 
     render_preview_section({
         "uploaded_files": uploaded_files,

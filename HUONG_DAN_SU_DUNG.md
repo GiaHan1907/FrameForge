@@ -39,13 +39,13 @@ Double-click `VideoScreenshotFilter.exe`. Nếu trình duyệt không tự mở,
 http://127.0.0.1:8501
 ```
 
-Bố cục bản mới (v0.1.39) rất gọn: dưới header chỉ có expander thu gọn **📁 Thư mục lưu file**, còn toàn bộ nội dung chính nằm trong **3 tab** — `⚙️ Xử lý video` · `⬇️ Tải video công khai` · `📁 Cài đặt & Lịch sử`. Toàn bộ cấu hình nằm ở **sidebar**, chia 4 nhóm đúng theo 4 bước wizard: `01 · Nguồn video`, `02 · Cách chọn frame`, `03 · Chất lượng & tốc độ`, `04 · Đầu ra`; một số tùy chọn nâng cao nằm gọn trong các expander con (Scene detection nâng cao, Hiệu năng phân tích, Lọc mờ · trùng lặp, Retry · cache · nâng cao).
+Bố cục bản mới (v0.1.39) rất gọn: dưới header chỉ có expander thu gọn **📁 Thư mục lưu file**, còn toàn bộ nội dung chính nằm trong **3 tab** — `⚙️ Xử lý video` · `⬇️ Tải video công khai` · `📁 Cài đặt & Lịch sử`. Toàn bộ cấu hình nằm ngay trong tab **⚙️ Xử lý video**, bên dưới wizard bốn bước — mỗi bước là một expander: `01 · Nguồn video`, `02 · Cách chọn frame`, `03 · Chất lượng & tốc độ`, `04 · Đầu ra` (bước đang chọn trên wizard sẽ tự mở sẵn). Sidebar giờ rất gọn: chỉ còn thương hiệu và nút **🔍 Tìm ảnh theo địa điểm**. Một số tùy chọn nâng cao nằm gọn trong các expander con (Scene detection nâng cao, Hiệu năng phân tích, Lọc mờ · trùng lặp, Retry · cache · nâng cao).
 
-Bắt đầu bằng việc **upload video ở nhóm `01 · Nguồn video`** trong sidebar (nút *Chọn một hoặc nhiều video*, hỗ trợ mp4/mov/mkv/avi/webm/m4v/ts/mts). Video tải từ tab `⬇️ Tải video công khai` cũng tự xuất hiện ở nhóm này. Khi đã có video, sang tab **⚙️ Xử lý video**: dưới wizard là dropdown *Chọn video để xem preview*; mở expander **Xem video · crop · timeline — `<tên video>`** để phát trực tiếp, xem crop overlay và timeline trước khi cắt.
+Bắt đầu bằng việc **upload video trong expander `01 · Nguồn video`** của tab **⚙️ Xử lý video** (nút *Chọn một hoặc nhiều video*, hỗ trợ mp4/mov/mkv/avi/webm/m4v/ts/mts). Video tải từ tab `⬇️ Tải video công khai` cũng tự xuất hiện ở expander này. Khi đã có video, sang tab **⚙️ Xử lý video**: dưới wizard là dropdown *Chọn video để xem preview*; mở expander **Xem video · crop · timeline — `<tên video>`** để phát trực tiếp, xem crop overlay và timeline trước khi cắt.
 
 ### Chế độ chọn frame
 
-Trong sidebar, control **Chế độ xử lý** (nhóm **02 · Cách chọn frame**) cho phép chọn một trong bốn chế độ sau:
+Trong tab **⚙️ Xử lý video**, mở expander **02 · Cách chọn frame**, control **Chế độ xử lý** cho phép chọn một trong bốn chế độ sau:
 
 | Chế độ | Hành vi |
 |---|---|
@@ -68,7 +68,7 @@ Khu vực tải video nằm ở tab **⬇️ Tải video công khai**, gói tron
 
 ### Preset cấu hình và telemetry
 
-Ở đầu sidebar, chọn **Preset cấu hình** trước khi tinh chỉnh chi tiết. `Nhanh` giảm kích thước/FPS phân tích để xử lý nhanh; `Cân bằng` là mặc định; `Chất lượng cao` ưu tiên phân tích và chất lượng ảnh; `Video dọc / TikTok` dùng các kích thước phù hợp nội dung dọc. Preset chỉ điền giá trị khởi đầu, bạn vẫn có thể sửa bất kỳ trường nào sau đó.
+Trong expander **02 · Cách chọn frame**, chọn **Preset cấu hình** trước khi tinh chỉnh chi tiết. `Nhanh` giảm kích thước/FPS phân tích để xử lý nhanh; `Cân bằng` là mặc định; `Chất lượng cao` ưu tiên phân tích và chất lượng ảnh; `Video dọc / TikTok` dùng các kích thước phù hợp nội dung dọc. Preset chỉ điền giá trị khởi đầu, bạn vẫn có thể sửa bất kỳ trường nào sau đó.
 
 Trong khi xử lý, ba thẻ telemetry hiển thị **FPS**, **ETA** và **RAM process**. FPS là số đơn vị tiến độ đã hoàn thành chia cho thời gian chạy; ETA là thời gian còn lại ước tính tuyến tính khi đã biết tổng số frame/mốc; RAM process là RSS của process FrameForge. Đây không phải tổng RAM máy hoặc tổng RSS của các process con. Khi engine chưa gửi được `frame x/y` hoặc `mốc x/y`, FPS/ETA có thể hiển thị trạng thái chờ thay vì một con số thiếu tin cậy.
 
@@ -76,7 +76,7 @@ Trong khi xử lý, ba thẻ telemetry hiển thị **FPS**, **ETA** và **RAM p
 
 `Độ nhạy thay đổi cảnh` thấp hơn sẽ nhạy hơn và thường tạo nhiều scene hơn. `Khoảng cách tối thiểu giữa scene` giúp tránh tạo quá nhiều scene trong các đoạn chuyển tiếp nhanh. Cơ chế chống flash kiểm tra xem frame sau thay đổi có quay lại cảnh cũ hay không.
 
-Trên giao diện: **Độ nhạy thay đổi cảnh** hiện trực tiếp ở nhóm `02 · Cách chọn frame` khi đang ở chế độ scene; các trường `Khoảng cách tối thiểu giữa scene`, ngưỡng chống flash và **Số frame xác nhận thay đổi cảnh** nằm trong expander **Scene detection nâng cao**.
+Trên giao diện: **Độ nhạy thay đổi cảnh** hiện trực tiếp trong expander `02 · Cách chọn frame` khi đang ở chế độ scene; các trường `Khoảng cách tối thiểu giữa scene`, ngưỡng chống flash và **Số frame xác nhận thay đổi cảnh** nằm trong expander **Scene detection nâng cao**.
 
 Giá trị khởi đầu khuyến nghị:
 
@@ -95,7 +95,7 @@ Nếu video có nhiều hiệu ứng sáng hoặc flash, tăng độ ổn địn
 
 `FPS phân tích scene` quyết định số frame/giây được kiểm tra. Dùng 8 FPS cho video thông thường và 15–24 FPS cho video có chuyển cảnh nhanh.
 
-Trên giao diện, **Chiều rộng phân tích**, **RAM khả dụng tối thiểu**, **FPS phân tích scene** và **Process trích frame fixed/count** nằm trong expander **Hiệu năng phân tích** (nhóm `03 · Chất lượng & tốc độ`); **Video xử lý song song** hiển thị trực tiếp ở nhóm này.
+Trên giao diện, **Chiều rộng phân tích**, **RAM khả dụng tối thiểu**, **FPS phân tích scene** và **Process trích frame fixed/count** nằm trong expander **Hiệu năng phân tích** (bên trong `03 · Chất lượng & tốc độ`); **Video xử lý song song** hiển thị trực tiếp trong expander `03 · Chất lượng & tốc độ`.
 
 `Video xử lý song song` chỉ áp dụng giữa các video độc lập. Một worker phù hợp khi xử lý một video hoặc máy có ít RAM. Hai đến ba worker là điểm bắt đầu an toàn khi xử lý nhiều video. Video 4K hoặc nhiều video dài có thể cần giảm worker để tránh đầy RAM.
 
@@ -105,7 +105,7 @@ Ngưỡng độ nét đã được chuẩn hóa về chiều rộng tham chiếu
 
 `Ngưỡng trùng dHash` càng lớn thì bộ lọc càng mạnh và loại nhiều frame tương tự hơn. Giá trị 6 phù hợp cho phần lớn nội dung. Đặt bằng 0 để tắt lọc trùng.
 
-Trên giao diện, cả ba ngưỡng (độ nét, dHash, motion blur) nằm trong expander **Lọc mờ · trùng lặp** (nhóm `03`); đặt về 0 là tắt bộ lọc tương ứng.
+Trên giao diện, cả ba ngưỡng (độ nét, dHash, motion blur) nằm trong expander **Lọc mờ · trùng lặp** (bên trong `03 · Chất lượng & tốc độ`); đặt về 0 là tắt bộ lọc tương ứng.
 
 ## 7. CLI nâng cao
 
@@ -286,7 +286,7 @@ Trong lúc xử lý, phần `Queue theo video` hiển thị trạng thái, phầ
 
 ## 12. Profile encode và benchmark hiệu suất ảnh
 
-Trong nhóm **Đầu ra**, trường `Profile encode` có hai lựa chọn. `Nhanh` giảm các bước tối ưu tốn CPU khi ghi JPEG/WebP/PNG, phù hợp khi cần tạo nhiều screenshot hoặc preview nhanh. `Chất lượng cao` dùng các tùy chọn tối ưu hiện tại, phù hợp khi ưu tiên chất lượng và kích thước file. Profile không thay đổi kích thước hoặc tỷ lệ ảnh; nó chỉ thay đổi cách encode file.
+Trong expander **04 · Đầu ra**, trường `Profile encode` có hai lựa chọn. `Nhanh` giảm các bước tối ưu tốn CPU khi ghi JPEG/WebP/PNG, phù hợp khi cần tạo nhiều screenshot hoặc preview nhanh. `Chất lượng cao` dùng các tùy chọn tối ưu hiện tại, phù hợp khi ưu tiên chất lượng và kích thước file. Profile không thay đổi kích thước hoặc tỷ lệ ảnh; nó chỉ thay đổi cách encode file.
 
 CLI hỗ trợ:
 
@@ -314,7 +314,7 @@ Khi gặp lỗi, hãy ưu tiên đọc mã trong ngoặc vuông và làm theo g�
 
 ## 13. Chọn tỉ lệ crop screenshot
 
-Trong nhóm **Đầu ra**, trường `Tỉ lệ crop screenshot` có năm lựa chọn: `Không crop`, `16:9`, `9:16`, `4:5` và `1:1`. FrameForge crop chính giữa khung hình, không kéo giãn nội dung, rồi mới áp dụng `Chiều rộng đầu ra`. Vì vậy ảnh không bị méo; phần thừa ở hai bên hoặc phía trên/dưới sẽ được cắt đối xứng.
+Trong expander **04 · Đầu ra**, trường `Tỉ lệ crop screenshot` có năm lựa chọn: `Không crop`, `16:9`, `9:16`, `4:5` và `1:1`. FrameForge crop chính giữa khung hình, không kéo giãn nội dung, rồi mới áp dụng `Chiều rộng đầu ra`. Vì vậy ảnh không bị méo; phần thừa ở hai bên hoặc phía trên/dưới sẽ được cắt đối xứng.
 
 | Tỉ lệ | Phù hợp với |
 |---|---|
@@ -427,7 +427,7 @@ Báo cáo có trường `rejected_motion_blur` để biết bao nhiêu frame b�
 
 ## 16. Tải queue nhiều video và playlist
 
-Trong tab **⬇️ Tải video công khai** (mở expander `⇩ Tải video công khai — URL · chất lượng · giới hạn`), nhập mỗi URL trên một dòng trong ô *URL video hoặc playlist*. Có thể trộn URL video đơn và URL playlist trong cùng một queue. Trường **Tối đa mỗi playlist** giới hạn số mục lấy từ từng playlist; tổng số URL trong một lần gọi được giới hạn ở mức an toàn 100 URL. Video tải xong tự xuất hiện trong sidebar ở nhóm `01 · Nguồn video` và được xem preview trong tab ⚙️ Xử lý video như video upload (khung 16:9 tối đa 560px, tự co trên màn hình hẹp).
+Trong tab **⬇️ Tải video công khai** (mở expander `⇩ Tải video công khai — URL · chất lượng · giới hạn`), nhập mỗi URL trên một dòng trong ô *URL video hoặc playlist*. Có thể trộn URL video đơn và URL playlist trong cùng một queue. Trường **Tối đa mỗi playlist** giới hạn số mục lấy từ từng playlist; tổng số URL trong một lần gọi được giới hạn ở mức an toàn 100 URL. Video tải xong tự xuất hiện trong expander `01 · Nguồn video` của tab ⚙️ Xử lý video và được xem preview trong tab này như video upload (khung 16:9 tối đa 560px, tự co trên màn hình hẹp).
 
 Ứng dụng xử lý queue tuần tự, hiển thị progress tải theo file và tự retry từng URL theo trường **Retry tải**. Video tải thành công được đổi tên gọn theo timestamp dạng `video_YYYYMMDD_HHMMSS.ext`; nếu trùng thời điểm, hậu tố số được thêm tự động. Title, URL và playlist index vẫn nằm trong metadata kết quả. Nếu một URL vẫn gặp lỗi sau các lần thử, thông báo sẽ ghi rõ URL và số lần đã thử; các video tải thành công trước đó vẫn được giữ lại để preview hoặc tải ZIP.
 
@@ -441,14 +441,14 @@ https://pin.it/...
 
 URL phải là URL công khai thuộc Facebook, TikTok hoặc Pinterest. Ứng dụng không hỗ trợ URL riêng tư, nội dung yêu cầu đăng nhập, DRM hoặc kỹ thuật vượt cơ chế bảo vệ.
 
-## Tìm ảnh theo địa điểm (Google, không cần API key)
+## Tìm ảnh theo địa điểm (không cần API key)
 
 Tính năng riêng biệt, không liên quan đến tải video hoặc cắt screenshot — dùng để tra cứu ảnh theo địa điểm làm tài liệu tham khảo:
 
 1. Ở đầu sidebar bấm nút **🔍 Tìm ảnh theo địa điểm** để bật/hiện khu vực tìm kiếm ngay trong trang chính (bấm lại lần nữa để ẩn).
 2. Nhập địa điểm hoặc keywords (ví dụ: `Hoàn Kiếm, Hà Nội`), chọn **Số ảnh tối đa** (5–50) rồi bấm **Tìm kiếm**.
-3. FrameForge tìm qua Google Image Search tự nhiên — không cần API key, không cần đăng nhập — và hiển thị danh sách ảnh kèm tên.
-4. Bấm **Tải #N** ở từng ảnh để lưu về thư mục đang chọn trong mục **📁 Thư mục lưu file** (thư mục lưu video; mặc định `Videos\FrameForge\videos`).
+3. FrameForge tìm qua DuckDuckGo Images (Google chặn truy cập tự động nên đã chuyển nguồn; vẫn không cần API key, không cần đăng nhập) và hiển thị lưới ảnh kèm tên, nút **Tải #N** từng ảnh hoặc **📥 Tải tất cả** về thư mục đã chọn.
+4. Ô **📁 Thư mục lưu ảnh** (mặc định `Videos\FrameForge\images`) chọn nơi lưu; bấm **📥 Tải tất cả** để tải toàn bộ, hoặc **Tải #N** ở từng ảnh để lưu riêng.
 
 Chỉ nên tải ảnh bạn có quyền sử dụng; kiểm tra nguồn và bản quyền khi dùng cho nội dung thương mại.
 
