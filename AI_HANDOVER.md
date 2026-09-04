@@ -48,7 +48,7 @@ ui/
   widgets.py    # dataclasses widget: NumberInput, Slider, Checkbox, Expander, ConditionalBlock... + render_entries()
   wizard.py     # build_args(), validate_ui_configuration(), wizard_summary()
   preview_section.py  # render_preview_section()
-  timeline.py   # render_job_history(), show_scene_timeline() — st.dataframe cần pyarrow
+  timeline.py   # render_job_history(), show_scene_timeline() — dùng HTML table (KHÔNG st.dataframe)
   download_section.py  # render_download_section()
   dashboard.py  # render_resource_meter, render_queue_dashboard, error_actions
   queue_ui.py processing.py processing_view.py  # queue UI
@@ -75,7 +75,7 @@ không gặp. Danh sách lỗi + nguyên nhân + commit fix:
 
 | # | Lỗi | Nguyên nhân gốc | Commit fix |
 |---|-----|----------------|------------|
-| 1 | `ModuleNotFoundError: No module named 'pyarrow'` khi `st.dataframe()` | pyarrow có trong `requirements_full.txt` + spec nhưng **THIẾU trong `requirements.txt`**. CI minimal profile chỉ `pip install -r requirements.txt` → không bundle được | `2c5e037` |
+| 1 | `ModuleNotFoundError: No module named 'pyarrow'` khi `st.dataframe()` | ⚠️ Thêm pyarrow vào `requirements.txt` (`2c5e037`) **KHÔNG ĐỦ** — minimal spec `excludes=["pyarrow", "pandas", ...]` chủ động LOẠI pyarrow khỏi bundle. Fix triệt để: bỏ hẳn `st.dataframe()` → render HTML table trong `ui/timeline.py` `render_job_history()` (giống `show_scene_timeline`). **LUẬT: minimal profile cấm mọi widget Arrow** (dataframe/table/chart) vì spec exclude pandas+pyarrow | `2c5e037` (chưa đủ) → fix thật ở `803cd2f` |
 | 2 | `NameError: name 'st' is not defined` (ui/sidebar.py) | `ui/sidebar.py` dùng `st.markdown()` nhưng **không import streamlit** | `5604b45` |
 | 3 | `NameError: name 'Expander' is not defined` (ui/sidebar.py:130) | sidebar.py dùng `Expander` nhưng **không import từ ui.widgets** | `6e786e9` |
 | 4 | `TypeError: Expander.__init__() unexpected keyword 'entries'` | `Expander` dataclass thiếu field `entries: list[Any]` — renderer đã có sẵn `for child in entry.entries` | `41073cc` |

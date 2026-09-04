@@ -194,4 +194,34 @@ def render_job_history() -> None:
         if not history:
             st.caption("Chưa có job nào được lưu.")
             return
-        st.dataframe(history[:20], use_container_width=True, hide_index=True)
+        _status_badges = {
+            "completed": ("Hoàn tất", "#1a7f37"),
+            "success": ("Thành công", "#1a7f37"),
+            "error": ("Lỗi", "#d1242f"),
+            "cancelled": ("Đã hủy", "#8a8f98"),
+        }
+        table_rows = []
+        for entry in history[:20]:
+            status = str(entry.get("status") or "")
+            status_label, status_color = _status_badges.get(status, (status or "—", "#8a8f98"))
+            finished_at = str(entry.get("finished_at") or "").replace("T", " ")[:19]
+            output_dir = str(entry.get("output_dir") or "")
+            video_count = entry.get("video_count", "")
+            saved = entry.get("saved", "")
+            shortfall = entry.get("shortfall", "")
+            table_rows.append(
+                "<tr>"
+                f"<td>{html.escape(finished_at)}</td>"
+                f"<td><span style='color:{status_color};font-weight:600'>{html.escape(status_label)}</span></td>"
+                f"<td>{html.escape(str(video_count))}</td>"
+                f"<td>{html.escape(str(saved))}</td>"
+                f"<td>{html.escape(str(shortfall))}</td>"
+                f"<td title='{html.escape(output_dir)}'>{html.escape(output_dir[:80])}</td>"
+                "</tr>"
+            )
+        st.markdown(
+            "<div class='scene-table-wrap'><table class='scene-table'>"
+            "<thead><tr><th>Thời gian</th><th>Trạng thái</th><th>Video</th><th>Ảnh lưu</th><th>Thiếu</th><th>Thư mục xuất</th></tr></thead>"
+            "<tbody>" + "".join(table_rows) + "</tbody></table></div>",
+            unsafe_allow_html=True,
+        )
