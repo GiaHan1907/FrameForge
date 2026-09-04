@@ -352,3 +352,128 @@ class DownloadResultsTests(unittest.TestCase):
             self.assertEqual(outcome["paths"], [])
             self.assertEqual(len(outcome["failed"]), 1)
             self.assertIn("403", outcome["failed"][0])
+
+class DownloadRetryTests(unittest.TestCase):
+    """download_image retries HTTP 429 / 5xx / network errors with backoff."""
+
+    def _make_resp(self, status=200, body=b"img", retry_after=None):
+        import requests
+
+        resp = Mock()
+        resp.status_code = status
+        resp.headers = {}
+        if retry_after is not None:
+            resp.headers["Retry-After"] = str(retry_after)
+        resp.iter_content.return_value = iter([body])
+
+        def do_raise():
+            error = requests.HTTPError(str(status), response=resp)
+            raise error
+
+        if status >= 400:
+            resp.raise_for_status.side_effect = do_raise
+        return resp
+
+    def _run(self, responses, max_retries=2, retry_delays=(2.0, 5.0), check=None):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("core.google_images.requests.get", side_effect=responses) as get_mock:
+                with patch("core.google_images.time.sleep") as sleep_mock:
+                    from core.google_images import download_image
+
+                    path = download_image(
+                        "https://cdn.example/a.jpg", tmp,
+                        max_retries=max_retries,
+                        retry_delays=retry_delays,
+                    )
+                    if check is not None:
+                        check(path, get_mock, sleep_mock)
+    def test_429_then_success_retries_and_saves(self):
+        def check(path, get_mock, sleep_mock):
+            self.assertTrue(path.exists())
+            self.assertEqual(path.read_bytes(), b"img")
+            self.assertEqual(get_mock.call_count, 2)
+            sleep_mock.assert_called_once_with(2.0)
+
+        self._run([self._make_resp(429), self._make_resp(200)], check=check)
+    def test_two_500_then_success_backoff_escalates(self):
+        def check(path, get_mock, sleep_mock):
+            self.assertTrue(path.exists())
+            self.assertEqual(get_mock.call_count, 3)
+            self.assertEqual(sleep_mock.call_args_list[0].args, (2.0,))
+            self.assertEqual(sleep_mock.call_args_list[1].args, (5.0,))
+
+        self._run(
+            [self._make_resp(500), self._make_resp(503), self._make_resp(200)],
+            check=check,
+        )
+    def test_permanent_404_fails_immediately(self):
+        import requests
+        import tempfile
+
+        with self.assertRaises(requests.HTTPError):
+            with tempfile.TemporaryDirectory() as tmp:
+                with patch("core.google_images.requests.get",
+                           return_value=self._make_resp(404)) as get_mock:
+                    with patch("core.google_images.time.sleep") as sleep_mock:
+                        from core.google_images import download_image
+
+                        download_image("https://cdn.example/gone.jpg", tmp)
+        self.assertEqual(get_mock.call_count, 1)
+        sleep_mock.assert_not_called()
+    def test_persistent_429_raises_after_max_retries(self):
+        import requests
+        import tempfile
+
+        with self.assertRaises(requests.HTTPError):
+            with tempfile.TemporaryDirectory() as tmp:
+                with patch("core.google_images.requests.get",
+                           return_value=self._make_resp(429)) as get_mock:
+                    with patch("core.google_images.time.sleep"):
+                        from core.google_images import download_image
+
+                        download_image(
+                            "https://cdn.example/busy.jpg", tmp, max_retries=1,
+                            retry_delays=(2.0,),
+                        )
+        self.assertEqual(get_mock.call_count, 2)
+
+    def test_network_error_then_success_retries(self):
+        import requests
+
+        network_error = requests.ConnectionError("reset")
+
+        def check(path, get_mock, sleep_mock):
+            self.assertTrue(path.exists())
+            self.assertEqual(get_mock.call_count, 2)
+            sleep_mock.assert_called_once_with(2.0)
+
+        self._run([network_error, self._make_resp(200)], check=check)
+    def test_retry_after_header_overrides_delay(self):
+        def check(path, get_mock, sleep_mock):
+            self.assertTrue(path.exists())
+            sleep_mock.assert_called_once_with(12.0)
+
+        self._run(
+            [self._make_resp(429, retry_after=12), self._make_resp(200)],
+            check=check,
+        )
+    def test_persistent_network_error_raises(self):
+        import requests
+        import tempfile
+
+        with self.assertRaises(requests.ConnectionError):
+            with tempfile.TemporaryDirectory() as tmp:
+                with patch("core.google_images.requests.get",
+                           side_effect=requests.ConnectionError("down")) as get_mock:
+                    with patch("core.google_images.time.sleep"):
+                        from core.google_images import download_image
+
+                        download_image(
+                            "https://cdn.example/down.jpg", tmp, max_retries=2,
+                            retry_delays=(1.0, 1.0),
+                        )
+        self.assertEqual(get_mock.call_count, 3)
+
+

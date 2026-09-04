@@ -701,8 +701,14 @@ def download_image(
     save_dir: str | Path,
     filename: str | None = None,
     crop_ratio: str | tuple | None = None,
+    max_retries: int = 2,
+    retry_delays: tuple[float, float] = (2.0, 5.0),
 ) -> Path:
     """Download a single image from URL and save to disk.
+
+    Transient failures (HTTP 429 rate limit, HTTP 5xx, network errors) are
+    retried with backoff - Wikimedia/Openverse are frequently rate-limited.
+    Permanent HTTP errors (403, 404, ...) fail immediately.
 
     Args:
         url: Image URL to download
@@ -710,12 +716,15 @@ def download_image(
         filename: Optional custom filename. Auto-generated if not provided.
         crop_ratio: Optional aspect ratio ("1:1", "16:9", (4, 5), ...) -
             center-crops the saved file with Pillow when given.
+        max_retries: Extra attempts after the first one (default 2 = 3 tries).
+        retry_delays: Seconds to sleep before each retry; honours the
+            server's Retry-After header when it is a number.
 
     Returns:
         Path to the saved file
 
     Raises:
-        requests.RequestException: If download fails
+        requests.RequestException: If download fails after all retries
         OSError: If file write fails
     """
     save_dir = Path(save_dir)
@@ -737,12 +746,38 @@ def download_image(
         "Referer": "https://www.google.com/",
     }
 
-    resp = requests.get(url, headers=headers, timeout=30, stream=True)
-    resp.raise_for_status()
+    resp = None
+    retry_after = None
+    for attempt in range(max_retries + 1):
+        try:
+            resp = requests.get(url, headers=headers, timeout=30, stream=True)
+            resp.raise_for_status()
+            break  # success
+        except requests.HTTPError as exc:
+            code = exc.response.status_code if exc.response is not None else 0
+            retryable = code == 429 or code >= 500
+            if resp is not None:
+                resp.close()
+            if not retryable or attempt >= max_retries:
+                raise
+            if exc.response is not None:
+                retry_after = exc.response.headers.get("Retry-After")
+        except requests.RequestException:
+            if resp is not None:
+                resp.close()
+            if attempt >= max_retries:
+                raise
+
+        wait = retry_delays[attempt] if attempt < len(retry_delays) else retry_delays[-1]
+        if retry_after and retry_after.isdigit():
+            wait = max(wait, min(int(retry_after), 30))
+        retry_after = None
+        time.sleep(wait)
 
     with open(save_path, "wb") as f:
         for chunk in resp.iter_content(chunk_size=8192):
             f.write(chunk)
+    resp.close()
 
     crop = _resolve_crop(crop_ratio)
     if crop is not None and save_path.exists() and save_path.stat().st_size > 0:
