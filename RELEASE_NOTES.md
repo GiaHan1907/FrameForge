@@ -1,6 +1,15 @@
 # FrameForge — Release Notes
 
-> Bản mới nhất: **v0.1.41**. Lịch sử đầy đủ từng bản: [CHANGELOG.md](CHANGELOG.md). Ghi chú riêng cho một số bản cũ: RELEASE_NOTES_v0.1.31.md, RELEASE_NOTES_v0.1.32.md, RELEASE_NOTES_v0.1.33.md, UPDATE_GUIDE_v0.1.31.md.
+> Bản mới nhất: **v0.1.42**. Lịch sử đầy đủ từng bản: [CHANGELOG.md](CHANGELOG.md). Ghi chú riêng cho một số bản cũ: RELEASE_NOTES_v0.1.31.md, RELEASE_NOTES_v0.1.32.md, RELEASE_NOTES_v0.1.33.md, UPDATE_GUIDE_v0.1.31.md.
+
+# FrameForge v0.1.42
+
+## Sửa lỗi thiếu bs4 trên bản cài Windows (.exe)
+
+- Ứng dụng bản đóng gói lỗi `ModuleNotFoundError: No module named 'bs4'` ngay khi khởi động: `core/google_images.py` được nhúng dạng source nên PyInstaller không tự phát hiện import `BeautifulSoup` bên trong file.
+- Khai báo tường minh `hiddenimports += ["bs4", "soupsieve"]` trong cả 3 spec PyInstaller (minimal / onedir / full) - bản cài này bundle đầy đủ 2 thư viện.
+- Phòng thủ thêm: import bs4 chuyển thành lazy, chỉ nạp trong hàm parse HTML duy nhất cần nó; nếu thiếu bs4, parser fallback trả về rỗng thay vì làm sập toàn app.
+- Thêm 3 unit test: 3 spec đều phải chứa hiddenimports bs4/soupsieve (chống tái phạm) + parser xử lý đúng khi có và khi không có bs4 (mô phỏng qua sys.modules). Tổng suite 328 tests.
 
 # FrameForge v0.1.41
 
@@ -407,4 +416,5 @@ Workflow dùng `GITHUB_TOKEN` với `contents: write`. Repository phải cho ph�
 Kênh `stable` tạo `latest.json` và GitHub Release thông thường. Kênh `beta` tạo prerelease và asset `latest-beta.json`; người dùng chọn kênh trong UI hoặc đặt `FRAMEFORGE_UPDATE_CHANNEL=beta`. Updater chỉ chấp nhận manifest đúng channel, HTTPS và SHA-256 hợp lệ. Stable release mới sẽ ghi metadata rollback tới stable release trước đó nếu asset `latest.json` cũ còn truy cập được.
 
 Để ký installer bằng Authenticode, tạo hai Actions secrets: `WINDOWS_CERTIFICATE_BASE64` chứa file PFX đã mã hóa Base64 và `WINDOWS_CERTIFICATE_PASSWORD` chứa mật khẩu PFX. Workflow sẽ dùng `signtool.exe`, timestamp SHA-256 và kiểm tra `Get-AuthenticodeSignature`. Nếu secrets chưa được cấu hình, build vẫn phát hành nhưng manifest ghi rõ `signature_status=unsigned`; không nên coi bản unsigned là bản phân phối production cuối cùng.
+
 
