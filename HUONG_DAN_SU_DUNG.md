@@ -425,7 +425,7 @@ Báo cáo có trường `rejected_motion_blur` để biết bao nhiêu frame b�
 
 ## 16. Tải queue nhiều video và playlist
 
-Trong tab **⬇️ Tải video công khai** (mở expander `⇩ Tải video công khai — URL · chất lượng · giới hạn`), nhập mỗi URL trên một dòng trong ô *URL video hoặc playlist*. Có thể trộn URL video đơn và URL playlist trong cùng một queue. Trường **Tối đa mỗi playlist** giới hạn số mục lấy từ từng playlist; tổng số URL trong một lần gọi được giới hạn ở mức an toàn 100 URL. Video tải xong tự xuất hiện trong sidebar ở nhóm `01 · Nguồn video` và được xem preview trong tab Xử lý video như video upload (khung 16:9 tối đa 560px, tự co trên màn hình hẹp).
+Trong tab **⬇️ Tải video công khai** (mở expander `⇩ Tải video công khai — URL · chất lượng · giới hạn`), nhập mỗi URL trên một dòng trong ô *URL video hoặc playlist*. Có thể trộn URL video đơn và URL playlist trong cùng một queue. Trường **Tối đa mỗi playlist** giới hạn số mục lấy từ từng playlist; tổng số URL trong một lần gọi được giới hạn ở mức an toàn 100 URL. Video tải xong tự xuất hiện trong sidebar ở nhóm `01 · Nguồn video` và được xem preview trong tab ⚙️ Xử lý video như video upload (khung 16:9 tối đa 560px, tự co trên màn hình hẹp).
 
 Ứng dụng xử lý queue tuần tự, hiển thị progress tải theo file và tự retry từng URL theo trường **Retry tải**. Video tải thành công được đổi tên gọn theo timestamp dạng `video_YYYYMMDD_HHMMSS.ext`; nếu trùng thời điểm, hậu tố số được thêm tự động. Title, URL và playlist index vẫn nằm trong metadata kết quả. Nếu một URL vẫn gặp lỗi sau các lần thử, thông báo sẽ ghi rõ URL và số lần đã thử; các video tải thành công trước đó vẫn được giữ lại để preview hoặc tải ZIP.
 
@@ -580,7 +580,7 @@ Workflow GitHub Actions tạo `latest.json` trong mỗi GitHub Release. Để b�
 set FRAMEFORGE_UPDATE_MANIFEST_URL=https://github.com/GiaHan1907/FrameForge/releases/latest/download/latest.json
 ```
 
-Repository FrameForge hiện là public, nên app có thể đọc manifest và tải asset từ GitHub Release mà không cần Personal Access Token. App đã có URL manifest public mặc định; có thể ghi đè bằng `FRAMEFORGE_UPDATE_MANIFEST_URL` nếu dùng feed khác. Toàn bộ điều khiển cập nhật (chọn kênh stable/beta, trạng thái yt-dlp, xem release notes, nút **Cập nhật ngay**, rollback) nằm trong tab **📁 Cài đặt & Lịch sử** → expander cập nhật; khi có bản app mới, nhãn expander tự đổi thành `🔔 Có bản FrameForge X — Cập nhật & kênh`. Preset cá nhân và lịch sử job cũng nằm trong tab này (2 expander thu gọn riêng).
+Repository FrameForge hiện là public, nên app có thể đọc manifest và tải asset từ GitHub Release mà không cần Personal Access Token. App đã có URL manifest public mặc định; có thể ghi đè bằng `FRAMEFORGE_UPDATE_MANIFEST_URL` nếu dùng feed khác. Toàn bộ điều khiển cập nhật (chọn kênh stable/beta, trạng thái yt-dlp, xem release notes, nút **Cập nhật ngay**, rollback) nằm trong tab **📁 Cài đặt & Lịch sử** → expander cập nhật; khi có bản app mới, nhãn expander tự đổi thành `🔔 Có bản FrameForge X — Cập nhật & kênh`. Preset cá nhân nằm trong expander **Preset cá nhân và cấu hình**, lịch sử job trong expander **Lịch sử job (N)** — cả hai đều thu gọn trong tab này.
 
 Có thể tắt updater EXE bằng:
 

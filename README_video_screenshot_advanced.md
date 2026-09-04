@@ -122,7 +122,7 @@ Sau đó mở địa chỉ được Streamlit hiển thị, thường là `http:
 
 Trong giao diện (bố cục v0.1.39), toàn bộ cấu hình nằm ở **sidebar** chia 4 nhóm khớp wizard: `01 · Nguồn video` (upload nhiều video mp4/mov/mkv/avi/webm/m4v/ts/mts), `02 · Cách chọn frame`, `03 · Chất lượng & tốc độ`, `04 · Đầu ra`. Nội dung chính gồm 3 tab: **⚙️ Xử lý video** (wizard 4 bước + 4 card tóm tắt + nút **Bắt đầu xử lý** + preview workspace), **⬇️ Tải video công khai** (yt-dlp) và **📁 Cài đặt & Lịch sử** (cập nhật, preset cá nhân, lịch sử job). Có bốn chế độ chọn frame: **Best frame per scene**, **Scene detection**, **Mỗi N giây** và **Đúng N frame**; ngưỡng scene, độ nét, dHash, motion blur, định dạng và kích thước ảnh đều chỉnh được trong sidebar (một số trường nâng cao nằm trong các expander thu gọn).
 
-Sau khi bấm **Bắt đầu xử lý**, tab Xử lý video hiển thị progress theo từng video (FPS/ETA/RAM, tạm dừng/tiếp tục/hủy/retry); khi hoàn tất có nút tải file ZIP chứa toàn bộ screenshot cùng `report.json` (giao diện chỉ xem trước một phần ảnh). Hướng dẫn từng màn hình chi tiết tại [HUONG_DAN_SU_DUNG.md](HUONG_DAN_SU_DUNG.md).
+Sau khi bấm **Bắt đầu xử lý**, tab ⚙️ Xử lý video hiển thị progress theo từng video (FPS/ETA/RAM, tạm dừng/tiếp tục/hủy/retry); khi hoàn tất có nút tải file ZIP chứa toàn bộ screenshot cùng `report.json` (giao diện chỉ xem trước một phần ảnh). Hướng dẫn từng màn hình chi tiết tại [HUONG_DAN_SU_DUNG.md](HUONG_DAN_SU_DUNG.md).
 
 ## 4. Tham số chính
 
