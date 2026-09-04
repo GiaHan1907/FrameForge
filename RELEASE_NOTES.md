@@ -1,4 +1,24 @@
 # FrameForge Windows Release Notes
+# FrameForge v0.1.39
+
+## Giao diện rút gọn — giảm cuộn tối đa
+
+Toàn bộ giao diện được thu gọn để mở app là làm được việc ngay, hầu như không phải cuộn:
+
+- Trang chính chia thành **3 tab**: `⚙️ Xử lý video`, `⬇️ Tải video công khai`, `📁 Cài đặt & Lịch sử`. Tab Xử lý chỉ còn: wizard 4 bước (1 dòng) + 4 card tóm tắt + nút **Bắt đầu xử lý**.
+- **Sidebar ngắn lại ~một nửa**: các tùy chọn nâng cao (scene detection, hiệu năng, lọc mờ/trùng, retry/cache) gói trong 4 expander thu gọn; vẫn giữ nguyên mọi giá trị và preset đã lưu.
+- **Preview workspace** (video player + crop overlay + timeline + frame gallery) gói trong 1 expander thu gọn, chỉ còn 1 dòng chọn video khi chưa cần xem.
+- **Form tải video** (URL, chất lượng, giới hạn playlist, retry) gói trong 1 expander thu gọn; label tự báo số URL đã dán. Kết quả tải vẫn hiện phía dưới khi đang chạy.
+- **Panel Cập nhật & kênh** gói trong expander thu gọn; khi có bản mới label tự đổi thành `🔔 Có bản FrameForge X`. Preset cá nhân và lịch sử job cũng là expander thu gọn riêng.
+- Các widget keys không đổi, nên preset, autosave và mọi cấu hình đã lưu từ bản cũ vẫn giữ nguyên.
+
+## Sửa lỗi ổn định trên bản cài Windows (.exe)
+
+- **Hết lỗi `ModuleNotFoundError: No module named 'pyarrow'`**: bảng Lịch sử job chuyển sang HTML/CSS thuần (thay `st.dataframe`), profile minimal không còn cần Pandas/PyArrow.
+- Sửa các spec PyInstaller: thiếu trailing comma (lỗi `'tuple' object is not callable`), thiếu `core/google_images.py`, `core/pipeline.py` trong datas; bổ sung `requests` + `beautifulsoup4` vào requirements.
+- Sửa hàng loạt lỗi chạy bản cài: thiếu `import streamlit as st` trong `ui/sidebar.py`, `Expander` thiếu field `entries`, biến `count`/`downloaded_paths` chưa gán, đường dẫn tải về giờ xử lý đúng khi là chuỗi.
+- **Tìm ảnh theo địa điểm** giờ chạy ngay trong app (trước đây dùng `st.page_link` bị lỗi trên bản đóng gói).
+- Release tự **publish** khi push tag (không còn release draft); `latest.json` kèm metadata rollback tới bản stable trước đó.
 
 # FrameForge v0.1.30
 

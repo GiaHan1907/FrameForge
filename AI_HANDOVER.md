@@ -4,7 +4,7 @@
 > build/release để **AI hoặc developer kế tiếp** hiểu nhanh project và
 > không lặp lại các sai lầm đã sửa.
 >
-> Cập nhật lần cuối: 2026-09-03 (v0.1.37)
+> Cập nhật lần cuối: 2026-09-04 (v0.1.39)
 
 ---
 
@@ -268,3 +268,10 @@ python -m unittest discover -s tests -p "test_*.py"   # hiện: 259 pass, 27 ski
 - Kết quả tải (progress, lỗi, nút zip) hiển thị BÊN NGOÀI expander để thấy khi đang chạy.
 - Tab "Cài đặt & Lịch sử": phần "Cập nhật & kênh" (channel, yt-dlp status, update/rollback) gói trong 1 expander collapsed; label tự chuyển thành "🔔 Có bản FrameForge X — Cập nhật & kênh" khi có bản mới. Preset cá nhân + Lịch sử job vẫn là 2 expander collapsed riêng.
 - Giữ nguyên: `with st.container(border=True):`, dòng `download_input_col, quality_col = st.columns([2.35, 1.0], gap="large")`, `.download-action-spacer`, tất cả widget keys (test_streamlit_source_inspection phụ thuộc).
+
+
+## Release v0.1.39 — lịch sử sạch (2026-09-04)
+
+- Bump `frameforge_version.txt` lên 0.1.39 và thêm entry RELEASE_NOTES.md mới (file này nhúng vào `latest.json`, là "What's new" trong app).
+- ⚠️ Tag/release v0.1.39 CŨ từng trỏ commit `0935d8d` (trước loạt UI compaction, build 09-03) đã bị XÓA để tránh updater quảng bá bản lỗi thời; tag mới đặt tại commit bump version.
+- Quy trình bản mới gọn: bump frameforge_version.txt → commit/push main → xóa release+tag cũ cùng tên nếu có (gh release delete --cleanup-tag) → git tag vX.Y.Z && git push origin vX.Y.Z → CI auto-build + auto-publish.
