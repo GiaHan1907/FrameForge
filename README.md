@@ -14,7 +14,7 @@ Bản mới nhất: **v0.1.39** — tải tại [GitHub Releases](https://github
 | Crop/đầu ra | Tỉ lệ `16:9`, `9:16`, `4:5`, `1:1`, encode profile nhanh/chất lượng cao |
 | Queue | SQLite persistence, pause/resume/cancel/retry, checkpoint và crash recovery |
 | Downloader | Tải URL công khai qua yt-dlp (Facebook, TikTok, Pinterest...), retry exponential backoff và staging an toàn |
-| Tìm ảnh theo địa điểm | Tìm kiếm ảnh qua DuckDuckGo Images (không cần API key), duyệt kết quả và tải ảnh về máy |
+| Tìm ảnh theo địa điểm | 6 nguồn: DuckDuckGo, Wikimedia Commons (CC/không key), Openverse, Pexels, Pixabay, Unsplash - kèm license/tác giả, crop ratio khi tải và file sources.tsv ghi credit |
 | Preset & lịch sử | Preset cá nhân, xuất/nhập cấu hình JSON, lịch sử job (50 job gần nhất) |
 | Cập nhật | Kênh stable/beta, release notes hiển thị trong app, rollback có xác minh SHA-256 |
 | Desktop | Installer Inno Setup, FFmpeg nhúng, watchdog tự dừng job khi đóng browser, silent console |
@@ -28,6 +28,20 @@ Giao diện Streamlit được tổ chức thành **3 tab** để không phải 
 - **📁 Cài đặt & Lịch sử** — kênh cập nhật + update/rollback, preset cá nhân, lịch sử job.
 
 Các tùy chọn nâng cao (scene detection, hiệu năng, lọc mờ/trùng, retry/cache, form tải video, video player + timeline) nằm trong **expander thu gọn**; toàn bộ cấu hình wizard nằm trong tab ⚙️ Xử lý video, còn sidebar chỉ giữ thương hiệu và nút *Tìm ảnh theo địa điểm* (bật/tắt ngay trong giao diện).
+
+### Tìm ảnh theo địa điểm
+
+Bấm nút **🔍 Tìm ảnh theo địa điểm** trên sidebar để bật khu vực tìm kiếm ngay trong trang chính: nhập địa điểm/keywords, chọn **Nguồn ảnh** và **Số ảnh** (5-50) rồi bấm **Tìm kiếm**. Tính năng dùng để tra cứu ảnh theo địa điểm làm tài liệu tham khảo, tách biệt khỏi tải video và cắt screenshot.
+
+**6 nguồn ảnh** (dropdown **Nguồn ảnh**):
+
+- `DuckDuckGo` (mặc định) và `Wikimedia Commons (CC, no key)` - **không cần API key**; Wikimedia trả ảnh CC/phạm vi công cộng kèm license + tác giả.
+- `Openverse (CC)` - tổng hợp ảnh Creative Commons từ nhiều kho; không bắt buộc key (token chỉ để tăng giới hạn tốc độ).
+- `Pexels`, `Pixabay`, `Unsplash` - **cần API key miễn phí**: đăng ký tại `https://www.pexels.com/api/`, `https://pixabay.com/api/docs/`, `https://unsplash.com/developers`.
+
+**Cách nhập API key**: dán vào ô **🔑 API key cho …** hiện ra khi chọn nguồn cần key (chỉ lưu trong phiên làm việc), hoặc đặt biến môi trường `FRAMEFORGE_PEXELS_API_KEY` / `FRAMEFORGE_PIXABAY_API_KEY` / `FRAMEFORGE_UNSPLASH_ACCESS_KEY` / `FRAMEFORGE_OPENVERSE_TOKEN` rồi khởi động lại ứng dụng.
+
+**Tải ảnh**: ô **📁 Thư mục lưu ảnh** chọn nơi lưu; dropdown **Tỷ lệ crop khi tải** gồm `Giữ nguyên`, `Vuông 1:1`, `4:5 (Portrait)`, `3:2`, `16:9 (Landscape)`, `9:16 (Story/Reels)` - mỗi ảnh được center-crop đúng tỷ lệ bằng Pillow trước khi lưu. Bấm **Tải #N** lưu từng ảnh hoặc **📥 Tải tất cả**; nguồn có license/tác giả tự ghi thêm file `sources.tsv` (file, license, tác giả, trang nguồn, URL gốc) để ghi credit.
 
 ## Ba bản cập nhật gần nhất
 
@@ -157,3 +171,4 @@ python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
 Một số test cần OpenCV (`cv2`/`numpy`) và sẽ tự bỏ qua nếu thiếu. Bản desktop dùng `console=False`; các script `.bat` vẫn mở console vì chúng dành cho development/build. Nếu EXE vẫn chớp terminal, kiểm tra launcher log và Process Monitor capture trước khi chia sẻ báo cáo lỗi.
+

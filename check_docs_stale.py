@@ -116,6 +116,10 @@ CANONICAL_LABELS: list[tuple[str, str]] = [
     ("Phân tích nhanh scene thật", "ui/preview_section.py"),
     ("🔍 Tìm ảnh theo địa điểm", "streamlit_app.py: sidebar button"),
     ("Tìm kiếm", "ui/image_search_inline.py"),
+    # Image search sources + crop - ui/image_search_inline.py (selectbox)
+    ("Nguồn ảnh", "ui/image_search_inline.py"),
+    ("Tỷ lệ crop khi tải", "ui/image_search_inline.py"),
+    ("📥 Tải tất cả", "ui/image_search_inline.py"),
     # Che do chon frame - ui/sidebar.py (Radio)
     ("Best frame per scene", "ui/sidebar.py"),
     ("Scene detection", "ui/sidebar.py"),

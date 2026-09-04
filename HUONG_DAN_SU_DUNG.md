@@ -441,14 +441,22 @@ https://pin.it/...
 
 URL phải là URL công khai thuộc Facebook, TikTok hoặc Pinterest. Ứng dụng không hỗ trợ URL riêng tư, nội dung yêu cầu đăng nhập, DRM hoặc kỹ thuật vượt cơ chế bảo vệ.
 
-## Tìm ảnh theo địa điểm (không cần API key)
+## Tìm ảnh theo địa điểm (đa nguồn, có license rõ ràng)
 
-Tính năng riêng biệt, không liên quan đến tải video hoặc cắt screenshot — dùng để tra cứu ảnh theo địa điểm làm tài liệu tham khảo:
+Tính năng riêng biệt, không liên quan đến tải video hoặc cắt screenshot - dùng để tra cứu ảnh theo địa điểm làm tài liệu tham khảo:
 
 1. Ở đầu sidebar bấm nút **🔍 Tìm ảnh theo địa điểm** để bật/hiện khu vực tìm kiếm ngay trong trang chính (bấm lại lần nữa để ẩn).
-2. Nhập địa điểm hoặc keywords (ví dụ: `Hoàn Kiếm, Hà Nội`), chọn **Số ảnh tối đa** (5–50) rồi bấm **Tìm kiếm**.
-3. FrameForge tìm qua DuckDuckGo Images (Google chặn truy cập tự động nên đã chuyển nguồn; vẫn không cần API key, không cần đăng nhập) và hiển thị lưới ảnh kèm tên, nút **Tải #N** từng ảnh hoặc **📥 Tải tất cả** về thư mục đã chọn.
-4. Ô **📁 Thư mục lưu ảnh** (mặc định `Videos\FrameForge\images`) chọn nơi lưu; bấm **📥 Tải tất cả** để tải toàn bộ, hoặc **Tải #N** ở từng ảnh để lưu riêng.
+2. Nhập địa điểm hoặc keywords (ví dụ: `Hoàn Kiếm, Hà Nội`), chọn **Nguồn ảnh** và **Số ảnh** (5-50) rồi bấm **Tìm kiếm**.
+3. **Nguồn ảnh** gồm 6 lựa chọn trong dropdown (tên hiển thị đúng như giao diện):
+   - `DuckDuckGo` (mặc định) và `Wikimedia Commons (CC, no key)` - **không cần API key**; Wikimedia trả ảnh CC/phạm vi công cộng kèm license + tác giả.
+   - `Openverse (CC)` - tổng hợp ảnh Creative Commons từ nhiều kho; **không bắt buộc key**, chỉ cần token khi muốn tăng giới hạn tốc độ.
+   - `Pexels`, `Pixabay`, `Unsplash` - **cần API key miễn phí**; khi chọn các nguồn này mà chưa đặt key, giao diện hiện ô **🔑 API key cho …** kèm link đăng ký để dán key trước khi bấm **Tìm kiếm**.
+4. **Cách lấy và nhập API key**:
+   - Pexels: `https://www.pexels.com/api/` - Pixabay: `https://pixabay.com/api/docs/` - Unsplash: `https://unsplash.com/developers` (Access Key) - Openverse (tùy chọn): `https://api.openverse.org/`.
+   - Key dán vào ô **🔑 API key cho …** chỉ có giá trị trong phiên làm việc hiện tại. Muốn dùng lâu dài, đặt biến môi trường `FRAMEFORGE_PEXELS_API_KEY` / `FRAMEFORGE_PIXABAY_API_KEY` / `FRAMEFORGE_UNSPLASH_ACCESS_KEY` / `FRAMEFORGE_OPENVERSE_TOKEN` rồi khởi động lại ứng dụng - khi đó ô nhập key sẽ không hiện vì app đọc thẳng từ biến môi trường.
+5. Kết quả hiển thị lưới ảnh kèm tên; với nguồn có license, mỗi ảnh hiện thêm dòng **license + tác giả**. Bấm **Tải #N** để lưu từng ảnh hoặc **📥 Tải tất cả** để lưu toàn bộ vào thư mục đã chọn.
+6. Ô **📁 Thư mục lưu ảnh** (mặc định `Videos\FrameForge\images`) chọn nơi lưu. Kế bên là **Tỷ lệ crop khi tải** với các lựa chọn `Giữ nguyên`, `Vuông 1:1`, `4:5 (Portrait)`, `3:2`, `16:9 (Landscape)`, `9:16 (Story/Reels)` - mỗi ảnh tải về được center-crop đúng tỷ lệ bằng Pillow trước khi lưu.
+7. Khi tải từ nguồn có metadata license/tác giả, FrameForge ghi kèm file **`sources.tsv`** trong thư mục lưu (cột: file, license, tác giả, trang nguồn, URL gốc) để ghi credit hợp pháp.
 
 Chỉ nên tải ảnh bạn có quyền sử dụng; kiểm tra nguồn và bản quyền khi dùng cho nội dung thương mại.
 
@@ -600,3 +608,4 @@ Ngay khi mở ứng dụng, bấm mở expander **📁 Thư mục lưu file** (t
 Video tải từ URL công khai sẽ được lưu trực tiếp vào thư mục video. Mỗi lần bấm **Bắt đầu xử lý**, FrameForge tạo thư mục con dạng `FrameForge_YYYYMMDD_HHMMSS` trong thư mục screenshot, lưu ảnh và `report.json` tại đó. Vì vậy không cần tải file ZIP mới xem được kết quả; nút tải ZIP chỉ còn là lựa chọn phụ để chia sẻ kết quả.
 
 Bản Windows đã nhúng native folder picker qua `tkinter`. Nếu đang chạy trên máy chủ không có giao diện đồ họa, nhập đường dẫn thủ công vào ô text. Không nên chọn thư mục bên trong thư mục cài đặt ứng dụng; nên dùng thư mục Documents/Videos riêng của người dùng.
+
