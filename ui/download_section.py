@@ -86,6 +86,10 @@ def render_download_section() -> None:
 
     Reads/writes ``st.session_state["download_dir"]`` and
     ``st.session_state["downloaded_paths"]``.
+
+    The whole form (URLs, quality, limits, retry) sits inside one
+    collapsed expander so the download tab stays a single short row
+    while idle; results render below the expander once a download runs.
     """
     # Clean up stale paths
     downloaded_paths = [
@@ -93,64 +97,71 @@ def render_download_section() -> None:
     ]
     st.session_state["downloaded_paths"] = [str(item) for item in downloaded_paths]
 
-    st.markdown('<div class="section-heading"><span>⇩</span> Tải video công khai</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<p class="muted-note">Dán một hoặc nhiều URL công khai từ Facebook, TikTok hoặc Pinterest. Mỗi dòng là một video hoặc một playlist; chỉ tải nội dung bạn có quyền sử dụng.</p>',
-        unsafe_allow_html=True,
-    )
+    urls_raw = str(st.session_state.get("download_urls_text") or "")
+    n_urls = len([ln for ln in urls_raw.splitlines() if ln.strip()])
+    panel_label = "⇩ Tải video công khai — URL · chất lượng · giới hạn"
+    if n_urls:
+        panel_label += f" ({n_urls} URL)"
 
-    # FFmpeg health
-    download_health = ffmpeg_health()
-    if download_health["ready_for_merge"]:
-        health_source = "nhúng trong bundle" if download_health.get("source") == "embedded" else "trong PATH"
-        st.caption(f"✓ FFmpeg sẵn sàng ({health_source}) · {download_health.get('version') or 'version không rõ'}")
-    else:
-        st.warning("Chưa tìm thấy FFmpeg nhúng hoặc trong PATH. Một số format video/audio riêng có thể không ghép được.")
+    with st.expander(panel_label, expanded=False):
+        st.markdown(
+            '<p class="muted-note">Dán một hoặc nhiều URL công khai từ Facebook, TikTok hoặc Pinterest. '
+            "Mỗi dòng là một video hoặc một playlist; chỉ tải nội dung bạn có quyền sử dụng.</p>",
+            unsafe_allow_html=True,
+        )
 
-    with st.container(border=True):
-        st.markdown('<div class="download-panel-title">Danh sách tải</div>', unsafe_allow_html=True)
-        download_input_col, quality_col = st.columns([2.35, 1.0], gap="large")
-        with download_input_col:
-            download_urls_text = st.text_area(
-                "URL video hoặc playlist",
-                placeholder="Mỗi dòng một URL video hoặc playlist…",
-                height=116,
-                key="download_urls_text",
-                help="Dán URL công khai; mỗi dòng là một video hoặc một playlist.",
-            )
-        with quality_col:
-            download_quality = st.selectbox(
-                "Chất lượng tải",
-                list(QUALITY_FORMATS),
-                index=0,
-                key="download_quality",
-            )
-            st.caption("Nguồn công khai được hỗ trợ bởi yt-dlp.")
+        # FFmpeg health
+        download_health = ffmpeg_health()
+        if download_health["ready_for_merge"]:
+            health_source = "nhúng trong bundle" if download_health.get("source") == "embedded" else "trong PATH"
+            st.caption(f"✓ FFmpeg sẵn sàng ({health_source}) · {download_health.get('version') or 'version không rõ'}")
+        else:
+            st.caption("⚠ Chưa tìm thấy FFmpeg nhúng hoặc trong PATH. Một số format video/audio riêng có thể không ghép được.")
 
-        limit_col, retry_col, action_col = st.columns([1.0, 1.0, 1.35], gap="medium")
-        with limit_col:
-            playlist_max_items = st.number_input(
-                "Tối đa mỗi playlist",
-                min_value=1,
-                max_value=500,
-                value=50,
-                step=1,
-                key="playlist_max_items",
-                help="Giới hạn số video lấy từ mỗi playlist.",
-            )
-        with retry_col:
-            download_retry_count = st.number_input(
-                "Số lần retry",
-                key="download_retry_count",
-                min_value=0,
-                max_value=5,
-                value=2,
-                step=1,
-                help="Số lần thử lại mỗi URL khi mạng hoặc nguồn tạm thời lỗi.",
-            )
-        with action_col:
-            st.markdown('<div class="download-action-spacer"></div>', unsafe_allow_html=True)
-            download_clicked = st.button("⇩  Tải queue", key="download_public_queue", type="primary", use_container_width=True)
+        with st.container(border=True):
+            st.markdown('<div class="download-panel-title">Danh sách tải</div>', unsafe_allow_html=True)
+            download_input_col, quality_col = st.columns([2.35, 1.0], gap="large")
+            with download_input_col:
+                download_urls_text = st.text_area(
+                    "URL video hoặc playlist",
+                    placeholder="Mỗi dòng một URL video hoặc playlist…",
+                    height=116,
+                    key="download_urls_text",
+                    help="Dán URL công khai; mỗi dòng là một video hoặc một playlist.",
+                )
+            with quality_col:
+                download_quality = st.selectbox(
+                    "Chất lượng tải",
+                    list(QUALITY_FORMATS),
+                    index=0,
+                    key="download_quality",
+                )
+                st.caption("Nguồn công khai được hỗ trợ bởi yt-dlp.")
+
+            limit_col, retry_col, action_col = st.columns([1.0, 1.0, 1.35], gap="medium")
+            with limit_col:
+                playlist_max_items = st.number_input(
+                    "Tối đa mỗi playlist",
+                    min_value=1,
+                    max_value=500,
+                    value=50,
+                    step=1,
+                    key="playlist_max_items",
+                    help="Giới hạn số video lấy từ mỗi playlist.",
+                )
+            with retry_col:
+                download_retry_count = st.number_input(
+                    "Số lần retry",
+                    key="download_retry_count",
+                    min_value=0,
+                    max_value=5,
+                    value=2,
+                    step=1,
+                    help="Số lần thử lại mỗi URL khi mạng hoặc nguồn tạm thời lỗi.",
+                )
+            with action_col:
+                st.markdown('<div class="download-action-spacer"></div>', unsafe_allow_html=True)
+                download_clicked = st.button("⇩  Tải queue", key="download_public_queue", type="primary", use_container_width=True)
 
     if not download_clicked:
         return

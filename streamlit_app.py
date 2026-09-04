@@ -667,56 +667,60 @@ with download_tab:
     render_download_section()
 
 with settings_tab:
-    st.markdown('<div class="section-heading"><span>⚙</span> Cập nhật & kênh</div>', unsafe_allow_html=True)
-    current_channel = get_update_channel()
-    channel_choice = st.selectbox(
-        "Kênh cập nhật",
-        ["stable", "beta"],
-        index=0 if current_channel == "stable" else 1,
-        format_func=lambda value: "Stable — bản ổn định" if value == "stable" else "Beta — bản thử nghiệm",
-        key="update_channel_choice",
-    )
-    if channel_choice != current_channel:
-        set_update_channel(channel_choice)
-        st.success(f"Đã chuyển sang kênh {channel_choice}. Kiểm tra lại feed ở lần tải giao diện kế tiếp.")
-        st.rerun()
+    if app_update_status.available and app_update_status.latest_version:
+        _update_label = f"🔔 Có bản FrameForge {app_update_status.latest_version} — Cập nhật & kênh"
+    else:
+        _update_label = "⚙ Cập nhật FrameForge · kênh cập nhật · yt-dlp"
+    with st.expander(_update_label, expanded=False):
+        current_channel = get_update_channel()
+        channel_choice = st.selectbox(
+            "Kênh cập nhật",
+            ["stable", "beta"],
+            index=0 if current_channel == "stable" else 1,
+            format_func=lambda value: "Stable — bản ổn định" if value == "stable" else "Beta — bản thử nghiệm",
+            key="update_channel_choice",
+        )
+        if channel_choice != current_channel:
+            set_update_channel(channel_choice)
+            st.success(f"Đã chuyển sang kênh {channel_choice}. Kiểm tra lại feed ở lần tải giao diện kế tiếp.")
+            st.rerun()
 
-    if update_status.updated:
-        st.info(f"Đã tải bản yt-dlp {update_status.latest_version}; bản cập nhật sẽ được kích hoạt ở lần mở ứng dụng kế tiếp.")
-    elif update_status.message and "mới nhất" not in update_status.message and "tắt" not in update_status.message and update_status.checked:
-        st.caption(f"yt-dlp updater: {update_status.message}")
+        if update_status.updated:
+            st.info(f"Đã tải bản yt-dlp {update_status.latest_version}; bản cập nhật sẽ được kích hoạt ở lần mở ứng dụng kế tiếp.")
+        elif update_status.message and "mới nhất" not in update_status.message and "tắt" not in update_status.message and update_status.checked:
+            st.caption(f"yt-dlp updater: {update_status.message}")
 
-    if app_update_status.available:
-        channel_label = "Beta" if app_update_status.channel == "beta" else "Stable"
-        st.info(f"[{channel_label}] Có bản cập nhật FrameForge {app_update_status.latest_version}. {app_update_status.message}")
-        if app_update_status.release_notes:
-            with st.expander("Xem release notes", expanded=False):
-                st.markdown(app_update_status.release_notes)
-                if app_update_status.release_notes_url:
-                    st.markdown(f"[Mở release notes trên GitHub]({app_update_status.release_notes_url})")
-        if st.button("Cập nhật ngay", type="primary", use_container_width=False):
-            with st.spinner("Đang tải, xác minh SHA-256 và mở Setup…"):
-                app_update_status = update_app_now(timeout=30.0)
-            if app_update_status.downloaded and app_update_status.installer_path:
-                st.success(app_update_status.message)
-            else:
-                st.error(app_update_status.message)
-
-    if app_update_status.rollback_available and app_update_status.rollback_version:
-        with st.expander(f"Rollback về FrameForge {app_update_status.rollback_version}", expanded=False):
-            st.caption("Chỉ dùng rollback khi bản hiện tại gặp lỗi. Installer rollback vẫn được kiểm tra HTTPS và SHA-256 trước khi mở.")
-            if st.button("Tải bản rollback", key="download_rollback"):
-                with st.spinner("Đang tải và xác minh installer rollback…"):
-                    rollback_status = rollback_app_now(timeout=30.0)
-                if rollback_status.downloaded:
-                    st.success(rollback_status.message)
+        if app_update_status.available:
+            channel_label = "Beta" if app_update_status.channel == "beta" else "Stable"
+            st.info(f"[{channel_label}] Có bản cập nhật FrameForge {app_update_status.latest_version}. {app_update_status.message}")
+            if app_update_status.release_notes:
+                with st.expander("Xem release notes", expanded=False):
+                    st.markdown(app_update_status.release_notes)
+                    if app_update_status.release_notes_url:
+                        st.markdown(f"[Mở release notes trên GitHub]({app_update_status.release_notes_url})")
+            if st.button("Cập nhật ngay", type="primary", use_container_width=False):
+                with st.spinner("Đang tải, xác minh SHA-256 và mở Setup…"):
+                    app_update_status = update_app_now(timeout=30.0)
+                if app_update_status.downloaded and app_update_status.installer_path:
+                    st.success(app_update_status.message)
                 else:
-                    st.error(rollback_status.message)
-            if st.button("Mở installer rollback", key="launch_rollback"):
-                if launch_rollback_installer():
-                    st.success("Đã mở installer rollback. Hãy hoàn tất cài đặt rồi khởi động lại FrameForge.")
-                else:
-                    st.error("Chưa có installer rollback hợp lệ; hãy tải lại trước.")
+                    st.error(app_update_status.message)
+
+        if app_update_status.rollback_available and app_update_status.rollback_version:
+            with st.expander(f"Rollback về FrameForge {app_update_status.rollback_version}", expanded=False):
+                st.caption("Chỉ dùng rollback khi bản hiện tại gặp lỗi. Installer rollback vẫn được kiểm tra HTTPS và SHA-256 trước khi mở.")
+                if st.button("Tải bản rollback", key="download_rollback"):
+                    with st.spinner("Đang tải và xác minh installer rollback…"):
+                        rollback_status = rollback_app_now(timeout=30.0)
+                    if rollback_status.downloaded:
+                        st.success(rollback_status.message)
+                    else:
+                        st.error(rollback_status.message)
+                if st.button("Mở installer rollback", key="launch_rollback"):
+                    if launch_rollback_installer():
+                        st.success("Đã mở installer rollback. Hãy hoàn tất cài đặt rồi khởi động lại FrameForge.")
+                    else:
+                        st.error("Chưa có installer rollback hợp lệ; hãy tải lại trước.")
 
     render_personal_config_panel()
     render_job_history()

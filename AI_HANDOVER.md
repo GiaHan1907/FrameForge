@@ -260,3 +260,11 @@ python -m unittest discover -s tests -p "test_*.py"   # hiện: 259 pass, 27 ski
 - Video player + crop overlay + timeline + thanh trượt preview + frame gallery gói trong 1 expander collapsed "Xem video · crop · timeline — <tên video>".
 - Vẫn giữ selectbox chọn video bên ngoài (1 dòng) để đổi video nhanh.
 - Giữ marker "Preview workspace" + "Frame gallery" (test_ui_visual_contract kiểm tra).
+
+
+## Download form + Update panel gọn hơn 0.1.38d (2026-09-04)
+
+- Tab "Tải video công khai": toàn bộ form (URL, chất lượng, playlist max, retry, nút Tải queue) gói trong 1 expander collapsed "⇩ Tải video công khai — URL · chất lượng · giới hạn" (label tự thêm "(N URL)" nếu session_state đã có URL).
+- Kết quả tải (progress, lỗi, nút zip) hiển thị BÊN NGOÀI expander để thấy khi đang chạy.
+- Tab "Cài đặt & Lịch sử": phần "Cập nhật & kênh" (channel, yt-dlp status, update/rollback) gói trong 1 expander collapsed; label tự chuyển thành "🔔 Có bản FrameForge X — Cập nhật & kênh" khi có bản mới. Preset cá nhân + Lịch sử job vẫn là 2 expander collapsed riêng.
+- Giữ nguyên: `with st.container(border=True):`, dòng `download_input_col, quality_col = st.columns([2.35, 1.0], gap="large")`, `.download-action-spacer`, tất cả widget keys (test_streamlit_source_inspection phụ thuộc).
