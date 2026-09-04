@@ -67,7 +67,6 @@ datas += [
     ("ui/preview_section.py", "ui"),
     ("ui/presets.py", "ui"),
     ("ui/desktop.py", "ui"),
-    ("ui/image_search.py", "ui"),
     ("ui/queue_ui.py", "ui"),
     ("ui/dashboard.py", "ui"),
     ("ui/timeline.py", "ui"),

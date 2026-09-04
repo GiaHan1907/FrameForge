@@ -53,7 +53,7 @@ ui/
   dashboard.py  # render_resource_meter, render_queue_dashboard, error_actions
   queue_ui.py processing.py processing_view.py  # queue UI
   logic.py      # pure functions (không phụ thuộc Streamlit) — test được
-  presets.py desktop.py image_search.py image_search_inline.py styles.css
+  presets.py desktop.py image_search_inline.py styles.css
 persistent_queue.py  # SQLite queue state machine
 queue_per_video.py   # retry/cancel per-video logic
 video_downloader.py  # yt-dlp wrapper
@@ -223,9 +223,7 @@ python -m unittest discover -s tests -p "test_*.py"   # hiện: 259 pass, 27 ski
 2. **Bỏ `continue-on-error`** ở test step sau khi fix flaky queue retry tests.
 3. User đã yêu cầu các tính năng content marketing (thumbnail generator,
    crop presets social media...) — chưa implement.
-4. `ui/image_search.py` (standalone page cũ) giờ không dùng — có thể xóa
-   hoặc merge vào `image_search_inline.py`.
-5. Local có folder `.agents/`, `.freebuff/`, `logs.zip` chưa commit — không
+4. Local có folder `.agents/`, `.freebuff/`, `logs.zip` chưa commit — không
    thuộc project, đừng `git add -A`.
 
 ---
