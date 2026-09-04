@@ -97,12 +97,10 @@ def build_sidebar_entries(
     # ── Conditional: scene detection settings ──────────────────────
     scene_mode = mode_label in {"Best frame per scene", "Scene detection"}
     if scene_mode:
-        entries.append(ConditionalBlock(
-            visible_when=lambda: True,
-            entries=[
-                SectionHeading("Tinh chỉnh scene detection"),
-                Slider("Độ nhạy thay đổi cảnh", "scene_threshold", 0.05, 0.95, 0.05,
-                       help="Thấp hơn sẽ nhạy hơn và có thể tạo nhiều scene hơn."),
+        entries.append(Slider("Độ nhạy thay đổi cảnh", "scene_threshold", 0.05, 0.95, 0.05,
+                              help="Thấp hơn sẽ nhạy hơn và có thể tạo nhiều scene hơn."))
+        entries.append(Expander(
+            "Scene detection nâng cao", expanded=False, entries=[
                 NumberInput("Khoảng cách tối thiểu giữa scene (giây)", "min_scene_gap",
                             min_value=0.1, step=0.1),
                 Slider("Ngưỡng chống flash", "flash_return_ratio", 0.10, 0.95, 0.05,
@@ -147,20 +145,24 @@ def build_sidebar_entries(
             ),
         ],
     ))
-    entries.append(NumberInput(
-        "Ngưỡng độ nét tối thiểu", "min_sharpness",
-        min_value=0.0, step=10.0,
-        help="Điểm đã chuẩn hóa về chiều rộng tham chiếu 640 px. Đặt 0 để tắt lọc mờ.",
-    ))
-    entries.append(Slider(
-        "Ngưỡng trùng dHash", "duplicate_threshold",
-        0, 32, 1,
-        help="Khoảng cách càng nhỏ thì frame càng giống. Đặt 0 để tắt lọc trùng.",
-    ))
-    entries.append(Slider(
-        "Ngưỡng motion blur", "motion_blur_threshold",
-        0.0, 1.0, 0.05,
-        help="Điểm càng cao càng có nguy cơ nhòe chuyển động. Đặt 0 để tắt.",
+    entries.append(Expander(
+        "Lọc mờ · trùng lặp", expanded=False, entries=[
+            NumberInput(
+                "Ngưỡng độ nét tối thiểu", "min_sharpness",
+                min_value=0.0, step=10.0,
+                help="Điểm đã chuẩn hóa về chiều rộng tham chiếu 640 px. Đặt 0 để tắt lọc mờ.",
+            ),
+            Slider(
+                "Ngưỡng trùng dHash", "duplicate_threshold",
+                0, 32, 1,
+                help="Khoảng cách càng nhỏ thì frame càng giống. Đặt 0 để tắt lọc trùng.",
+            ),
+            Slider(
+                "Ngưỡng motion blur", "motion_blur_threshold",
+                0.0, 1.0, 0.05,
+                help="Điểm càng cao càng có nguy cơ nhòe chuyển động. Đặt 0 để tắt.",
+            ),
+        ],
     ))
 
     # ── Section 04: Output ─────────────────────────────────────────
@@ -189,27 +191,31 @@ def build_sidebar_entries(
         min_value=0, step=64,
     ))
     entries.append(Checkbox("Ghi đè file đầu ra đã tồn tại", "overwrite"))
-    entries.append(NumberInput(
-        "Số lần retry mỗi video", "retries",
-        min_value=0, max_value=5, step=1,
-        help="Nếu một video lỗi tạm thời, FrameForge sẽ tự thử lại trước khi chuyển sang video kế tiếp.",
-    ))
-    entries.append(NumberInput(
-        "Thời gian chờ retry (giây)", "retry_delay",
-        min_value=0.0, max_value=30.0, step=0.5,
-    ))
-    entries.append(NumberInput(
-        "Vùng đệm dung lượng tối thiểu (MB)", "disk_reserve_mb",
-        min_value=0, max_value=8192, step=128,
-        help="Không bắt đầu hoặc tiếp tục ghi khi dung lượng trống thấp hơn vùng đệm này.",
-    ))
-    entries.append(Checkbox(
-        "Dùng cache phân tích scene", "use_scene_cache",
-        help="Lần chạy sau sẽ seek tới các timestamp đã chọn thay vì phân tích lại toàn bộ video.",
-    ))
-    entries.append(Checkbox(
-        "Loại duplicate giữa các lần chạy", "cross_run_duplicates",
-        help="Dùng dHash index trong thư mục screenshot để tránh lưu lại frame gần giống đã xuất trước đó.",
+    entries.append(Expander(
+        "Retry · cache · nâng cao", expanded=False, entries=[
+            NumberInput(
+                "Số lần retry mỗi video", "retries",
+                min_value=0, max_value=5, step=1,
+                help="Nếu một video lỗi tạm thời, FrameForge sẽ tự thử lại trước khi chuyển sang video kế tiếp.",
+            ),
+            NumberInput(
+                "Thời gian chờ retry (giây)", "retry_delay",
+                min_value=0.0, max_value=30.0, step=0.5,
+            ),
+            NumberInput(
+                "Vùng đệm dung lượng tối thiểu (MB)", "disk_reserve_mb",
+                min_value=0, max_value=8192, step=128,
+                help="Không bắt đầu hoặc tiếp tục ghi khi dung lượng trống thấp hơn vùng đệm này.",
+            ),
+            Checkbox(
+                "Dùng cache phân tích scene", "use_scene_cache",
+                help="Lần chạy sau sẽ seek tới các timestamp đã chọn thay vì phân tích lại toàn bộ video.",
+            ),
+            Checkbox(
+                "Loại duplicate giữa các lần chạy", "cross_run_duplicates",
+                help="Dùng dHash index trong thư mục screenshot để tránh lưu lại frame gần giống đã xuất trước đó.",
+            ),
+        ],
     ))
 
     return entries

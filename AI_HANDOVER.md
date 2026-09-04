@@ -248,3 +248,9 @@ python -m unittest discover -s tests -p "test_*.py"   # hiện: 259 pass, 27 ski
 - Download section → tab riêng; personal preset + job history → tab Cài đặt.
 - CSS: `.hero-mini`, padding-top trang giảm 2.2rem → 1.1rem.
 - LƯU Ý cho AI sau: widget keys KHÔNG đổi (uploaded_files, video_dir_text, download_quality, update_channel_choice, ...) — đừng đổi key khi refactor UI vì tests + session_state phụ thuộc.
+
+## Sidebar gọn hơn 0.1.38b — nhóm tùy chọn nâng cao (2026-09-04)
+
+- Giữ hiển thị: scene_threshold, every (mode N giây), worker_choice, preset, mode, số screenshot, format/crop/quality/width, overwrite.
+- 4 expander collapsed: "Scene detection nâng cao" (min_scene_gap, flash_return_ratio, flash_brightness_threshold, scene_confirmations), "Hiệu năng phân tích" (analysis_width, min_free_ram_gb, analysis_fps, extract_worker_choice), "Lọc mờ · trùng lặp" (min_sharpness, duplicate_threshold, motion_blur_threshold), "Retry · cache · nâng cao" (retries, retry_delay, disk_reserve_mb, use_scene_cache, cross_run_duplicates).
+- Widget keys KHÔNG đổi — expander chỉ ẩn/hiện, session_state vẫn giữ giá trị.
