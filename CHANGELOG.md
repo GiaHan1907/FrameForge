@@ -4,13 +4,51 @@ Lịch sử thay đổi của FrameForge. Các phiên bản tuân theo SemVer; b
 
 ## [Unreleased]
 
-Các cải tiến đang được cân nhắc cho v0.1.35 được ghi trong [ROADMAP_v0.1.33.md](ROADMAP_v0.1.33.md).
+Bản mới nhất đã phát hành: **v0.1.39**. Phần "What's new" hiển thị trong app và các ghi chú theo bản nằm tại [RELEASE_NOTES.md](RELEASE_NOTES.md); roadmap đề xuất cũ cho v0.1.33 đã lưu trữ tại [ROADMAP_v0.1.33.md](ROADMAP_v0.1.33.md).
+
+## [0.1.39] — Release notes rõ ràng và vệ sinh docs
+
+- Bump lên v0.1.39 kèm entry release notes đầy đủ; xóa release/tag v0.1.39 cũ trỏ commit lỗi thời để lịch sử phát hành sạch.
+- Nâng `MyAppVersion` mặc định trong `FrameForge.iss` theo version hiện tại để `build_installer.bat` local không tạo Setup sai version.
+- Cập nhật README và AI_HANDOVER cho khớp hiện trạng.
+
+## [0.1.38] — Rút gọn giao diện, giảm cuộn tối đa
+
+- Trang chính chuyển sang 3 tab: Xử lý video / Tải video công khai / Cài đặt & Lịch sử; bỏ hero, card tổng quan và step cards.
+- Sidebar thu gọn ~một nửa: scene detection nâng cao, hiệu năng, lọc mờ/trùng, retry/cache gói trong 4 expander thu gọn.
+- Preview workspace (player + crop + timeline + gallery), form tải video và panel Cập nhật & kênh gói vào expander thu gọn.
+- Widget keys giữ nguyên nên preset/autosave không đổi.
+
+## [0.1.37] — Sửa ổn định bản cài Windows (.exe)
+
+- Bảng job history chuyển `st.dataframe` sang HTML/CSS thuần, loại bỏ nhu cầu pyarrow/pandas khỏi profile minimal (hết lỗi `ModuleNotFoundError: No module named 'pyarrow'`).
+- Sửa spec PyInstaller: trailing comma thiếu (lỗi `'tuple' object is not callable`), thiếu `core/google_images.py`/`core/pipeline.py` trong datas; bổ sung `requests` + `beautifulsoup4` vào requirements.
+- Fix chuỗi lỗi runtime bản cài: thiếu `import streamlit as st`/`Expander` trong `ui/sidebar.py`, `Expander` thiếu field `entries`, biến `count`/`downloaded_paths` chưa gán, `downloaded_paths` là chuỗi cần bọc `Path()`.
+- Tìm ảnh theo địa điểm chạy inline trong app (thay `st.page_link` vốn lỗi khi đóng gói); CI tự publish release khi push tag (không còn draft).
+
+## [0.1.36] — Tách core/analysis.py và tối ưu hiệu năng
+
+- Tách 11 hàm phân tích cv2 từ `video_screenshot_advanced.py` vào `core/analysis.py`; tách `_render_processing_job` sang `ui/processing_view.py`.
+- Thêm TTL cache cho `_available_memory_gb()`/`current_process_rss_bytes()` và memoize `processing_signature()`.
+- Xử lý 12 Web Interface Guidelines issues; thêm `overscroll-behavior: contain`.
+
+## [0.1.35] — Tách module lớn và CLI headless
+
+- Chia `core/pipeline.py` (675 dòng) thành `core/checkpoint.py`/`core/workers.py`/`core/cleanup.py`; tách thêm `core/targets.py`, `core/cv2_helpers.py`, `core/analysis.py`, `core/errors.py`.
+- `streamlit_app.py` tách thành 5 module `ui/*`; thay `SimpleNamespace` bằng dataclass `FrameForgeConfig`; chuyển widget globals sang `st.session_state`; xóa duplicate `_ProcessingQueueAdapter`, worker functions và `classify_error`.
+- Thêm CLI headless `python -m core.cli` — xử lý video từ terminal không cần Streamlit.
 
 ## [0.1.34] — Security hardening and code cleanup
 
 - Thêm path traversal validation cho `_read_pending()` trong app update, chống tampered `pending.json` trỏ ra file ngoài update root.
 - Refactor `PersistentQueueStore.mark_cancelled()` bỏ dead code SQL computation bị ghi đè vô ích.
 - Cập nhật `frameforge_version.txt` và `FrameForge.iss`sync version 0.1.34.
+
+## [0.1.33] — Ép đủ số screenshot sau filter
+
+- Thêm tùy chọn **Ép đủ số ảnh yêu cầu (fallback cuối)**: nếu sau vòng filter chính vẫn thiếu target do mờ/motion blur/duplicate, engine dùng lại candidate bị loại theo thứ tự ưu tiên; không tạo frame giả, không decode thừa.
+- Report/manifest ghi nhận `forced_fallback_saved`, `forced_fallback_reasons`, `force_fill_shortfall`; thêm suffix `_fallback_0001_1` khi trùng tên để không ghi đè output cũ.
+- Chi tiết: [RELEASE_NOTES_v0.1.33.md](RELEASE_NOTES_v0.1.33.md).
 
 ## [0.1.32] — Desktop auto-shutdown watchdog
 
@@ -227,8 +265,14 @@ Các cải tiến đang được cân nhắc cho v0.1.35 được ghi trong [ROA
 
 - Bật cơ chế public one-click app updates.
 
-[Unreleased]: https://github.com/GiaHan1907/FrameForge/compare/v0.1.34...HEAD
+[Unreleased]: https://github.com/GiaHan1907/FrameForge/compare/v0.1.39...HEAD
+[0.1.39]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.39
+[0.1.38]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.38
+[0.1.37]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.37
+[0.1.36]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.36
+[0.1.35]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.35
 [0.1.34]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.34
+[0.1.33]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.33
 [0.1.32]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.32
 [0.1.31]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.31
 [0.1.30]: https://github.com/GiaHan1907/FrameForge/releases/tag/v0.1.30

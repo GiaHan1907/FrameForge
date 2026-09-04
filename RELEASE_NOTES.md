@@ -1,4 +1,7 @@
-# FrameForge Windows Release Notes
+# FrameForge — Release Notes
+
+> Bản mới nhất: **v0.1.39**. Lịch sử đầy đủ từng bản: [CHANGELOG.md](CHANGELOG.md). Ghi chú riêng cho một số bản cũ: RELEASE_NOTES_v0.1.31.md, RELEASE_NOTES_v0.1.32.md, RELEASE_NOTES_v0.1.33.md, UPDATE_GUIDE_v0.1.31.md.
+
 # FrameForge v0.1.39
 
 ## Giao diện rút gọn — giảm cuộn tối đa
@@ -19,6 +22,63 @@ Toàn bộ giao diện được thu gọn để mở app là làm được việ
 - Sửa hàng loạt lỗi chạy bản cài: thiếu `import streamlit as st` trong `ui/sidebar.py`, `Expander` thiếu field `entries`, biến `count`/`downloaded_paths` chưa gán, đường dẫn tải về giờ xử lý đúng khi là chuỗi.
 - **Tìm ảnh theo địa điểm** giờ chạy ngay trong app (trước đây dùng `st.page_link` bị lỗi trên bản đóng gói).
 - Release tự **publish** khi push tag (không còn release draft); `latest.json` kèm metadata rollback tới bản stable trước đó.
+
+# FrameForge v0.1.38
+
+## Giao diện rút gọn — 3 tab, ít cuộn
+
+- Trang chính thành **3 tab**: `⚙️ Xử lý video`, `⬇️ Tải video công khai`, `📁 Cài đặt & Lịch sử`; bỏ hero, card tổng quan và step cards.
+- Sidebar, preview workspace, form tải video và panel Cập nhật gói vào các expander thu gọn.
+- Widget keys giữ nguyên nên preset/autosave không đổi.
+
+# FrameForge v0.1.37
+
+## Sửa ổn định bản cài Windows (.exe)
+
+- Bảng lịch sử job chuyển sang HTML/CSS thuần, hết lỗi thiếu pyarrow trên profile minimal.
+- Sửa spec PyInstaller và requirements (`requests`, `beautifulsoup4`); fix thiếu `import streamlit`/`Expander`, biến `count`/`downloaded_paths`.
+- Tìm ảnh theo địa điểm chạy inline trong app; CI tự publish release khi push tag.
+
+# FrameForge v0.1.36
+
+## Tách module phân tích và tăng tốc các lần chạy lặp lại
+
+- Tách `core/analysis.py` (11 hàm phân tích cv2); thêm TTL cache cho RAM/RSS và memoize processing signature.
+- Cải thiện accessibility/mobile theo Web Interface Guidelines.
+
+# FrameForge v0.1.35
+
+## Tách module lớn và CLI headless
+
+- Chia `core/pipeline.py` và `streamlit_app.py` thành các module `core/*`, `ui/*`; dataclass `FrameForgeConfig`; widget globals chuyển sang `st.session_state`.
+- CLI headless mới: `python -m core.cli` — xử lý video không cần Streamlit.
+
+# FrameForge v0.1.34
+
+## Security hardening và dọn code
+
+- Chặn path traversal khi đọc `pending.json` của app update; dọn dead code trong `PersistentQueueStore`; đồng bộ version spec/installer.
+
+# FrameForge v0.1.33
+
+## Ép đủ số screenshot sau filter
+
+- Tùy chọn **Ép đủ số ảnh yêu cầu (fallback cuối)**: khi frame bị loại nhiều vì mờ/motion blur/duplicate, engine dùng lại candidate bị loại theo mức ưu tiên để đạt đủ target; không tạo frame giả. Report ghi `forced_fallback_saved`/`force_fill_shortfall`.
+- Xem chi tiết: [RELEASE_NOTES_v0.1.33.md](RELEASE_NOTES_v0.1.33.md).
+
+# FrameForge v0.1.32
+
+## Desktop auto-shutdown khi đóng web
+
+- Watchdog tự dừng `VideoScreenshotFilter.exe` khi browser session cuối cùng đóng, cancel job an toàn, có PID guard.
+- Xem chi tiết: [RELEASE_NOTES_v0.1.32.md](RELEASE_NOTES_v0.1.32.md).
+
+# FrameForge v0.1.31
+
+## Silent Windows runtime
+
+- Bỏ cửa sổ terminal chớp khi kiểm tra update/FFmpeg; shortcut trỏ thẳng tới EXE windowed.
+- Xem chi tiết: [RELEASE_NOTES_v0.1.31.md](RELEASE_NOTES_v0.1.31.md) và [UPDATE_GUIDE_v0.1.31.md](UPDATE_GUIDE_v0.1.31.md).
 
 # FrameForge v0.1.30
 
@@ -226,6 +286,10 @@ Bản nâng cấp này giới hạn số process trích frame theo số video wo
 
 SQLite queue được đóng sạch khi hủy xử lý trong single-worker mode và vẫn giữ trạng thái `cancelled` cho toàn bộ item còn lại, giúp lần mở lại sau không gặp database connection treo hoặc trạng thái queue không nhất quán. Bộ test mới kiểm tra adaptive budget, resume report từ SQLite và cancel lifecycle thực tế qua `process_videos()`.
 
+---
+
+> ⚠️ **Tài liệu gốc thời v0.1.9 trở về trước** — giữ lại để tham khảo lịch sử. Quy trình build/release, cấu trúc module và số đo kích thước hiện tại đã thay đổi; thông tin hiện hành xem [README.md](README.md) và [AUTO_UPDATE_AND_SIZE_GUIDE.md](AUTO_UPDATE_AND_SIZE_GUIDE.md).
+
 ## Phạm vi bản cập nhật
 
 Bản cập nhật mới bổ sung scene cache, checkpoint resume, duplicate detection giữa các lần chạy và timeline tương tác với zoom/bộ lọc scene. Updater ứng dụng hỗ trợ stable/beta channel, release notes trong UI và rollback installer có xác minh SHA-256.
@@ -284,7 +348,7 @@ Cần cài thử Setup trên máy Windows không có Python và không có FFmpe
 
 ## Giới hạn kiểm thử
 
-Môi trường phát triển hiện tại là Linux và không có Inno Setup, NSIS, Wine hoặc Windows toolchain. Vì vậy chưa thể sinh file Setup `.exe` hoặc xác nhận kích thước Windows cuối cùng trong phiên này. Các script và spec đã được chuẩn bị để chạy trực tiếp trên Windows.
+> ⚠️ Ghi chú lịch sử (thời v0.1.9). Từ v0.1.31 trở đi bản Windows được build và kiểm thử trực tiếp trên GitHub Actions runner windows-2022; installer `.exe` được sinh ra tự động mỗi lần push tag `vX.Y.Z`.
 
 ## Phân phối FFmpeg
 
@@ -293,7 +357,7 @@ Giữ lại các file license, readme và `BUILD_METADATA.txt` do `prepare_ffmpe
 
 ## GitHub Actions
 
-Workflow mới tại `.github/workflows/windows-release.yml` chạy trên `windows-2022`, chọn profile minimal/full, gọi `build_windows.bat`, smoke-test endpoint HTTP 200 của executable đã đóng gói, cài Inno Setup bằng Chocolatey, tạo Setup, sinh checksum và upload artifact. Push tag dạng `v1.2.3` sẽ tự tạo GitHub Release; chạy thủ công cho phép chọn profile và chỉ publish nếu bật `publish_release`.
+Workflow mới tại `.github/workflows/windows-release.yml` chạy trên `windows-2022`, chọn profile minimal/full, gọi `build_windows.bat`, smoke-test endpoint HTTP 200 của executable đã đóng gói, cài Inno Setup bằng Chocolatey, tạo Setup, sinh checksum và upload artifact. Push tag dạng `v1.2.3` sẽ tự tạo và **publish** GitHub Release (từ v0.1.37 không còn ở trạng thái draft); chạy thủ công cho phép chọn profile.
 
 Workflow dùng `GITHUB_TOKEN` với `contents: write`. Repository phải cho phép Actions tạo Release. Không commit Personal Access Token hoặc secret nhạy cảm vào YAML. Trước phát hành chính thức nên thay URL FFmpeg alias `latest` bằng asset/version được ghim hoặc truyền qua Repository Variable/Secret.
 
