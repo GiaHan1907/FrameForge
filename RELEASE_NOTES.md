@@ -1,6 +1,17 @@
 # FrameForge — Release Notes
 
-> Bản mới nhất: **v0.1.42**. Lịch sử đầy đủ từng bản: [CHANGELOG.md](CHANGELOG.md). Ghi chú riêng cho một số bản cũ: RELEASE_NOTES_v0.1.31.md, RELEASE_NOTES_v0.1.32.md, RELEASE_NOTES_v0.1.33.md, UPDATE_GUIDE_v0.1.31.md.
+> Bản mới nhất: **v0.1.43**. Lịch sử đầy đủ từng bản: [CHANGELOG.md](CHANGELOG.md). Ghi chú riêng cho một số bản cũ: RELEASE_NOTES_v0.1.31.md, RELEASE_NOTES_v0.1.32.md, RELEASE_NOTES_v0.1.33.md, UPDATE_GUIDE_v0.1.31.md.
+
+# FrameForge v0.1.43
+
+## Lưu API key tìm ảnh mã hóa trên máy (Windows DPAPI) + quản lý & kiểm tra key
+
+- Ô API key của Pexels / Pixabay / Unsplash giờ có checkbox **💾 Lưu key trên máy này**: key được mã hóa bằng Windows DPAPI qua `core/key_store.py`, lưu trong thư mục app của người dùng — không bao giờ lưu plaintext, không cần gõ lại key mỗi phiên.
+- Thêm phần **API key tìm ảnh** trong tab Cài đặt & Lịch sử: liệt kê từng nguồn với trạng thái key đã lưu (chỉ hiện 4 ký tự cuối, che phần còn lại), ghi rõ khi biến môi trường `FRAMEFORGE_*` đang ghi đè key đã lưu, và nút **🗑 Xóa** theo 2 bước xác nhận (một cú click nhầm không thể mất key).
+- Thêm nút **Kiểm tra key** cạnh checkbox lưu: gọi thử nguồn ảnh bằng key vừa nhập **trước khi lưu** — key hoạt động mới được lưu; key bị từ chối (401/403) báo lỗi rõ và không ghi vào máy.
+- Sửa thông báo gây hiểu nhầm: khi nguồn cần key từ chối key (hết hạn / sai), app báo đúng "key bị từ chối — kiểm tra lại key" thay vì "không tìm thấy ảnh"; sau mỗi lượt tìm hiện dòng nhỏ cho biết key nào đã phục vụ (biến môi trường / đã lưu trên máy / nhập trong phiên) để phát hiện key cũ đang bị env var che.
+- Quy tắc ưu tiên key (gõ tay > biến môi trường > key lưu) gom về một chỗ duy nhất `core/key_store.py::resolve_api_key` — engine và UI cùng đọc một nguồn quyết định nên không thể lệch nhau.
+- Tổng suite: 386 tests OK, 16 skipped.
 
 # FrameForge v0.1.42
 
