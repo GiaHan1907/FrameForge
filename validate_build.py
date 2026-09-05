@@ -22,7 +22,9 @@ REQUIRED_MODULES = [
     "core/errors.py",
     "core/network.py",
     "core/cli.py",
+    "core/key_store.py",
     "ui/download_section.py",
+    "ui/key_settings.py",
     "ui/session.py",
 ]
 

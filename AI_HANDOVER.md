@@ -4,7 +4,7 @@
 > build/release để **AI hoặc developer kế tiếp** hiểu nhanh project và
 > không lặp lại các sai lầm đã sửa.
 >
-> Cập nhật lần cuối: 2026-09-04 (v0.1.39)
+> Cập nhật lần cuối: 2026-09-05 (v0.1.42 + key store)
 
 ---
 
@@ -15,8 +15,11 @@
 2. **Trích ảnh/screenshot từ video** theo nhiều chế độ (scene detection,
    best-frame-per-scene, mỗi N giây, đúng N frame), có lọc chất lượng
    (sharpness, motion blur, dHash duplicate), crop theo tỷ lệ, encode profile.
-3. **Tìm ảnh theo địa điểm** (Google Images search, không dùng API —
-   feature riêng, không liên quan video; `ui/image_search_inline.py`).
+3. **Tìm ảnh theo địa điểm** (DuckDuckGo / Wikimedia Commons / Openverse —
+   không cần key; Pexels / Pixabay / Unsplash — key miễn phí, đọc từ env
+   `FRAMEFORGE_*_API_KEY`, gõ tay trong UI, hoặc lưu mã hóa trên máy qua
+   `core/key_store.py` (Windows DPAPI). Feature riêng, không liên quan video;
+   `ui/image_search_inline.py`).
 
 Entrypoint Streamlit: `streamlit_app.py` (chạy `VideoScreenshotFilter.exe`).
 CLI: `core/cli.py`. Update tự động: `app_update.py` + `updater.py`.
@@ -41,6 +44,7 @@ core/
   manifest.py   # verify_video_manifest, atomic JSON write
   utils.py      # helpers chung
   google_images.py  # tìm ảnh địa điểm (dùng requests + bs4)
+  key_store.py  # lưu API key mã hóa DPAPI (Windows) / plaintext 0600 (khác)
   cli.py        # CLI headless mode
 ui/
   session.py    # WidgetState TypedDict (53 fields) + read_widgets() — có try/except import streamlit
@@ -203,7 +207,7 @@ print('Xem thủ công: mode_label, start, end, every, count, max_screenshots, c
 "
 
 # 4. Tests
-python -m unittest discover -s tests -p "test_*.py"   # hiện: 259 pass, 27 skip
+python -m unittest discover -s tests -p "test_*.py"   # hiện: 345 pass, 16 skip
 ```
 
 ---
@@ -273,3 +277,110 @@ python -m unittest discover -s tests -p "test_*.py"   # hiện: 259 pass, 27 ski
 - Bump `frameforge_version.txt` lên 0.1.39 và thêm entry RELEASE_NOTES.md mới (file này nhúng vào `latest.json`, là "What's new" trong app).
 - ⚠️ Tag/release v0.1.39 CŨ từng trỏ commit `0935d8d` (trước loạt UI compaction, build 09-03) đã bị XÓA để tránh updater quảng bá bản lỗi thời; tag mới đặt tại commit bump version.
 - Quy trình bản mới gọn: bump frameforge_version.txt → commit/push main → xóa release+tag cũ cùng tên nếu có (gh release delete --cleanup-tag) → git tag vX.Y.Z && git push origin vX.Y.Z → CI auto-build + auto-publish.
+
+
+## Tìm ảnh theo địa điểm — nguồn ảnh & yêu cầu API key (2026-09-05)
+
+UI: `ui/image_search_inline.py` (tab Tải video công khai → mục tìm ảnh).
+Engine: `core/google_images.py` (`search_images`); resolution rule thuộc về
+`core/key_store.py` (`resolve_api_key` — explicit > env > store, một nơi duy nhất).
+
+### Yêu cầu key theo từng nguồn
+
+| Nguồn | Cần key? | Env var (nếu có) | Lấy key ở đâu |
+|-------|----------|------------------|---------------|
+| DuckDuckGo | Không | — | — |
+| Wikimedia Commons (CC) | Không | — | — |
+| Openverse (CC) | Không bắt buộc (token chỉ tăng rate limit) | `FRAMEFORGE_OPENVERSE_TOKEN` | https://api.openverse.org/ |
+| Pexels | **Bắt buộc** | `FRAMEFORGE_PEXELS_API_KEY` | https://www.pexels.com/api/ |
+| Pixabay | **Bắt buộc** | `FRAMEFORGE_PIXABAY_API_KEY` | https://pixabay.com/api/docs/ |
+| Unsplash | **Bắt buộc** | `FRAMEFORGE_UNSPLASH_ACCESS_KEY` | https://unsplash.com/developers |
+
+Nguồn bắt buộc key mà không có key → trả về **0 kết quả** (UI hiện ô nhập key +
+caption hướng dẫn), không crash.
+
+### Key bị từ chối (401/403) — đã fix (không còn giả vờ "không có ảnh")
+
+- Backend keyed (Pexels/Pixabay/Unsplash/Openverse) raise `ImageSearchAuthError`
+  khi HTTP 401/403 (`core/google_images.py`); `search_images` propagate lên caller.
+- UI (`ui/image_search_inline.py`) bắt riêng lỗi này → `st.error` thông báo rõ
+  nguồn + nguyên nhân ("key bị từ chối/hết hạn — kiểm tra lại key") + gợi ý theo
+  nơi key đến: env var (nêu tên biến), key lưu trên máy (bỏ tick Lưu key → nhập
+  mới), hoặc key gõ tay (nhập lại). KHÔNG hiện text "Không tìm thấy ảnh nào" chung.
+- 401/403 là lỗi duy nhất tách riêng; network/rate-limit (429, 5xx)/0 kết quả
+  vẫn giữ hành vi cũ (trả [] → text "không tìm thấy" như trước).
+- Test: `AuthRejectionTests` (test_image_sources.py), `StoredKeyRejectionTests` +
+  `StoredKeyRejectionUiTests` (test_key_store.py — AppTest chạy UI thật, kiểm tra
+  thông báo phân biệt + không hiện text generic).
+
+### Key được resolve theo thứ tự: explicit > env var > store
+
+1. `api_keys={source: key}` truyền trực tiếp vào `search_images()` (UI luôn truyền
+   key đã có sẵn).
+2. Env var `FRAMEFORGE_*_API_KEY` (xem bảng trên).
+3. Key lưu trên máy qua `core/key_store.py` (nếu có).
+
+### Persistence: trước vs bây giờ
+
+- **Giới hạn cũ (trước khi có `core/key_store.py`; đã có trong mọi release tới
+  v0.1.42)**: key chỉ đọc từ env var hoặc gõ tay trong UI **mỗi phiên** — placeholder
+  từng ghi "chỉ lưu trong phiên này"; không có gì persist, mở lại app phải gõ lại.
+  `config.json` (`%LOCALAPPDATA%\VideoScreenshotFilter\`)
+  chỉ chứa 2 đường dẫn output (download_dir/screenshot_dir) — **không bao giờ lưu key**.
+- **Bây giờ**: `core/key_store.py` — `ApiKeyStore` lưu key vào
+  `%LOCALAPPDATA%\VideoScreenshotFilter\api_keys.json`:
+  - Windows: mã hóa DPAPI (`CryptProtectData`/`CryptUnprotectData` qua ctypes,
+    không thêm dependency) — chỉ cùng user + máy đọc được; file chỉ chứa base64 blob.
+  - Khác Windows: file plaintext với quyền 0600 (best effort, không dùng keyring).
+  - API: `get/set/delete/resolve` + `default_store()`; file hỏng/không đọc được
+    → `get()` trả "" chứ không crash. Ghi file atomic (mkstemp + replace) như
+    `app_config.py`.
+
+### Ghi chú cho AI sau
+
+- App **không đọc file `.env`** — chỉ env var OS thật hoặc store (không có dotenv).
+- **UI** (`ui/image_search_inline.py`): ô password prefill key đã lưu + checkbox
+  "💾 Lưu key trên máy này (mã hóa)" — tick → `store.set()` khi Tìm kiếm,
+  bỏ tick → `store.delete()`. Save/delete hiện `st.success` NGAY trong cùng run
+  bấm Tìm kiếm (không chờ rerun); lỗi lưu → `st.error`. Env var có sẵn thì
+  vẫn ưu tiên env, không hiện UI.
+- **Nút "Kiểm tra key"** (cạnh checkbox lưu, chỉ hiện khi có UI nhập key —
+  không hiện khi env var che): gọi `core/google_images.validate_api_key`
+  (chạy 1 search tối thiểu qua ĐÚNG đường fetch backend của `search_images`,
+  không có probe riêng) TRƯỚC khi persist — key bị từ chối (401/403 =
+  `ImageSearchAuthError`) KHÔNG bao giờ được `store.set`; key hợp lệ → lưu +
+  `st.success` ngay trong cùng run. Là hành động tùy chọn, tách biệt với nút
+  Tìm kiếm (search thường không chờ/không gọi validation). Không hiện key trong
+  message. Test: `ValidateApiKeyTests` (engine), `ValidateKeyUiTests` (AppTest:
+  valid → lưu + success; invalid → không lưu + lỗi phân biệt; env-shadow →
+  không có UI validation). Lưu ý test AppTest click nút bằng key
+  `_inline_img_search_btn`, không dùng `at.button[0]` (nút Kiểm tra key tạo
+  trước nút Tìm kiếm nên thứ tự index đã đổi). Hành động persist (save/delete) được quyết
+  định MỘT lần trước caption "Key đã được lưu..." bằng cách đọc sẵn trạng thái
+  nút Tìm kiếm từ `session_state` — nên ở run xóa key, caption cũ không còn
+  xuất hiện cùng lúc với message "Đã xóa" (caption/origin/hint đều tính theo
+  trạng thái store SAU hành động của run đó, ví dụ origin đọc "nhập trong
+  phiên này" chứ không "đã lưu trên máy").
+- **Sau mỗi lần tìm kiếm** nguồn có key, UI hiện dòng caption êm (cùng run,
+  không phải lỗi): "Đã dùng key từ biến môi trường FRAMEFORGE_X" / "Đã dùng key
+  đã lưu trên máy (mã hóa)" / "Đã dùng key nhập trong phiên này" — giúp user
+  phát hiện key lưu cũ đang bị env che (shadowed). Không hiện cho nguồn
+  anonymous (DuckDuckGo/Wikimedia/Openverse không token) và KHÔNG hiện khi
+  key bị từ chối (giữ nguyên message lỗi riêng). Helper thuần:
+  `_key_origin_line()`. Test AppTest: `SaveConfirmationUiTests`,
+  `KeyOriginLineUiTests`.
+- **Quản lý key trong tab Cài đặt & Lịch sử** (`ui/key_settings.py` +
+  `render_settings_api_keys()` trong `streamlit_app.py`): liệt kê đủ 6 nguồn,
+  mỗi  nguồn hiển thị key đã lưu (chỉ 4 ký tự cuối, không bao giờ full), có
+  nhãn "Được ghi đè bởi biến môi trường FRAMEFORGE_*" khi env ưu tiên, và nút
+  Xóa key lưu. **Xóa là 2 bước**: click Xóa chỉ "arm" (session_state
+  `_settings_key_armed_<source>`) → hiện thanh cảnh báo + nút "Xóa lần nữa để
+  xác nhận" + "Hủy" — một cú click tình cờ KHÔNG bao giờ xóa được key.
+  Dữ liệu hàng từ `ui/logic.search_key_rows()` — dựa 100% trên
+  `key_store.resolve_api_key` + `ApiKeyStore` (không re-derive rule).
+  ⚠️ File UI mới phải nằm trong cả 3 spec (`ui/key_settings.py` đã thêm) +
+  `validate_build.py` `REQUIRED_MODULES`.
+- Test: `tests/test_key_store.py` (roundtrip, mã hóa, precedence, store fallback
+  qua `search_images`) + `test_image_sources.py` (mock network, từng nguồn).
+- ⚠️ **Khi thêm file runtime mới** phải thêm vào **cả 3 spec** (`datas`) +
+  `validate_build.py` `REQUIRED_MODULES` — key_store đã thêm đủ (rule mục 3).

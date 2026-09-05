@@ -17,6 +17,8 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
+from core import key_store
+from core.google_images import IMAGE_SOURCES, _KEY_REQUIRED_SOURCES
 from core.pipeline import recommended_extract_workers
 
 
@@ -224,6 +226,50 @@ def _pause_processing_job(job: dict[str, object]) -> None:
     job["message"] = (
         "Tạm d\u1eebng queue; video hi\u1ec7n t\u1ea1i s\u1ebd ho\u00e0n t\u1eaft r\u1ed3i ch\u1edd ti\u1ebfp t\u1ee5c."
     )
+
+
+# ── Search API key management surface (settings tab) ──────────────────
+
+
+def mask_key(value: str) -> str:
+    """Mask a key for display: never reveal more than the last 4 characters.
+
+    Keys shorter than 5 characters are shown as bullets only, so no part of
+    a short key is ever exposed.
+    """
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if len(value) <= 4:
+        return "\u2022\u2022\u2022\u2022"
+    return "\u2022" * (len(value) - 4) + value[-4:]
+
+
+def search_key_rows(store: "key_store.ApiKeyStore | None" = None) -> list[dict]:
+    """One display row per image-search source for the settings tab.
+
+    Built exclusively from core/key_store.py's owned rule and storage
+    (``resolve_api_key`` + ``ApiKeyStore``) - no env/store re-derivation
+    here.  Each row has: source, label, needs_key, stored, stored_masked,
+    env_override, env_name.  Plaintext keys never appear in a row.
+    """
+    store = store or key_store.default_store()
+    rows: list[dict] = []
+    for source, label in IMAGE_SOURCES:
+        # Both the rule (env detection) and the stored value come from the
+        # SAME injected store - never default_store() and store in one call.
+        resolution = store.resolve(source)
+        stored_value = store.get(source)
+        rows.append({
+            "source": source,
+            "label": label,
+            "needs_key": source in _KEY_REQUIRED_SOURCES or source == "openverse",
+            "stored": bool(stored_value),
+            "stored_masked": mask_key(stored_value),
+            "env_override": resolution.origin == "env",
+            "env_name": resolution.env_name,  # "" unless origin == env
+        })
+    return rows
 
 
 def _resume_processing_job(job: dict[str, object]) -> None:

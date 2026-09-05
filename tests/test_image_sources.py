@@ -181,6 +181,108 @@ class KeyedSourceParseTests(unittest.TestCase):
 
 
 
+class AuthRejectionTests(unittest.TestCase):
+    """401/403 = rejected API key -> ImageSearchAuthError; other failures -> []."""
+
+    @staticmethod
+    def _http_error(status):
+        import requests
+
+        return requests.HTTPError(f"HTTP {status}", response=Mock(status_code=status))
+
+    def _expect_auth_error(self, backend, status, **kwargs):
+        from core.google_images import ImageSearchAuthError
+
+        with patch("core.google_images.requests.get",
+                   return_value=_resp({}, error=self._http_error(status))):
+            with self.assertRaises(ImageSearchAuthError) as ctx:
+                backend("q", **kwargs)
+        self.assertEqual(ctx.exception.status, status)
+        return ctx.exception
+
+    def test_pexels_401_raises_auth_error(self):
+        from core.google_images import _pexels_search_images
+
+        exc = self._expect_auth_error(_pexels_search_images, 401, api_key="k")
+        self.assertEqual(exc.source, "pexels")
+
+    def test_pexels_403_raises_auth_error(self):
+        from core.google_images import _pexels_search_images
+
+        self._expect_auth_error(_pexels_search_images, 403, api_key="k")
+
+    def test_pixabay_401_raises_auth_error(self):
+        from core.google_images import _pixabay_search_images
+
+        self._expect_auth_error(_pixabay_search_images, 401, api_key="k")
+
+    def test_unsplash_401_raises_auth_error(self):
+        from core.google_images import _unsplash_search_images
+
+        self._expect_auth_error(_unsplash_search_images, 401, api_key="k")
+
+    def test_openverse_bad_token_401_raises_auth_error(self):
+        from core.google_images import _openverse_search_images
+
+        self._expect_auth_error(_openverse_search_images, 401, token="bad-token")
+
+    def test_rate_limit_and_5xx_still_return_empty(self):
+        from core.google_images import _pexels_search_images
+
+        for status in (429, 500, 503):
+            with self.subTest(status=status):
+                with patch("core.google_images.requests.get",
+                           return_value=_resp({}, error=self._http_error(status))):
+                    self.assertEqual(_pexels_search_images("q", api_key="k"), [])
+
+    def test_network_error_still_returns_empty(self):
+        import requests
+
+        from core.google_images import _pexels_search_images
+
+        with patch("core.google_images.requests.get",
+                   side_effect=requests.ConnectionError("down")):
+            self.assertEqual(_pexels_search_images("q", api_key="k"), [])
+
+    def test_dispatch_propagates_auth_error(self):
+        from core.google_images import ImageSearchAuthError
+
+        with patch("core.google_images._pexels_search_images",
+                   side_effect=ImageSearchAuthError("pexels", 401)):
+            with self.assertRaises(ImageSearchAuthError):
+                search_images("q", source="pexels", api_keys={"pexels": "k"})
+
+
+class ValidateApiKeyTests(unittest.TestCase):
+    """validate_api_key reuses the backend fetch path: 401/403 raise, all else
+    returns normally (a 200/4xx-other response means the key was accepted)."""
+
+    def test_valid_key_returns_normally_and_uses_the_typed_key(self):
+        from core.google_images import validate_api_key
+
+        with patch("core.google_images._pexels_search_images", return_value=[]) as backend:
+            validate_api_key("pexels", "GOOD-KEY")
+        # the typed key went through the real dispatcher, not a new probe
+        backend.assert_called_once_with("", 1, "GOOD-KEY")
+
+    def test_rejected_key_raises_auth_error(self):
+        from core.google_images import ImageSearchAuthError, validate_api_key
+
+        with patch("core.google_images._pexels_search_images",
+                   side_effect=ImageSearchAuthError("pexels", 401)):
+            with self.assertRaises(ImageSearchAuthError) as ctx:
+                validate_api_key("pexels", "BAD-KEY")
+        self.assertEqual(ctx.exception.source, "pexels")
+
+    def test_non_auth_failure_is_not_a_rejection(self):
+        # network/rate-limit degrade to [] inside the backend - the provider
+        # accepted the key, so validation must NOT raise.
+        from core.google_images import validate_api_key
+
+        with patch("core.google_images._pexels_search_images", return_value=[]):
+            validate_api_key("pexels", "KEY")  # must not raise
+
+
 class DispatcherTests(unittest.TestCase):
     def test_dispatcher_routes_wikimedia(self):
         with patch("core.google_images._wikimedia_search_images", return_value=[{
