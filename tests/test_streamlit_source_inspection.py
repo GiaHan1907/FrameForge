@@ -166,6 +166,55 @@ class StreamlitSourceInspectionTests(unittest.TestCase):
                 if isinstance(key, ast.Constant) and key.value in forbidden:
                     self.fail(f"direct assignment to widget key remains: {key.value}")
 
+    def test_image_search_keys_can_be_saved_encrypted(self) -> None:
+        """
+        API keys (Pexels/Pixabay/Unsplash) can be persisted encrypted on this
+        machine (Windows DPAPI) so they don't need retyping every session.
+        """
+        inline = (ROOT / "ui" / "image_search_inline.py").read_text(encoding="utf-8")
+        key_store_source = (ROOT / "core" / "key_store.py").read_text(encoding="utf-8")
+        google = (ROOT / "core" / "google_images.py").read_text(encoding="utf-8")
+        # UI: renders FROM the resolution rule (no re-derived env/store logic),
+        # plus checkbox to save, save/delete on search.  Resolution goes
+        # through the store the widget already holds (store.resolve) - never
+        # a second store.
+        self.assertIn("from core import key_store", inline)
+        self.assertIn("store.resolve(source)", inline)
+        self.assertIn("key_store.default_store()", inline)
+        self.assertIn("\U0001f4be L\u01b0u key tr\u00ean m\u00e1y n\u00e0y (m\u00e3 h\u00f3a)", inline)
+        self.assertIn("store.set(source, api_key)", inline)
+        self.assertIn("store.delete(source)", inline)
+        # Engine calls the single owner; must not re-derive precedence itself
+        self.assertIn("key_store.resolve_api_key(", google)
+        self.assertNotIn("def _resolve_api_key", google)
+        self.assertNotIn("def _stored_key", google)
+        self.assertNotIn("_API_KEY_ENV = {", google)
+        # Single owner: precedence rule, KeyResolution, and env-name map live
+        # in core/key_store.py
+        self.assertIn("def resolve_api_key", key_store_source)
+        self.assertIn("class KeyResolution", key_store_source)
+        self.assertIn("ENV_NAMES = {", key_store_source)
+        # Store: DPAPI encryption on Windows
+        self.assertIn("CryptProtectData", key_store_source)
+        self.assertIn("CryptUnprotectData", key_store_source)
+
+    def test_settings_tab_has_api_key_management(self) -> None:
+        """
+        The settings tab must wire in the per-source key management surface.
+        assertIn is not enough (an import is not a call) - a refactor could
+        drop the call site exactly like the watchdog regression (70898d7).
+        """
+        self.assertIn("from ui.key_settings import render_settings_api_keys", self.source)
+        call_lines = [
+            line.strip()
+            for line in self.source.splitlines()
+            if line.strip() == "render_settings_api_keys()"
+        ]
+        self.assertEqual(
+            len(call_lines), 1,
+            "streamlit_app.py phải gọi render_settings_api_keys() đúng 1 lần trong tab Cài đặt",
+        )
+
     def test_progress_parser_and_telemetry_behavior(self) -> None:
         """Test parse_progress_units and progress_telemetry via import."""
         from ui.logic import parse_progress_units, progress_telemetry
