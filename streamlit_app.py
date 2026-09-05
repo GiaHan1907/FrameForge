@@ -82,6 +82,7 @@ from ui.preview import (
     preview_crop_overlay,
     preview_frame_at,
 )
+from ui.key_settings import render_settings_api_keys
 from ui.preview_section import render_preview_section
 from ui.presets import (
     init_presets,
@@ -734,6 +735,7 @@ with settings_tab:
 
     render_personal_config_panel()
     render_job_history()
+    render_settings_api_keys()
 
 
 

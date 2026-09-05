@@ -8,7 +8,6 @@ Handles User-Agent rotation and rate limiting to avoid blocks.
 from __future__ import annotations
 
 import io
-import os
 import re
 import time
 import random
@@ -17,6 +16,8 @@ from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
 import requests
+
+from core import key_store
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +39,31 @@ class ImageResult:
     author: str = ""
     page_url: str = ""
 
+
+class ImageSearchAuthError(Exception):
+    """A keyed source rejected the API key (HTTP 401 Unauthorized / 403 Forbidden).
+
+    Raised by the keyed backends (Pexels / Pixabay / Unsplash / Openverse)
+    and propagated through ``search_images`` so callers can tell a rejected
+    key apart from a legitimately empty result set.  Callers must catch it
+    and degrade to an empty result list with a user-facing message.
+    """
+
+    def __init__(self, source: str, status: int):
+        self.source = source
+        self.status = status
+        super().__init__(f"{source} rejected API key (HTTP {status})")
+
+
+def _auth_or_empty(source: str, exc: requests.HTTPError) -> list:
+    """401/403 from a keyed backend -> raise ImageSearchAuthError; else [].
+
+    HTTPError is a RequestException, so the backends catch it first and
+    delegate here to keep the 401/403 rule in one place."""
+    status = exc.response.status_code if exc.response is not None else 0
+    if status in (401, 403):
+        raise ImageSearchAuthError(source, status) from exc
+    return []
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -61,13 +87,8 @@ _PEXELS_API = "https://api.pexels.com/v1/search"
 _PIXABAY_API = "https://pixabay.com/api/"
 _UNSPLASH_API = "https://api.unsplash.com/search/photos"
 
-# env var names for optional API keys (Pexels / Pixabay / Unsplash / Openverse)
-_API_KEY_ENV = {
-    "pexels": "FRAMEFORGE_PEXELS_API_KEY",
-    "pixabay": "FRAMEFORGE_PIXABAY_API_KEY",
-    "unsplash": "FRAMEFORGE_UNSPLASH_ACCESS_KEY",
-    "openverse": "FRAMEFORGE_OPENVERSE_TOKEN",
-}
+# env var names live in core/key_store.ENV_NAMES (single owner of the
+# resolution rule: explicit > env var > store) - do not redefine them here.
 
 # display label used by the UI dropdown (kept here so core + ui agree)
 IMAGE_SOURCES = [
@@ -483,6 +504,8 @@ def _openverse_search_images(query: str, num_results: int = 20, token: str = "")
         )
         resp.raise_for_status()
         data = resp.json()
+    except requests.HTTPError as exc:
+        return _auth_or_empty("openverse", exc)
     except (requests.RequestException, ValueError):
         return []
 
@@ -523,6 +546,8 @@ def _pexels_search_images(query: str, num_results: int = 20, api_key: str = "") 
         )
         resp.raise_for_status()
         data = resp.json()
+    except requests.HTTPError as exc:
+        return _auth_or_empty("pexels", exc)
     except (requests.RequestException, ValueError):
         return []
     results: list[dict] = []
@@ -559,6 +584,8 @@ def _pixabay_search_images(query: str, num_results: int = 20, api_key: str = "")
         )
         resp.raise_for_status()
         data = resp.json()
+    except requests.HTTPError as exc:
+        return _auth_or_empty("pixabay", exc)
     except (requests.RequestException, ValueError):
         return []
     results: list[dict] = []
@@ -595,6 +622,8 @@ def _unsplash_search_images(query: str, num_results: int = 20, api_key: str = ""
         )
         resp.raise_for_status()
         data = resp.json()
+    except requests.HTTPError as exc:
+        return _auth_or_empty("unsplash", exc)
     except (requests.RequestException, ValueError):
         return []
     results: list[dict] = []
@@ -627,14 +656,22 @@ def search_images(
 ) -> list[ImageResult]:
     """Search images from a selectable source (DuckDuckGo, Wikimedia, ...).
 
-    Sources that need an API key read it from api_keys (keyed by source name)
-    or from the FRAMEFORGE_*_API_KEY environment variables.
+    Sources that need an API key resolve it through
+    ``core.key_store.resolve_api_key`` (explicit ``api_keys`` entry >
+    FRAMEFORGE_*_API_KEY env var > encrypted store) - the single owner of
+    that rule; nothing is re-derived here.
+
+    Raises:
+        ImageSearchAuthError: a keyed source rejected the key (HTTP 401/403).
+            Callers must catch it and degrade to an empty result list with a
+            user-facing message; other failures (network, rate limit, empty
+            results) return [] as before.
     """
     api_keys = api_keys or {}
     source = (source or "duckduckgo").strip().lower()
 
     def _key(name: str) -> str:
-        return api_keys.get(name) or os.environ.get(_API_KEY_ENV.get(name, ""), "")
+        return key_store.resolve_api_key(name, explicit=api_keys.get(name)).value
 
     if source == "wikimedia":
         return _dicts_to_results(_wikimedia_search_images(query, num_results))
@@ -648,6 +685,23 @@ def search_images(
         return _dicts_to_results(_unsplash_search_images(query, num_results, _key("unsplash")))
     # default: DuckDuckGo
     return search_google_images(query, num_results)
+
+
+def validate_api_key(source: str, api_key: str) -> None:
+    """Probe a keyed source with ``api_key`` before it is persisted.
+
+    Runs one minimal real search through the SAME backend fetch path as
+    ``search_images`` (no ad-hoc endpoint), so a rejected key surfaces as
+    ``ImageSearchAuthError`` exactly as it would on a normal search - the
+    caller must not store the key in that case.
+
+    Raises:
+        ImageSearchAuthError: the provider rejected the key (HTTP 401/403).
+            Everything else returns normally: a 200/4xx-other response (even
+            with zero results, or a rate-limit/network hiccup that the
+            backend degrades to []) means the provider accepted the key.
+    """
+    search_images("", num_results=1, source=source, api_keys={source: api_key})
 
 
 # ---------------------------------------------------------------------------
